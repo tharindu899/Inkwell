@@ -3483,3 +3483,70 @@ body,
   color: #7a5228 !important;
   -webkit-text-fill-color: #7a5228 !important;
 }
+
+
+/* v37: light mode update sheet readability + no browser update flow */
+.update-overlay {
+  padding: 16px !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.clean-update-sheet {
+  max-width: 430px !important;
+  width: min(92vw, 430px) !important;
+  margin: 0 auto !important;
+  overflow-x: hidden !important;
+}
+.clean-update-sheet .update-title,
+.clean-update-sheet .update-subtitle,
+.clean-update-sheet .update-meta strong,
+.clean-update-sheet .update-note-line {
+  overflow-wrap: anywhere;
+}
+[data-theme="light"] .clean-update-sheet,
+[data-theme="light"] .update-sheet {
+  background: #fffaf3 !important;
+  color: #201a16 !important;
+  border: 1px solid rgba(122, 82, 40, .16) !important;
+  box-shadow: 0 24px 80px rgba(64, 48, 33, .18) !important;
+}
+[data-theme="light"] .update-title,
+[data-theme="light"] .clean-update-sheet .modal-title {
+  color: #201a16 !important;
+  -webkit-text-fill-color: #201a16 !important;
+  opacity: 1 !important;
+}
+[data-theme="light"] .update-subtitle,
+[data-theme="light"] .clean-update-sheet .modal-sub {
+  color: #6e6259 !important;
+  -webkit-text-fill-color: #6e6259 !important;
+  opacity: 1 !important;
+}
+[data-theme="light"] .clean-update-sheet .update-meta,
+[data-theme="light"] .update-current-box,
+[data-theme="light"] .clean-update-sheet .update-notes,
+[data-theme="light"] .clean-update-sheet .update-progress-box {
+  background: #f8f1e9 !important;
+  border-color: rgba(122, 82, 40, .18) !important;
+}
+[data-theme="light"] .clean-update-sheet .update-meta span {
+  color: #8a7b70 !important;
+  -webkit-text-fill-color: #8a7b70 !important;
+}
+[data-theme="light"] .clean-update-sheet .update-meta strong,
+[data-theme="light"] .clean-update-sheet .update-note-line,
+[data-theme="light"] .clean-update-sheet .update-progress-top,
+[data-theme="light"] .clean-update-sheet .update-progress-sub {
+  color: #2b231d !important;
+  -webkit-text-fill-color: #2b231d !important;
+  opacity: 1 !important;
+}
+[data-theme="light"] .update-close {
+  background: #f2ebe3 !important;
+  color: #76675c !important;
+}
+[data-theme="light"] .clean-update-sheet .btn-ghost {
+  background: #f7f0e8 !important;
+  color: #4b4038 !important;
+  border-color: rgba(122, 82, 40, .18) !important;
+}

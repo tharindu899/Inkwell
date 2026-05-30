@@ -111,32 +111,38 @@ function blobToBase64(blob) {
   });
 }
 
-async function saveInstallAndCleanupApk(blob, fileName, onCleanup) {
+async function nativeDownloadInstallApk(url, fileName) {
   const { Capacitor } = await import('@capacitor/core');
-  const { Filesystem, Directory } = await import('@capacitor/filesystem');
-  const data = await blobToBase64(blob);
-  const apkName = safeFileName(fileName);
-
-  await Filesystem.writeFile({
-    path: apkName,
-    data,
-    directory: Directory.Cache,
-    recursive: true,
-  });
-
   const installer = Capacitor?.Plugins?.ApkInstaller;
-  if (!installer?.install) throw new Error('native installer missing');
+  if (!Capacitor.isNativePlatform() || !installer?.installFromUrl) {
+    throw new Error('native installer unavailable');
+  }
+  return installer.installFromUrl({
+    url,
+    fileName: safeFileName(fileName),
+  });
+}
 
-  await installer.install({ fileName: apkName });
+async function webDownloadApk(url, fileName, onProgress) {
+  const headers = GITHUB_TOKEN ? { Authorization: `Bearer ${GITHUB_TOKEN}` } : undefined;
+  const res = await fetch(url, { headers });
+  if (!res.ok || !res.body) throw new Error('download blocked');
 
-  window.setTimeout(async () => {
-    try {
-      await Filesystem.deleteFile({ path: apkName, directory: Directory.Cache });
-      onCleanup?.();
-    } catch {
-      // Safe to ignore: Android installer may still be reading it.
-    }
-  }, 5 * 60 * 1000);
+  const total = Number(res.headers.get('content-length')) || 0;
+  const reader = res.body.getReader();
+  const chunks = [];
+  let loaded = 0;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.length;
+    const percent = total ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+    onProgress?.({ loaded, total, percent, label: `${fmtMb(loaded)} / ${total ? fmtMb(total) : '…'}` });
+  }
+
+  return new Blob(chunks, { type: 'application/vnd.android.package-archive' });
 }
 
 export default function UpdateChecker() {
@@ -206,45 +212,44 @@ export default function UpdateChecker() {
   const downloadApk = useCallback(async () => {
     if (!update?.downloadUrl || update.mode !== 'update') return;
 
-    if (!update.hasApk) return openSystemUrl(update.downloadUrl);
+    if (!update.hasApk) {
+      showToast('This release has no APK file attached', 'fa-circle-exclamation');
+      return;
+    }
 
     setDownloading(true);
     setDownloadDone(false);
-    setProgress({ loaded: 0, total: update.apkSize || 0, percent: 0, label: 'Starting…' });
+    setProgress({
+      loaded: 0,
+      total: update.apkSize || 0,
+      percent: 0,
+      label: update.apkSize ? `0 MB / ${fmtMb(update.apkSize)}` : 'Preparing download…',
+    });
 
     try {
-      const headers = GITHUB_TOKEN ? { Authorization: `Bearer ${GITHUB_TOKEN}` } : undefined;
-      const res = await fetch(update.downloadUrl, { headers });
-      if (!res.ok || !res.body) throw new Error('stream blocked');
+      const { Capacitor } = await import('@capacitor/core');
 
-      const total = Number(res.headers.get('content-length')) || update.apkSize || 0;
-      const reader = res.body.getReader();
-      const chunks = [];
-      let loaded = 0;
-
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        loaded += value.length;
-        const percent = total ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
-        setProgress({ loaded, total, percent, label: `${fmtMb(loaded)} / ${total ? fmtMb(total) : '…'}` });
+      if (Capacitor.isNativePlatform()) {
+        // Native Android path: no browser, no GitHub popup.
+        // Java plugin downloads the APK from GitHub Releases into cache,
+        // opens Android Package Installer, then deletes the temp APK.
+        setProgress({ loaded: 0, total: update.apkSize || 0, percent: 0, label: 'Downloading inside app…' });
+        await nativeDownloadInstallApk(update.downloadUrl, update.apkName);
+        setProgress({
+          loaded: update.apkSize || 0,
+          total: update.apkSize || 0,
+          percent: 100,
+          label: 'Installer opened — temporary APK will be deleted',
+        });
+        setDownloadDone(true);
+        showToast('Android installer opened', 'fa-box-open');
+        return;
       }
 
-      const blob = new Blob(chunks, { type: 'application/vnd.android.package-archive' });
-      setProgress({ loaded, total: total || blob.size, percent: 100, label: `${fmtMb(blob.size)} downloaded` });
+      // Web preview fallback only.
+      const blob = await webDownloadApk(update.downloadUrl, safeFileName(update.apkName), setProgress);
+      setProgress({ loaded: blob.size, total: blob.size, percent: 100, label: `${fmtMb(blob.size)} downloaded` });
       setDownloadDone(true);
-
-      try {
-        const { Capacitor } = await import('@capacitor/core');
-        if (Capacitor.isNativePlatform()) {
-          await saveInstallAndCleanupApk(blob, safeFileName(update.apkName), () => {
-            showToast('Temporary update APK deleted', 'fa-trash');
-          });
-          showToast('Opening Android installer…', 'fa-box-open');
-          return;
-        }
-      } catch { /* fallback below */ }
 
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -253,9 +258,9 @@ export default function UpdateChecker() {
       a.click();
       setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
       showToast('APK downloaded', 'fa-circle-check');
-    } catch {
-      showToast('In-app install blocked — opening release page', 'fa-up-right-from-square');
-      await openSystemUrl(update.releaseUrl || update.downloadUrl);
+    } catch (err) {
+      setProgress({ loaded: 0, total: update.apkSize || 0, percent: 0, label: 'Install failed' });
+      showToast('In-app install failed — check unknown-app install permission', 'fa-circle-exclamation');
     } finally {
       setDownloading(false);
     }
@@ -303,6 +308,8 @@ export default function UpdateChecker() {
     .map(cleanReleaseLine)
     .filter(Boolean)
     .filter(line => !/^https?:\/\//i.test(line))
+    .filter(line => !/commit|actions\/runs|github\.com/i.test(line))
+    .map(line => line.length > 70 ? `${line.slice(0, 70)}…` : line)
     .slice(0, 3);
 
   return createPortal(

@@ -156,6 +156,8 @@ jobs:
 
           import android.content.Intent;
           import android.net.Uri;
+          import android.os.Handler;
+          import android.os.Looper;
           import androidx.core.content.FileProvider;
           import com.getcapacitor.JSObject;
           import com.getcapacitor.Plugin;
@@ -163,38 +165,95 @@ jobs:
           import com.getcapacitor.PluginMethod;
           import com.getcapacitor.annotation.CapacitorPlugin;
           import java.io.File;
+          import java.io.FileOutputStream;
+          import java.io.InputStream;
+          import java.net.HttpURLConnection;
+          import java.net.URL;
 
           @CapacitorPlugin(name = "ApkInstaller")
           public class ApkInstallerPlugin extends Plugin {
               @PluginMethod
-              public void install(PluginCall call) {
-                  String fileName = call.getString("fileName");
-                  if (fileName == null || fileName.trim().isEmpty()) {
-                      call.reject("Missing APK file name");
+              public void installFromUrl(PluginCall call) {
+                  String url = call.getString("url");
+                  String fileName = call.getString("fileName", "Inkwell-update.apk");
+
+                  if (url == null || url.trim().isEmpty()) {
+                      call.reject("Missing APK URL");
                       return;
                   }
-                  try {
-                      File apk = new File(getContext().getCacheDir(), fileName);
-                      if (!apk.exists()) {
-                          call.reject("APK not found in cache");
-                          return;
+
+                  new Thread(() -> {
+                      try {
+                          File apk = new File(getContext().getCacheDir(), fileName);
+                          downloadToFile(url, apk);
+                          openInstaller(apk);
+
+                          new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                              try { if (apk.exists()) apk.delete(); } catch (Exception ignored) {}
+                          }, 5 * 60 * 1000);
+
+                          JSObject ret = new JSObject();
+                          ret.put("opened", true);
+                          ret.put("fileName", fileName);
+                          call.resolve(ret);
+                      } catch (Exception e) {
+                          call.reject("Failed to download/open APK installer", e);
                       }
-                      Uri uri = FileProvider.getUriForFile(
-                          getContext(),
-                          getContext().getPackageName() + ".fileprovider",
-                          apk
-                      );
-                      Intent intent = new Intent(Intent.ACTION_VIEW);
-                      intent.setDataAndType(uri, "application/vnd.android.package-archive");
-                      intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                      getContext().startActivity(intent);
-                      JSObject ret = new JSObject();
-                      ret.put("opened", true);
-                      call.resolve(ret);
-                  } catch (Exception e) {
-                      call.reject("Failed to open APK installer", e);
+                  }).start();
+              }
+
+              private void downloadToFile(String urlText, File outFile) throws Exception {
+                  String current = urlText;
+                  for (int redirect = 0; redirect < 6; redirect++) {
+                      HttpURLConnection conn = (HttpURLConnection) new URL(current).openConnection();
+                      conn.setInstanceFollowRedirects(false);
+                      conn.setRequestProperty("User-Agent", "Inkwell-Android-Updater");
+                      conn.setRequestProperty("Accept", "application/octet-stream,*/*");
+                      conn.connect();
+
+                      int code = conn.getResponseCode();
+                      if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+                          String next = conn.getHeaderField("Location");
+                          conn.disconnect();
+                          if (next == null) throw new Exception("Redirect without Location");
+                          current = next;
+                          continue;
+                      }
+
+                      if (code < 200 || code >= 300) {
+                          conn.disconnect();
+                          throw new Exception("Download HTTP " + code);
+                      }
+
+                      try (InputStream in = conn.getInputStream(); FileOutputStream out = new FileOutputStream(outFile)) {
+                          byte[] buffer = new byte[64 * 1024];
+                          int read;
+                          while ((read = in.read(buffer)) != -1) {
+                              out.write(buffer, 0, read);
+                          }
+                      } finally {
+                          conn.disconnect();
+                      }
+
+                      if (!outFile.exists() || outFile.length() <= 0) {
+                          throw new Exception("Downloaded APK is empty");
+                      }
+                      return;
                   }
+                  throw new Exception("Too many redirects");
+              }
+
+              private void openInstaller(File apk) throws Exception {
+                  Uri uri = FileProvider.getUriForFile(
+                      getContext(),
+                      getContext().getPackageName() + ".fileprovider",
+                      apk
+                  );
+                  Intent intent = new Intent(Intent.ACTION_VIEW);
+                  intent.setDataAndType(uri, "application/vnd.android.package-archive");
+                  intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                  intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                  getContext().startActivity(intent);
               }
           }
           JAVAFILE
@@ -227,10 +286,10 @@ jobs:
           if '${applicationId}.fileprovider' not in m:
               m = m.replace("</application>", provider + "\n    </application>", 1)
           manifest.write_text(m)
-          print("✅ Android installer permission + FileProvider patched")
+          print("✅ Android in-app APK installer patched")
           PYEOF
 
-          echo "✅ Native APK installer plugin added"
+          echo "✅ Native APK updater downloads and installs without browser"
 
       # ── 11. Generate Android launcher icons ───────────────────────────────────
       # Correct Android icon sizes:
