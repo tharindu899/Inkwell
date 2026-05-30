@@ -617,6 +617,12 @@ Android WebView lets users long-press and copy UI labels. `CopySelectGuard` inte
 
 ---
 
+
+### Light mode code block fix
+
+Code blocks now use a readable light surface in light theme, with dark text and visible copy/action buttons.
+
+
 ## 📲 App Updates
 
 Inkwell checks GitHub Releases for a newer Android APK.
