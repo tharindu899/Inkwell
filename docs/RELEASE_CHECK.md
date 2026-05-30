@@ -40,3 +40,11 @@ Optional:
 - `android/`
 - `*.jks`
 - `keystore.txt`
+
+## Documentation checks
+
+- README structure is current.
+- `docs/` folder is listed in README.
+- App update/install behavior is documented.
+- Android icon sizing doc exists.
+- Theme persistence doc exists.

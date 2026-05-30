@@ -3,7 +3,7 @@
 
    GitHub Releases APK updater.
    Manual check shows either:
-   - New update sheet with Download & Install
+   - New update sheet with Install
    - Already updated sheet, no download button
    Android: downloads APK in-app, opens installer, then removes temp cache file.
    ══════════════════════════════════════════ */
@@ -378,7 +378,7 @@ export default function UpdateChecker() {
           {isRealUpdate ? (
             <button className="btn btn-primary" disabled={downloading} onClick={downloadApk}>
               <i className={`fa-solid ${downloading ? 'fa-spinner fa-spin' : 'fa-download'}`} style={{ marginRight: 6 }} />
-              {downloading ? 'Downloading…' : 'Download & Install'}
+              {downloading ? 'Downloading…' : 'Install'}
             </button>
           ) : (
             <button className="btn btn-primary" disabled={downloading} onClick={() => setVisible(false)}>

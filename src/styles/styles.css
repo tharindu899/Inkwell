@@ -3550,3 +3550,43 @@ body,
   color: #4b4038 !important;
   border-color: rgba(122, 82, 40, .18) !important;
 }
+
+
+/* v39: update popup meta box spacing */
+.clean-update-sheet .update-meta-grid,
+.update-sheet .update-meta-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  align-items: stretch !important;
+  gap: 12px !important;
+}
+
+.clean-update-sheet .update-meta.repo,
+.update-sheet .update-meta.repo,
+.clean-update-sheet .update-meta:nth-child(3),
+.update-sheet .update-meta:nth-child(3) {
+  grid-column: 1 / -1 !important;
+}
+
+.clean-update-sheet .update-meta,
+.update-sheet .update-meta {
+  min-height: 76px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+}
+
+.clean-update-sheet .update-current-box {
+  margin-top: 16px !important;
+  margin-bottom: 6px !important;
+}
+
+.clean-update-sheet .update-actions {
+  margin-top: 20px !important;
+}
+
+@media (max-width: 360px) {
+  .clean-update-sheet .update-meta-grid,
+  .update-sheet .update-meta-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

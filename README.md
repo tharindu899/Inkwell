@@ -36,8 +36,8 @@
 | [⚡ Quick Start](#-quick-start) | [🌐 Deploy to Vercel](#-deploy-to-vercel) | [📱 Build Android APK](#-build-android-apk) |
 | [🔑 GitHub Secrets](#-github-secrets) | [☁️ Google Drive Sync](#️-google-drive-sync) | [⚙️ Environment Variables](#️-environment-variables) |
 | [🚀 CI/CD Pipeline](#-cicd-pipeline) | [🗄️ Data Model](#️-data-model) | [🔧 Troubleshooting](#-troubleshooting) |
-| [✅ Release Check](#-release-check) | [📲 App Updates](#-app-updates) | [🎨 Android Icon](#-android-icon) |
-| [📄 License](#-license) | | |
+| [✅ Release Check](#-release-check) | [📚 Docs](#-docs) | [📲 App Updates](#-app-updates) |
+| [🎨 Android Icon](#-android-icon) | [📄 License](#-license) | |
 
 ---
 
@@ -54,25 +54,28 @@ Install from **GitHub Releases**. The app also includes an in-app updater from *
 
 ## 🎨 App Icon & Branding
 
-Inkwell includes a matching dark/orange brand set for every app place:
-
-- `public/icon.svg` — scalable app icon for browser/README
-- `public/logo.svg` — README/header logo
-- `public/icon-512.png` — master Android/PWA icon
-- `public/icon-*.png`, `favicon-*`, `apple-touch-icon.png` — generated launcher/PWA sizes
-- GitHub Actions regenerates Android launcher/adaptive icons from `public/icon-512.png` during every APK build.
-
----
-
-
-## 🎨 App Icon
-
 <p align="center">
   <img src="docs/app-icon-preview.png" width="160" alt="Inkwell app icon preview" />
 </p>
 
-The launcher icon uses the dark/orange **v27 Inkwell icon** style and matches the app UI.  
-See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md) for Android adaptive icon sizing notes.
+Inkwell uses the **v27 dark/orange icon style** to match the app UI.
+
+| Asset | Purpose |
+|------|---------|
+| `public/icon.svg` | Scalable icon for browser, README, and app branding |
+| `public/logo.svg` | Wide README/header logo |
+| `public/logo.png` | PNG logo fallback |
+| `public/icon-512.png` | Master PNG used for Android/PWA icon generation |
+| `public/icon-*.png` | PWA and launcher sizes |
+| `public/favicon-*` | Browser tab icons |
+| `public/apple-touch-icon.png` | iOS home-screen icon |
+| `docs/app-icon-preview.png` | README preview image |
+
+GitHub Actions regenerates Android launcher/adaptive icons from `public/icon-512.png` during every APK build.
+
+See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md).
+
+---
 
 ## ✨ Features
 
@@ -155,9 +158,10 @@ See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md) for Android adaptive icon siz
 ### 🔔 Auto-Update Checker
 - 🚀 Checks GitHub Releases on open + resume
 - 📬 Bottom-sheet prompt when newer version found
-- 📥 Download APK with MB/percent progress + system fallback
+- 📥 In-app APK download with MB/percent progress
 - 🔕 Per-version dismissal (won't re-show same ver)
-- 🔐 Supports public & private repos
+- 📦 Opens Android Package Installer directly
+- 🧹 Deletes temporary downloaded APK from cache
 
 </td>
 </tr>
@@ -205,68 +209,95 @@ See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md) for Android adaptive icon siz
 
 ## 🗂️ Project Structure
 
-```
+```text
 inkwell/
-├── 📁 public/
-│   ├── 🖼️ icon.svg / logo.svg / icon-*.png  # Brand mark + logo + PWA/launcher icons
-│   ├── 📄 manifest.json              # PWA web app manifest
-│   └── ⚙️ sw.js                      # Service Worker (network-only)
+├── public/
+│   ├── icon.svg                     # Main scalable app icon
+│   ├── logo.svg / logo.png           # README/header brand logo
+│   ├── icon-*.png                    # PWA + launcher icon sizes
+│   ├── favicon-16.png / favicon-32.png
+│   ├── apple-touch-icon.png
+│   ├── manifest.json                 # PWA web app manifest
+│   └── sw.js                         # Service Worker
 │
-├── 📁 docs/
-│   └── ✅ RELEASE_CHECK.md           # Public release checklist
+├── docs/
+│   ├── APP_UPDATE_INSTALL.md         # In-app APK updater/install flow
+│   ├── ANDROID_ICON.md               # Android adaptive icon sizing
+│   ├── RELEASE_CHECK.md              # Release safety checklist
+│   ├── THEME.md                      # Theme persistence notes
+│   └── app-icon-preview.png          # Icon preview for README
 │
-├── 📁 src/
-│   ├── 🚀 main.jsx                   # Entry — HashRouter + providers
-│   ├── 🗺️ App.jsx                    # Routes + back button + offline banner
-│   │
-│   ├── 📁 auth/
-│   │   ├── 🔐 AuthContext.jsx        # Google OAuth (web GIS + native)
-│   │   └── ☁️ googleDrive.js         # Drive REST API v3 (backup / restore)
-│   │
-│   ├── 📁 store/
-│   │   ├── 🔄 AppContext.jsx         # Global state + auto Drive backup
-│   │   └── 💾 storage.js             # localStorage CRUD (notes / notebooks)
-│   │
-│   ├── 📁 pages/
-│   │   ├── 🔑 Login.jsx              # Google sign-in screen
-│   │   ├── 🏠 Home.jsx               # Dashboard: stats + note list
-│   │   ├── ✏️  Editor.jsx             # Full rich-text editor (~130 KB)
-│   │   ├── 📚 Notebooks.jsx          # Notebook grid with CRUD modals
-│   │   ├── 📖 NotebookDetail.jsx     # Notes filtered to one notebook
-│   │   ├── 🔍 Search.jsx             # Full-text search + history + filters
-│   │   ├── 🏷️  Tags.jsx               # Tag cloud + tag-filtered notes
-│   │   ├── 👤 Profile.jsx            # Stats, streak, activity heatmap
-│   │   └── ⚙️  Settings.jsx           # Theme, font, Drive, import/export
-│   │
-│   ├── 📁 components/
-│   │   ├── 🔝 TopBar.jsx             # Header with back + title + actions
-│   │   ├── 🔽 BottomNav.jsx          # Tab bar (Home/Search/Books/Tags/Me)
-│   │   ├── ➕ Fab.jsx                # Floating action button (new note)
-│   │   ├── 🃏 NoteCard.jsx           # Card with long-press pin/delete strip
-│   │   ├── 📭 EmptyState.jsx         # Reusable empty-state component
-│   │   ├── 🔔 Toast.jsx              # Imperative toast notification
-│   │   └── 🔄 UpdateChecker.jsx      # GitHub Releases update bottom-sheet
-│   │
-│   ├── 📁 hooks/
-│   │   ├── 🎨 useTheme.js            # Dark/light + font-size persistence
-│   │   └── 👋 useGreeting.js         # Time-aware greeting (refreshes/min)
-│   │
-│   ├── 📁 utils/
-│   │   ├── 🔧 helpers.js             # genId, stripHtml, formatDate, …
-│   │   ├── 📤 exportNote.js          # Export to .txt / .md / .xls / .pdf
-│   │   ├── 📳 haptics.js             # Thin @capacitor/haptics wrapper
-│   │   └── 🌱 seed.js                # Welcome note on first run
-│   │
-│   └── 📁 styles/
-│       └── 🎨 styles.css             # All CSS (dark + light via data-theme)
+├── scripts/
+│   └── release-check.mjs             # Local release validation script
 │
-├── ⚙️  vite.config.js                # base: './', bakes VITE_APP_VERSION
-├── 📱 capacitor.config.json          # App ID: com.inkwell.notes
-├── 🌐 vercel.json                    # SPA rewrite + cache headers
-├── 📦 package.json
-├── 🔒 .env.example                   # Copy to .env + fill in Client ID
-└── 📁 .github/workflows/
-    └── 🤖 build-apk.yml              # Full CI: build → APK → Release
+├── src/
+│   ├── main.jsx                      # Entry: HashRouter + providers
+│   ├── App.jsx                       # Routes + back button + offline banner
+│   │
+│   ├── auth/
+│   │   ├── AuthContext.jsx           # Google OAuth (web GIS + native)
+│   │   └── googleDrive.js            # Drive REST API v3 backup/restore
+│   │
+│   ├── store/
+│   │   ├── AppContext.jsx            # Global notes/notebooks state
+│   │   └── storage.js                # localStorage CRUD helpers
+│   │
+│   ├── pages/
+│   │   ├── Login.jsx                 # Google sign-in
+│   │   ├── Home.jsx                  # Dashboard + pinned/recent notes
+│   │   ├── Editor.jsx                # Rich editor + markdown + reading mode
+│   │   ├── Notebooks.jsx             # Notebook list / CRUD
+│   │   ├── NotebookDetail.jsx        # One notebook's notes
+│   │   ├── Search.jsx                # Full-text search
+│   │   ├── Tags.jsx                  # Tag list + tag notes
+│   │   ├── Profile.jsx               # User stats
+│   │   └── Settings.jsx              # Theme, sync, update, import/export
+│   │
+│   ├── components/
+│   │   ├── TopBar.jsx
+│   │   ├── BottomNav.jsx
+│   │   ├── Fab.jsx
+│   │   ├── NoteCard.jsx
+│   │   ├── EmptyState.jsx
+│   │   ├── Toast.jsx
+│   │   └── UpdateChecker.jsx         # GitHub Release APK updater
+│   │
+│   ├── hooks/
+│   │   ├── useTheme.js               # Persistent dark/light theme
+│   │   └── useGreeting.js
+│   │
+│   ├── utils/
+│   │   ├── exportNote.js             # TXT / MD / XLS / PDF export
+│   │   ├── haptics.js
+│   │   ├── helpers.js
+│   │   └── seed.js
+│   │
+│   └── styles/
+│       └── styles.css                # Full app styling
+│
+├── .github/workflows/
+│   └── build-apk.yml                 # Build signed APK + GitHub Release
+│
+├── .env.example
+├── .gitignore
+├── capacitor.config.json
+├── index.html
+├── package.json
+├── package-lock.json
+├── push.sh
+├── vercel.json
+└── vite.config.js
+```
+
+### Do not commit generated/sensitive files
+
+```text
+node_modules/
+dist/
+android/
+.env
+*.jks
+keystore.txt
 ```
 
 ---
@@ -361,8 +392,8 @@ git push -u origin main
 | `KEY_PASSWORD` | Your keypass value | ✅ |
 | `STORE_PASSWORD` | Your storepass value | ✅ |
 | `VITE_GOOGLE_CLIENT_ID` | Google OAuth 2.0 Client ID | ✅ |
-| `VITE_GITHUB_REPO` | `your-username/your-repo` | ✅ |
-| `VITE_GITHUB_TOKEN` | PAT with `contents:read` (private repos) | ➖ |
+| `VITE_GITHUB_REPO` | Optional local override; workflow uses `github.repository` | ➖ |
+| `VITE_GITHUB_TOKEN` | Not recommended for public APK builds | ❌ |
 
 ---
 
@@ -416,8 +447,8 @@ The in-app update checker compares this version against the latest GitHub Releas
 | Variable | Required | Description |
 |----------|:---:|-------------|
 | `VITE_GOOGLE_CLIENT_ID` | ✅ | Google OAuth 2.0 Client ID — [get one here](https://console.cloud.google.com/) |
-| `VITE_GITHUB_REPO` | ✅ | Repo path for update checker, e.g. `alice/inkwell` |
-| `VITE_GITHUB_TOKEN` | ➖ | PAT `contents:read` — only needed for private repos |
+| `VITE_GITHUB_REPO` | Optional local override; workflow uses `github.repository` | ➖ |
+| `VITE_GITHUB_TOKEN` | Not recommended for public APK builds | ❌ |
 
 <details>
 <summary>🔐 How to get a Google Client ID</summary>
@@ -448,15 +479,16 @@ The in-app update checker compares this version against the latest GitHub Releas
 ④ 📝  Write version into package.json  (so VITE_APP_VERSION matches tag)
 ⑤ 🏗️   npm run build  →  dist/ (Vite)
 ⑥ 📱  npx cap add android  →  android/ (Capacitor project)
-⑦ 🎨  Generate all mipmap-* icon sizes from icon-512.png
-⑧ ☕  Set up JDK 17 + Android SDK (API 34)
-⑨ 🔗  npx cap sync android  →  copies dist/ + plugins into Android
+⑦ 🎨  Generate Android launcher/adaptive icons from icon-512.png
+⑧ ☕  Set up JDK 21 + Android SDK (API 35)
+⑨ 🔗  Patch native APK installer + npx cap sync android
 ⑩ 🔓  Decode KEYSTORE_BASE64  →  inkwell-release.jks
 ⑪ 🔑  Print SHA-1 to job summary (for Google Cloud Console setup)
 ⑫ 🔨  ./gradlew assembleRelease  →  signed APK
 ⑬ 📦  Rename APK  →  Inkwell-v{VERSION}.apk
 ⑭ ⬆️   Upload as workflow artifact (retained 30 days)
 ⑮ 🎉  Create GitHub Release with APK attached
+⑯ 📲  Native updater downloads APK inside app from Releases
 ```
 
 ---
@@ -632,6 +664,27 @@ Android WebView lets users long-press and copy UI labels. `CopySelectGuard` inte
 Code blocks now use a readable light surface in light theme, with dark text and visible copy/action buttons.
 
 
+---
+
+## 📚 Docs
+
+The `docs/` folder keeps release/setup notes separate from the main README.
+
+| Doc | Purpose |
+|-----|---------|
+| [`docs/APP_UPDATE_INSTALL.md`](docs/APP_UPDATE_INSTALL.md) | In-app APK update, installer, and cleanup flow |
+| [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md) | Android adaptive icon size and safe-zone notes |
+| [`docs/THEME.md`](docs/THEME.md) | Light/dark theme persistence details |
+| [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md) | Final checks before publishing a public release |
+
+Recommended reading order:
+
+1. `RELEASE_CHECK.md`
+2. `ANDROID_ICON.md`
+3. `APP_UPDATE_INSTALL.md`
+4. `THEME.md`
+
+
 ## 📲 App Updates
 
 Inkwell checks GitHub Releases for a newer Android APK.
@@ -640,7 +693,7 @@ Inkwell checks GitHub Releases for a newer Android APK.
 
 | State | Result |
 |------|--------|
-| Current APK is older | **New APK update available** + **Download & Install** |
+| Current APK is older | **New APK update available** + **Install** |
 | Current APK matches latest release | **You are already updated** |
 | Release has no APK asset | Opens the GitHub Release page |
 | In-app install is blocked | Falls back to the release page |
@@ -656,7 +709,7 @@ Inkwell checks GitHub Releases for a newer Android APK.
    - download count
    - repo name
    - MB / percent progress bar
-4. Tap **Download & Install**.
+4. Tap **Install**.
 5. The APK downloads inside the app.
 6. Android Package Installer opens directly.
 7. Tap **Install / Update** manually.
