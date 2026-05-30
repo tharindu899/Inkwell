@@ -1,0 +1,53 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Inkwell Icon</title>
+  <desc id="desc">Dark premium app icon with an open book and a fountain pen nib in warm amber orange.</desc>
+  <defs>
+    <linearGradient id="bg" x1="120" y1="96" x2="900" y2="920" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#23201D"/>
+      <stop offset="1" stop-color="#090A0C"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="512" y1="218" x2="512" y2="886" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2C2A2B"/>
+      <stop offset="1" stop-color="#111316"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="512" y1="240" x2="512" y2="830" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFC15A"/>
+      <stop offset="0.45" stop-color="#F29A2E"/>
+      <stop offset="1" stop-color="#C96C14"/>
+    </linearGradient>
+    <linearGradient id="pageDark" x1="305" y1="326" x2="719" y2="776" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#45413E"/>
+      <stop offset="1" stop-color="#232326"/>
+    </linearGradient>
+    <filter id="shadow" x="110" y="100" width="804" height="824" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="28" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="glow" x="184" y="200" width="656" height="602" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.95 0 1 0 0 0.55 0 0 1 0 0.16 0 0 0 0.25 0"/>
+    </filter>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="186" fill="url(#bg)"/>
+  <rect x="68" y="68" width="888" height="888" rx="182" stroke="#FFFFFF" stroke-opacity="0.05" stroke-width="4"/>
+  <rect x="72" y="72" width="880" height="880" rx="178" stroke="#F39A2C" stroke-opacity="0.12" stroke-width="4"/>
+
+  <g filter="url(#glow)">
+    <path d="M262 741C330 728 405 720 512 720C619 720 694 728 762 741" stroke="#F39A2C" stroke-width="18" stroke-linecap="round" opacity="0.7"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <path d="M263 345C263 307 294 276 332 276H468V754H332C294 754 263 723 263 685V345Z" fill="url(#pageDark)"/>
+    <path d="M761 345C761 307 730 276 692 276H556V754H692C730 754 761 723 761 685V345Z" fill="url(#pageDark)"/>
+    <path d="M280 345C280 316 304 292 333 292H468V736H333C304 736 280 712 280 683V345Z" stroke="#9E8F84" stroke-opacity="0.28" stroke-width="2"/>
+    <path d="M744 345C744 316 720 292 691 292H556V736H691C720 736 744 712 744 683V345Z" stroke="#9E8F84" stroke-opacity="0.28" stroke-width="2"/>
+
+    <path d="M512 244C530 244 542 252 542 270V600L572 631C578 637 576 647 568 654L542 677V784C542 804 528 818 512 818C496 818 482 804 482 784V677L456 654C448 647 446 637 452 631L482 600V270C482 252 494 244 512 244Z" fill="url(#amber)"/>
+    <path d="M477 246H547C564 246 576 258 576 272C576 286 564 298 547 298H477C460 298 448 286 448 272C448 258 460 246 477 246Z" fill="url(#amber)"/>
+    <circle cx="512" cy="651" r="12" fill="#241A11" fill-opacity="0.9"/>
+    <path d="M512 663V782" stroke="#241A11" stroke-width="10" stroke-linecap="round"/>
+
+    <path d="M254 716C318 705 398 699 512 699C626 699 706 705 770 716" stroke="#F38F27" stroke-width="12" stroke-linecap="round"/>
+    <path d="M254 716C318 731 398 740 512 740C626 740 706 731 770 716" stroke="#A85D1A" stroke-opacity="0.42" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>

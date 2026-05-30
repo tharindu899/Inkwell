@@ -1,0 +1,30 @@
+<svg width="1200" height="320" viewBox="0 0 1200 320" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Inkwell Logo</title>
+  <desc id="desc">Inkwell horizontal logo with dark icon and elegant wordmark.</desc>
+  <defs>
+    <linearGradient id="amber" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFC15A"/>
+      <stop offset="0.45" stop-color="#F29A2E"/>
+      <stop offset="1" stop-color="#C96C14"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#23201D"/>
+      <stop offset="1" stop-color="#090A0C"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="272" height="272" rx="60" fill="url(#bg)"/>
+  <rect x="26" y="26" width="268" height="268" rx="58" stroke="#F39A2C" stroke-opacity="0.14" stroke-width="4"/>
+  <path d="M87 111C87 95 100 82 116 82H160V228H116C100 228 87 215 87 199V111Z" fill="#2E2E31"/>
+  <path d="M233 111C233 95 220 82 204 82H160V228H204C220 228 233 215 233 199V111Z" fill="#2E2E31"/>
+  <path d="M160 67C168 67 173 71 173 79V166L186 179C189 182 188 187 184 190L173 200V241C173 250 167 256 160 256C153 256 147 250 147 241V200L136 190C132 187 131 182 134 179L147 166V79C147 71 152 67 160 67Z" fill="url(#amber)"/>
+  <path d="M145 68H175C183 68 188 73 188 79C188 86 183 91 175 91H145C137 91 132 86 132 79C132 73 137 68 145 68Z" fill="url(#amber)"/>
+  <circle cx="160" cy="188" r="5.5" fill="#241A11" fill-opacity="0.9"/>
+  <path d="M160 194V239" stroke="#241A11" stroke-width="5" stroke-linecap="round"/>
+  <path d="M84 220C109 215 130 212 160 212C190 212 211 215 236 220" stroke="#F38F27" stroke-width="6" stroke-linecap="round"/>
+
+  <g>
+    <text x="342" y="146" fill="#F6F1EA" font-size="102" font-weight="700" font-family="Georgia, 'Times New Roman', serif">Inkwell</text>
+    <text x="346" y="203" fill="#F29A2E" font-size="30" font-weight="600" font-family="Inter, Arial, sans-serif" letter-spacing="2">PRIVATE NOTES • DARK ELEGANCE</text>
+    <text x="346" y="248" fill="#AEA6A0" font-size="24" font-weight="500" font-family="Inter, Arial, sans-serif">Beautiful note-taking on the web and as an Android app</text>
+  </g>
+</svg>

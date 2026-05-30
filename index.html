@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <meta name="description" content="Inkwell — your minimal, beautiful notebook app." />
+
+    <!-- ── PWA: Theme & Status Bar ─────────────────────── -->
+    <meta name="theme-color" content="#c9a96e" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Inkwell" />
+    <meta name="application-name" content="Inkwell" />
+    <meta name="msapplication-TileColor" content="#0b0b12" />
+
+    <!-- ── PWA: Web App Manifest ────────────────────────── -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- ── PWA: Icons ───────────────────────────────────── -->
+    <!-- SVG favicon for desktop browsers -->
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <!-- PNG icons required by Chrome mobile & Safari for install / home screen -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+
+    <title>Inkwell</title>
+
+    <!-- ── Font Awesome ─────────────────────────────────── -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+
+    <!-- ── Google Identity Services (OAuth 2.0 / Sign-In) ── -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <!-- ── Service Worker Registration (Network-Only) ───── -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker
+            .register('/sw.js', { scope: '/', updateViaCache: 'none' })
+            .then((reg) => {
+              console.log('[Inkwell] SW registered, scope:', reg.scope);
+
+              /* Force update check on every page load — no stale SW */
+              reg.update();
+
+              /* If a new SW is waiting, activate it immediately */
+              reg.addEventListener('updatefound', () => {
+                const newSW = reg.installing;
+                if (!newSW) return;
+                newSW.addEventListener('statechange', () => {
+                  if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                    /* New SW ready — reload to apply it */
+                    newSW.postMessage({ type: 'SKIP_WAITING' });
+                  }
+                });
+              });
+            })
+            .catch((err) => console.error('[Inkwell] SW registration failed:', err));
+
+          /* Reload page when a new SW takes control */
+          let refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+              refreshing = true;
+              window.location.reload();
+            }
+          });
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <noscript>
+      <div style="padding:20px;color:#eae6dd;background:#0b0b12;font-family:system-ui">
+        JavaScript is disabled. Please enable JavaScript to use Inkwell.
+      </div>
+    </noscript>
+
+    <div id="root"></div>
+
+    <!-- Vite injects the bundled JS here at build time -->
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

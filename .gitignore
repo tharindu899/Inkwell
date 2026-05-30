@@ -1,0 +1,27 @@
+# ── Build outputs ──────────────────────────
+dist/
+dist-ssr/
+
+# ── Capacitor generated Android project ────
+# Generated fresh by CI (npx cap add android + cap sync)
+# Do NOT commit — it's ~50MB and rebuilds automatically.
+android/
+
+# ── Dependencies ───────────────────────────
+node_modules/
+
+# ── Local env files ────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Keystore — NEVER commit this! ──────────
+*.jks
+*.keystore
+
+# ── Editor / OS files ──────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.vite/

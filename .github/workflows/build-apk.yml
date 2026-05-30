@@ -1,0 +1,345 @@
+name: Build & Release APK
+
+# ─── Triggers ─────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches:
+      - main          # every push to main → build + release
+  workflow_dispatch:  # manual "Run workflow" button → build + release
+
+# ─── Permissions ──────────────────────────────────────────────────────────────
+permissions:
+  contents: write   # needed to create GitHub Releases
+
+jobs:
+  build:
+    name: Build Signed APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Node.js ───────────────────────────────────────────────────────────
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ── 3. Preflight required GitHub Secrets ────────────────────────────────
+      - name: Check required GitHub Secrets
+        run: |
+          missing=0
+          for key in KEYSTORE_BASE64 KEY_ALIAS KEY_PASSWORD STORE_PASSWORD VITE_GOOGLE_CLIENT_ID; do
+            value="${!key}"
+            if [ -z "$value" ]; then
+              echo "❌ Missing GitHub Secret: $key"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "Add missing secrets in: Repository Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          echo "✅ Required secrets are present"
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+
+      # ── 4. Install npm dependencies ──────────────────────────────────────────
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Release safety check
+        run: npm run release:check
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GITHUB_REPO:      ${{ secrets.VITE_GITHUB_REPO }}
+          VITE_GITHUB_TOKEN:     ${{ secrets.VITE_GITHUB_TOKEN }}
+
+      # ── 4. Patch Google Auth plugin ──────────────────────────────────────────
+      - name: Patch GoogleAuth plugin — add Drive scope to access token
+        run: |
+          PLUGIN_JAVA="node_modules/@codetrix-studio/capacitor-google-auth/android/src/main/java/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth.java"
+          DRIVE_SCOPE="https://www.googleapis.com/auth/drive.appdata"
+          sed -i "s|oauth2:profile email\"|oauth2:profile email ${DRIVE_SCOPE}\"|g" "$PLUGIN_JAVA"
+          echo "✅ Patched Drive scope in GoogleAuth plugin"
+          grep -n "getAuthToken\|oauth2:" "$PLUGIN_JAVA"
+
+      # ── 5. Derive version from run number ────────────────────────────────────
+      # Formula:  run #45  → v1.4.5   run #106 → v2.0.6
+      #   MAJOR = floor(run_number / 100) + 1
+      #   MINOR = floor((run_number % 100) / 10)
+      #   PATCH = run_number % 10
+      - name: Derive version from run number
+        id: versioning
+        run: |
+          RUN=${{ github.run_number }}
+          MAJOR=$(( RUN / 100 + 1 ))
+          MINOR=$(( (RUN % 100) / 10 ))
+          PATCH=$(( RUN % 10 ))
+          VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          TAG="v${VERSION}"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "TAG=${TAG}"         >> $GITHUB_ENV
+          echo "APK_NAME=Inkwell-${TAG}.apk" >> $GITHUB_ENV
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}"         >> $GITHUB_OUTPUT
+          echo "▸ Run #${RUN}  →  ${TAG}"
+
+      # ── 6. Write version into package.json ───────────────────────────────────
+      # So VITE_APP_VERSION (baked by vite.config.js) matches the release tag.
+      # Uses a temp JS file to avoid shell quoting conflicts with node -e.
+      - name: Write version into package.json
+        run: |
+          cat > /tmp/set-version.js << 'JSEOF'
+          const fs  = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.version = process.env.VERSION;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          console.log('✅ package.json version set to', pkg.version);
+          JSEOF
+          node /tmp/set-version.js
+
+      # ── 7. Build web app (Vite) ───────────────────────────────────────────────
+      - name: Build web app (Vite)
+        run: npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GITHUB_REPO:      ${{ secrets.VITE_GITHUB_REPO }}
+          VITE_GITHUB_TOKEN:     ${{ secrets.VITE_GITHUB_TOKEN }}
+
+      # ── 8. Java ───────────────────────────────────────────────────────────────
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # ── 9. Android SDK ────────────────────────────────────────────────────────
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      # ── 10. Capacitor — generate Android project ──────────────────────────────
+      - name: Add Capacitor Android platform
+        run: npx cap add android
+
+      # ── 11. Generate Android launcher icons ───────────────────────────────────
+      # Uses Python/Pillow to directly resize public/icon-512.png and overwrite
+      # every mipmap ic_launcher*.png that Capacitor generated. Also replaces
+      # the vector drawable background with a solid colour so no default grid
+      # or teal background bleeds through on adaptive icons.
+      - name: Install Pillow
+        run: pip install Pillow numpy --break-system-packages -q
+
+      - name: Generate Android app icons
+        run: |
+          python3 << 'PYEOF'
+          from PIL import Image
+          import os, numpy as np
+
+          SRC = "public/icon-512.png"
+          RES = "android/app/src/main/res"
+
+          SIZES = {
+              "mipmap-mdpi":    (48,  108),
+              "mipmap-hdpi":    (72,  162),
+              "mipmap-xhdpi":   (96,  216),
+              "mipmap-xxhdpi":  (144, 324),
+              "mipmap-xxxhdpi": (192, 432),
+          }
+
+          src = Image.open(SRC).convert("RGBA")
+
+          # Crop transparent padding so icon fills the canvas edge-to-edge
+          arr = np.array(src)
+          alpha = arr[:,:,3]
+          rows = np.any(alpha > 10, axis=1)
+          cols = np.any(alpha > 10, axis=0)
+          rmin, rmax = np.where(rows)[0][[0,-1]]
+          cmin, cmax = np.where(cols)[0][[0,-1]]
+          src = src.crop((cmin, rmin, cmax+1, rmax+1))
+
+          for folder, (launcher_px, fg_px) in SIZES.items():
+              path = os.path.join(RES, folder)
+
+              # ic_launcher.png — fills entire canvas, white background
+              img = src.resize((launcher_px, launcher_px), Image.LANCZOS)
+              bg = Image.new("RGB", (launcher_px, launcher_px), (255, 255, 255))
+              bg.paste(img, mask=img.split()[3])
+              bg.save(os.path.join(path, "ic_launcher.png"), "PNG")
+
+              # ic_launcher_round.png — same
+              bg.save(os.path.join(path, "ic_launcher_round.png"), "PNG")
+
+              # ic_launcher_foreground.png — icon fills foreground canvas
+              fg_img = src.resize((fg_px, fg_px), Image.LANCZOS)
+              fg = Image.new("RGBA", (fg_px, fg_px), (0, 0, 0, 0))
+              fg.paste(fg_img, (0, 0), mask=fg_img.split()[3])
+              fg.save(os.path.join(path, "ic_launcher_foreground.png"), "PNG")
+
+          print("✅ All mipmap icons replaced (padding cropped)")
+          PYEOF
+
+          # Solid white adaptive icon background — removes default teal grid
+          cat > android/app/src/main/res/drawable/ic_launcher_background.xml << 'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <shape xmlns:android="http://schemas.android.com/apk/res/android">
+              <solid android:color="#FFFFFF"/>
+          </shape>
+          XML
+          sed -i 's|<color name="ic_launcher_background">.*</color>|<color name="ic_launcher_background">#FFFFFF</color>|' \
+            android/app/src/main/res/values/ic_launcher_background.xml 2>/dev/null || true
+          echo "✅ Adaptive icon background set to white"
+
+      # ── Patch build.gradle — set versionCode and versionName from run number ──
+      # Without this Android always shows "1.0 (1)" regardless of the tag.
+      # Uses Python to avoid shell quoting problems with sed + double-quotes.
+      - name: Patch build.gradle version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          APP_VERSION: ${{ env.VERSION }}
+        run: |
+          cat > /tmp/patch-gradle.py << 'PEOF'
+          import re, os
+          path = "android/app/build.gradle"
+          code = os.environ["RUN_NUMBER"]
+          name = os.environ["APP_VERSION"]
+          txt = open(path).read()
+          txt = re.sub(r"versionCode \d+", "versionCode " + code, txt)
+          txt = re.sub(r'versionName "[^"]*"', 'versionName "' + name + '"', txt)
+          open(path, "w").write(txt)
+          print("versionCode=" + code + "  versionName=" + name)
+          PEOF
+          python3 /tmp/patch-gradle.py
+
+
+      - name: Write Android SDK path (local.properties)
+        run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+
+      - name: Sync web assets into Android project
+        run: npx cap sync android
+
+      # ── 12. Make gradlew executable ───────────────────────────────────────────
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      # ── 13. Decode keystore ───────────────────────────────────────────────────
+      - name: Decode keystore
+        run: |
+          KEYSTORE_PATH="${{ github.workspace }}/android/app/inkwell-release.jks"
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "$KEYSTORE_PATH"
+          echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> $GITHUB_ENV
+
+      # ── 14. Print SHA-1 fingerprint ───────────────────────────────────────────
+      - name: Print release keystore SHA-1
+        run: |
+          SHA1=$(keytool -list -v \
+            -keystore "$KEYSTORE_PATH" \
+            -alias "${{ secrets.KEY_ALIAS }}" \
+            -storepass "${{ secrets.STORE_PASSWORD }}" \
+            -noprompt 2>/dev/null | grep "SHA1:" | head -1 | awk '{print $2}')
+          echo "### 🔑 Release Keystore SHA-1" >> $GITHUB_STEP_SUMMARY
+          echo "Needed for Google Cloud Console Android OAuth credential:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "$SHA1"  >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "📋 Package name: **com.inkwell.notes**" >> $GITHUB_STEP_SUMMARY
+
+      # ── 15. Build signed release APK ──────────────────────────────────────────
+      - name: Build release APK
+        id: build_apk
+        working-directory: android
+        env:
+          KEY_ALIAS:      ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD:   ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$KEYSTORE_PATH \
+            -Pandroid.injected.signing.store.password=$STORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD \
+            2>&1 | tee /tmp/gradle-build.log
+          exit ${PIPESTATUS[0]}
+
+      # ── 16. Rename APK ────────────────────────────────────────────────────────
+      - name: Rename APK
+        run: |
+          mv android/app/build/outputs/apk/release/app-release.apk \
+             android/app/build/outputs/apk/release/${{ env.APK_NAME }}
+
+      # ── 17. Upload APK as workflow artifact ───────────────────────────────────
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: android/app/build/outputs/apk/release/${{ env.APK_NAME }}
+          retention-days: 30
+
+      # ── 18. Create or update GitHub Release ───────────────────────────────────
+      # Creates a tag (TAG env var) and publishes a release with the APK.
+      # Runs on every successful build — every push to main gets a release.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: "Inkwell ${{ env.TAG }}"
+          body: |
+            ## Inkwell ${{ env.TAG }}
+
+            Built from run [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) · commit [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+
+            ### Install
+            1. Download `${{ env.APK_NAME }}` below
+            2. On your Android phone: Settings → Security → enable **Install unknown apps**
+            3. Open the downloaded APK and tap Install
+          files: android/app/build/outputs/apk/release/${{ env.APK_NAME }}
+          draft: false
+          prerelease: false
+
+      # ── 19. Job Summary — SUCCESS ─────────────────────────────────────────────
+      - name: Write success summary
+        if: success()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## ✅ Build Succeeded
+          | Field | Value |
+          |-------|-------|
+          | **Version** | \`${{ env.TAG }}\` |
+          | **Run** | \`#${{ github.run_number }}\` |
+          | **APK** | \`${{ env.APK_NAME }}\` |
+          | **Commit** | [\`${{ github.sha }}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |
+          | **Triggered by** | \`${{ github.event_name }}\` |
+          EOF
+
+      # ── 20. Job Summary — FAILURE ─────────────────────────────────────────────
+      - name: Write failure summary
+        if: failure()
+        run: |
+          GRADLE_LOG=""
+          if [ -f /tmp/gradle-build.log ]; then
+            GRADLE_LOG=$(tail -100 /tmp/gradle-build.log)
+          fi
+          cat >> $GITHUB_STEP_SUMMARY << SUMMARY
+          ## ❌ Build Failed
+          ### Last 100 lines of Gradle log
+          \`\`\`
+          ${GRADLE_LOG:-No Gradle log captured — check the step logs above.}
+          \`\`\`
+          ### Common fixes
+          | Error | Fix |
+          |-------|-----|
+          | \`KEYSTORE_BASE64\` | Check GitHub Secrets are set correctly |
+          | \`SDK location not found\` | The setup-android step may have failed |
+          | \`Could not resolve com.android\` | Network issue — re-run the workflow |
+          | \`DEVELOPER_ERROR / code 10\` | Add Android OAuth credential in Google Cloud Console (see SHA-1 above) |
+          SUMMARY
