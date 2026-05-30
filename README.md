@@ -2,7 +2,7 @@
 
 <img src="public/logo.svg" width="300" alt="Inkwell Logo" />
 
-# Inkwell
+# 📖 Inkwell
 
 **Beautiful, private note-taking — on the web and as an Android app**
 
