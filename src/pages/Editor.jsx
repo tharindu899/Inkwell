@@ -826,6 +826,9 @@ export default function Editor() {
   const restoringHistoryRef = useRef(false);
   const saveNowRef = useRef(null);
   const collapseTimerRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const savingLockRef = useRef(false);
+  const lastSavedHashRef = useRef('');
 
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(() => {
     const p = getPrefs();
@@ -850,6 +853,17 @@ export default function Editor() {
     const p = getPrefs();
     return p.serifBody !== undefined ? !!p.serifBody : false;
   });
+
+  // v41 editor lifecycle cleanup
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(autoSaveTimer.current);
+      clearTimeout(historyTimerRef.current);
+      clearTimeout(collapseTimerRef.current);
+    };
+  }, []);
 
   function getStableMarkdownSource(fallbackNote = noteRef.current) {
     const existing = String(markdownSourceRef.current || '').trim();
@@ -1058,7 +1072,7 @@ export default function Editor() {
     } else {
       let content = '';
       if (startType === 'checklist') {
-        content = '<ul data-type="taskList"><li data-checked="false">New task</li></ul>';
+        content = '<ul class="check-list" data-type="taskList"><li data-checked="false"><label><span class="check-box" role="checkbox" tabindex="-1" contenteditable="false" data-checked="false" aria-checked="false"></span> <span class="check-text">New task</span></label></li></ul>';
       } else if (startType === 'image') {
         content = '<p>Image note</p><div class="image-placeholder"><i class="fa-solid fa-image"></i><span>Add image here</span></div>';
       } else if (startType === 'voice') {
@@ -1114,6 +1128,43 @@ export default function Editor() {
   // We intentionally only run this when `note` first becomes non-null
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note?.id]);
+
+
+  /* ─────────────────── Save flush on background / unmount ── */
+  useEffect(() => {
+    const flush = () => {
+      if (dirty) saveNowRef.current?.(true);
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+
+    let appPauseHandle;
+    let cancelled = false;
+
+    async function setupPauseSave() {
+      try {
+        const { App: CapacitorApp } = await import('@capacitor/app');
+        if (cancelled) return;
+        appPauseHandle = await CapacitorApp.addListener('pause', flush);
+      } catch {
+        // Browser preview.
+      }
+    }
+
+    setupPauseSave();
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      cancelled = true;
+      flush();
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+      appPauseHandle?.remove?.();
+    };
+  }, [dirty]);
 
   /* ─────────────────── Track selection for toolbar state ── */
   useEffect(() => {
@@ -1431,7 +1482,9 @@ export default function Editor() {
     showToast('Redo', 'fa-rotate-right');
   }
 
-  const saveNow = useCallback(() => {
+  const saveNow = useCallback((silent = false) => {
+    if (savingLockRef.current) return;
+
     const title   = (titleRef.current?.value || '').trim();
     const content = getCleanHtml();
     const text    = getCleanText();
@@ -1447,22 +1500,50 @@ export default function Editor() {
       wordCount: countWords(text),
       updatedAt: new Date().toISOString(),
     };
-    saveNote(updated);
-    dispatch({ type: 'RELOAD' });
-    updateNote(updated);
-    setDirty(false);
-    setSaveState('saved');
-    haptic('light');
-  }, [dispatch]);
+
+    const saveHash = JSON.stringify({
+      id: updated.id,
+      title: updated.title,
+      content: updated.content,
+      markdown: updated.markdown,
+      tags: updated.tags || [],
+      notebookId: updated.notebookId || null,
+      pinned: !!updated.pinned,
+    });
+
+    if (!dirty && lastSavedHashRef.current === saveHash) return;
+
+    savingLockRef.current = true;
+    try {
+      saveNote(updated);
+      dispatch({ type: 'RELOAD' });
+      updateNote(updated);
+      lastSavedHashRef.current = saveHash;
+      if (isMountedRef.current) {
+        setDirty(false);
+        setSaveState('saved');
+      }
+      if (!silent) haptic('light');
+    } catch (err) {
+      console.error('Save failed', err);
+      if (isMountedRef.current) {
+        setSaveState('saving');
+        showToast('Save failed — storage may be full', 'fa-circle-exclamation');
+      }
+    } finally {
+      savingLockRef.current = false;
+    }
+  }, [dispatch, dirty]);
   saveNowRef.current = saveNow;
 
   function markDirty(recordHistory = true) {
+    if (!noteRef.current) return;
     setDirty(true);
     setSaveState('saving');
     if (recordHistory) scheduleEditorHistory();
     clearTimeout(autoSaveTimer.current);
-    if (autoSaveEnabled) {
-      autoSaveTimer.current = setTimeout(() => saveNowRef.current?.(), 700);
+    if (autoSaveEnabled && !isReadMode) {
+      autoSaveTimer.current = setTimeout(() => saveNowRef.current?.(true), 700);
     }
   }
 
@@ -2999,7 +3080,7 @@ export default function Editor() {
      Back
      ────────────────────────────────────────────────── */
   function handleBack() {
-    if (dirty) saveNowRef.current?.();
+    if (dirty) saveNowRef.current?.(true);
     navigate(-1);
   }
 

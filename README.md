@@ -97,6 +97,7 @@ See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md).
 - 💾 Auto-save (2 s debounce) + `Ctrl+S`
 - 📖 Reading mode (distraction-free)
 - 🔢 Live word & character count
+- 🛡️ Safer auto-save/background-save behavior
 
 </td>
 <td width="50%" valign="top">
@@ -210,86 +211,87 @@ See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md).
 ## 🗂️ Project Structure
 
 ```text
-inkwell/
-├── public/
-│   ├── icon.svg                     # Main scalable app icon
-│   ├── logo.svg / logo.png           # README/header brand logo
-│   ├── icon-*.png                    # PWA + launcher icon sizes
-│   ├── favicon-16.png / favicon-32.png
-│   ├── apple-touch-icon.png
-│   ├── manifest.json                 # PWA web app manifest
-│   └── sw.js                         # Service Worker
+📦 inkwell/
+├── 🌐 public/
+│   ├── 🖼️ icon.svg                    # Main scalable app icon
+│   ├── 🖼️ logo.svg / logo.png          # README/header brand logo
+│   ├── 📱 icon-*.png                   # PWA + launcher icon sizes
+│   ├── 🌟 favicon-16.png / favicon-32.png
+│   ├── 🍎 apple-touch-icon.png
+│   ├── 📄 manifest.json                # PWA web app manifest
+│   └── ⚙️ sw.js                        # Service Worker
 │
-├── docs/
-│   ├── APP_UPDATE_INSTALL.md         # In-app APK updater/install flow
-│   ├── ANDROID_ICON.md               # Android adaptive icon sizing
-│   ├── RELEASE_CHECK.md              # Release safety checklist
-│   ├── THEME.md                      # Theme persistence notes
-│   └── app-icon-preview.png          # Icon preview for README
+├── 📚 docs/
+│   ├── 📲 APP_UPDATE_INSTALL.md        # In-app APK updater/install flow
+│   ├── 🎨 ANDROID_ICON.md              # Android adaptive icon sizing
+│   ├── ✅ RELEASE_CHECK.md             # Release safety checklist
+│   ├── 🌓 THEME.md                     # Theme persistence notes
+│   ├── ✍️ EDITOR.md                    # Editor stability checklist
+│   └── 🖼️ app-icon-preview.png         # Icon preview for README
 │
-├── scripts/
-│   └── release-check.mjs             # Local release validation script
+├── 🧰 scripts/
+│   └── ✅ release-check.mjs            # Local release validation script
 │
-├── src/
-│   ├── main.jsx                      # Entry: HashRouter + providers
-│   ├── App.jsx                       # Routes + back button + offline banner
+├── ⚛️ src/
+│   ├── 🚀 main.jsx                     # Entry: HashRouter + providers
+│   ├── 🗺️ App.jsx                      # Routes + back button + offline banner
 │   │
-│   ├── auth/
-│   │   ├── AuthContext.jsx           # Google OAuth (web GIS + native)
-│   │   └── googleDrive.js            # Drive REST API v3 backup/restore
+│   ├── 🔐 auth/
+│   │   ├── 🔑 AuthContext.jsx          # Google OAuth web/native
+│   │   └── ☁️ googleDrive.js           # Google Drive backup/restore
 │   │
-│   ├── store/
-│   │   ├── AppContext.jsx            # Global notes/notebooks state
-│   │   └── storage.js                # localStorage CRUD helpers
+│   ├── 🗄️ store/
+│   │   ├── 🔄 AppContext.jsx           # Global notes/notebooks state
+│   │   └── 💾 storage.js               # localStorage CRUD helpers
 │   │
-│   ├── pages/
-│   │   ├── Login.jsx                 # Google sign-in
-│   │   ├── Home.jsx                  # Dashboard + pinned/recent notes
-│   │   ├── Editor.jsx                # Rich editor + markdown + reading mode
-│   │   ├── Notebooks.jsx             # Notebook list / CRUD
-│   │   ├── NotebookDetail.jsx        # One notebook's notes
-│   │   ├── Search.jsx                # Full-text search
-│   │   ├── Tags.jsx                  # Tag list + tag notes
-│   │   ├── Profile.jsx               # User stats
-│   │   └── Settings.jsx              # Theme, sync, update, import/export
+│   ├── 📄 pages/
+│   │   ├── 🔑 Login.jsx                # Google sign-in
+│   │   ├── 🏠 Home.jsx                 # Dashboard + pinned/recent notes
+│   │   ├── ✍️ Editor.jsx               # Rich editor + markdown + reading mode
+│   │   ├── 📚 Notebooks.jsx            # Notebook list / CRUD
+│   │   ├── 📖 NotebookDetail.jsx       # One notebook's notes
+│   │   ├── 🔍 Search.jsx               # Full-text search
+│   │   ├── 🏷️ Tags.jsx                 # Tag list + tag notes
+│   │   ├── 👤 Profile.jsx              # User stats
+│   │   └── ⚙️ Settings.jsx             # Theme, sync, update, import/export
 │   │
-│   ├── components/
-│   │   ├── TopBar.jsx
-│   │   ├── BottomNav.jsx
-│   │   ├── Fab.jsx
-│   │   ├── NoteCard.jsx
-│   │   ├── EmptyState.jsx
-│   │   ├── Toast.jsx
-│   │   └── UpdateChecker.jsx         # GitHub Release APK updater
+│   ├── 🧩 components/
+│   │   ├── 🔝 TopBar.jsx
+│   │   ├── 🔻 BottomNav.jsx
+│   │   ├── ➕ Fab.jsx
+│   │   ├── 📝 NoteCard.jsx
+│   │   ├── 📭 EmptyState.jsx
+│   │   ├── 🔔 Toast.jsx
+│   │   └── 📲 UpdateChecker.jsx        # GitHub Release APK updater
 │   │
-│   ├── hooks/
-│   │   ├── useTheme.js               # Persistent dark/light theme
-│   │   └── useGreeting.js
+│   ├── 🪝 hooks/
+│   │   ├── 🌓 useTheme.js              # Persistent dark/light theme
+│   │   └── 👋 useGreeting.js
 │   │
-│   ├── utils/
-│   │   ├── exportNote.js             # TXT / MD / XLS / PDF export
-│   │   ├── haptics.js
-│   │   ├── helpers.js
-│   │   └── seed.js
+│   ├── 🛠️ utils/
+│   │   ├── 📤 exportNote.js            # TXT / MD / XLS / PDF export
+│   │   ├── 📳 haptics.js
+│   │   ├── 🧮 helpers.js
+│   │   └── 🌱 seed.js
 │   │
-│   └── styles/
-│       └── styles.css                # Full app styling
+│   └── 🎨 styles/
+│       └── 🎨 styles.css               # Full app styling
 │
-├── .github/workflows/
-│   └── build-apk.yml                 # Build signed APK + GitHub Release
+├── 🤖 .github/workflows/
+│   └── 📦 build-apk.yml                # Build signed APK + GitHub Release
 │
-├── .env.example
-├── .gitignore
-├── capacitor.config.json
-├── index.html
-├── package.json
-├── package-lock.json
-├── push.sh
-├── vercel.json
-└── vite.config.js
+├── 🔐 .env.example
+├── 🚫 .gitignore
+├── 📱 capacitor.config.json
+├── 🌐 index.html
+├── 📦 package.json
+├── 🔒 package-lock.json
+├── 🚀 push.sh
+├── ▲ vercel.json
+└── ⚡ vite.config.js
 ```
 
-### Do not commit generated/sensitive files
+### 🚫 Do not commit generated/sensitive files
 
 ```text
 node_modules/
@@ -675,6 +677,7 @@ The `docs/` folder keeps release/setup notes separate from the main README.
 | [`docs/APP_UPDATE_INSTALL.md`](docs/APP_UPDATE_INSTALL.md) | In-app APK update, installer, and cleanup flow |
 | [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md) | Android adaptive icon size and safe-zone notes |
 | [`docs/THEME.md`](docs/THEME.md) | Light/dark theme persistence details |
+| [`docs/EDITOR.md`](docs/EDITOR.md) | Editor save, markdown, paste, and mobile stability notes |
 | [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md) | Final checks before publishing a public release |
 
 Recommended reading order:
@@ -683,6 +686,7 @@ Recommended reading order:
 2. `ANDROID_ICON.md`
 3. `APP_UPDATE_INSTALL.md`
 4. `THEME.md`
+5. `EDITOR.md`
 
 
 ## 📲 App Updates

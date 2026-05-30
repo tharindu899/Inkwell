@@ -3590,3 +3590,30 @@ body,
     grid-template-columns: 1fr !important;
   }
 }
+
+
+/* v41: editor core polish */
+.editor-body img {
+  max-width: 100%;
+  height: auto;
+}
+.editor-body .image-placeholder {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.editor-body.markdown-source-mode {
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+.editor-body pre code {
+  user-select: text;
+  -webkit-user-select: text;
+}
+.editor-body .code-actions,
+.editor-body .media-delete-btn,
+.editor-body .media-resize-handle,
+.editor-body .media-drag-chip {
+  -webkit-user-select: none;
+  user-select: none;
+}

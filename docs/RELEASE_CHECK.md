@@ -48,3 +48,11 @@ Optional:
 - App update/install behavior is documented.
 - Android icon sizing doc exists.
 - Theme persistence doc exists.
+
+## Editor checks
+
+- `docs/EDITOR.md` exists.
+- Create/edit/save/reopen note works.
+- Markdown ON/OFF works for saved notes.
+- Reading Mode returns to previous editor mode.
+- Background save works on Android pause.
