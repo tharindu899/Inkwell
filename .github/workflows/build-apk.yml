@@ -133,10 +133,12 @@ jobs:
         run: npx cap add android
 
       # ── 11. Generate Android launcher icons ───────────────────────────────────
-      # Uses Python/Pillow to directly resize public/icon-512.png and overwrite
-      # every mipmap ic_launcher*.png that Capacitor generated. Also replaces
-      # the vector drawable background with a solid colour so no default grid
-      # or teal background bleeds through on adaptive icons.
+      # Correct Android icon sizes:
+      # - legacy ic_launcher.png / ic_launcher_round.png use 48/72/96/144/192 px
+      # - adaptive foreground uses 108/162/216/324/432 px canvas
+      # - adaptive visible safe zone is smaller, so we add padding instead of
+      #   filling the whole foreground canvas. This prevents the launcher from
+      #   cropping/zooming the icon on MIUI/Android adaptive icons.
       - name: Install Pillow
         run: pip install Pillow numpy --break-system-packages -q
 
@@ -148,6 +150,7 @@ jobs:
 
           SRC = "public/icon-512.png"
           RES = "android/app/src/main/res"
+          DARK_BG = (17, 18, 20, 255)
 
           SIZES = {
               "mipmap-mdpi":    (48,  108),
@@ -159,46 +162,56 @@ jobs:
 
           src = Image.open(SRC).convert("RGBA")
 
-          # Crop transparent padding so icon fills the canvas edge-to-edge
+          # Crop transparent padding only. If the icon is already a full square,
+          # keep it unchanged so the rounded-square background is preserved.
           arr = np.array(src)
-          alpha = arr[:,:,3]
+          alpha = arr[:, :, 3]
           rows = np.any(alpha > 10, axis=1)
           cols = np.any(alpha > 10, axis=0)
-          rmin, rmax = np.where(rows)[0][[0,-1]]
-          cmin, cmax = np.where(cols)[0][[0,-1]]
-          src = src.crop((cmin, rmin, cmax+1, rmax+1))
+          if rows.any() and cols.any():
+              rmin, rmax = np.where(rows)[0][[0, -1]]
+              cmin, cmax = np.where(cols)[0][[0, -1]]
+              if (rmax - rmin + 1) < src.height * 0.96 or (cmax - cmin + 1) < src.width * 0.96:
+                  src = src.crop((cmin, rmin, cmax + 1, rmax + 1))
+
+          def composite_square(img, size, fill=DARK_BG):
+              canvas = Image.new("RGBA", (size, size), fill)
+              fitted = img.resize((size, size), Image.LANCZOS)
+              canvas.alpha_composite(fitted, (0, 0))
+              return canvas.convert("RGB")
 
           for folder, (launcher_px, fg_px) in SIZES.items():
               path = os.path.join(RES, folder)
+              os.makedirs(path, exist_ok=True)
 
-              # ic_launcher.png — fills entire canvas, white background
-              img = src.resize((launcher_px, launcher_px), Image.LANCZOS)
-              bg = Image.new("RGB", (launcher_px, launcher_px), (255, 255, 255))
-              bg.paste(img, mask=img.split()[3])
-              bg.save(os.path.join(path, "ic_launcher.png"), "PNG")
+              # Legacy launcher icons: exact Android required size.
+              legacy = composite_square(src, launcher_px)
+              legacy.save(os.path.join(path, "ic_launcher.png"), "PNG")
+              legacy.save(os.path.join(path, "ic_launcher_round.png"), "PNG")
 
-              # ic_launcher_round.png — same
-              bg.save(os.path.join(path, "ic_launcher_round.png"), "PNG")
-
-              # ic_launcher_foreground.png — icon fills foreground canvas
-              fg_img = src.resize((fg_px, fg_px), Image.LANCZOS)
+              # Adaptive foreground: exact canvas size, with safe-zone padding.
+              # Android launchers mask/crop adaptive icons; 66% keeps the full
+              # rounded-square icon visible on MIUI, Pixel Launcher, etc.
+              inner = int(fg_px * 0.66)
               fg = Image.new("RGBA", (fg_px, fg_px), (0, 0, 0, 0))
-              fg.paste(fg_img, (0, 0), mask=fg_img.split()[3])
+              fg_img = src.resize((inner, inner), Image.LANCZOS)
+              offset = ((fg_px - inner) // 2, (fg_px - inner) // 2)
+              fg.alpha_composite(fg_img, offset)
               fg.save(os.path.join(path, "ic_launcher_foreground.png"), "PNG")
 
-          print("✅ All mipmap icons replaced (padding cropped)")
+          print("✅ Android icon sizes generated correctly with adaptive safe-zone padding")
           PYEOF
 
-          # Solid white adaptive icon background — removes default teal grid
+          # Dark adaptive icon background — matches Inkwell UI.
           cat > android/app/src/main/res/drawable/ic_launcher_background.xml << 'XML'
           <?xml version="1.0" encoding="utf-8"?>
           <shape xmlns:android="http://schemas.android.com/apk/res/android">
-              <solid android:color="#FFFFFF"/>
+              <solid android:color="#111214"/>
           </shape>
           XML
-          sed -i 's|<color name="ic_launcher_background">.*</color>|<color name="ic_launcher_background">#FFFFFF</color>|' \
+          sed -i 's|<color name="ic_launcher_background">.*</color>|<color name="ic_launcher_background">#111214</color>|' \
             android/app/src/main/res/values/ic_launcher_background.xml 2>/dev/null || true
-          echo "✅ Adaptive icon background set to white"
+          echo "✅ Adaptive icon background set to dark UI colour"
 
       # ── Patch build.gradle — set versionCode and versionName from run number ──
       # Without this Android always shows "1.0 (1)" regardless of the tag.

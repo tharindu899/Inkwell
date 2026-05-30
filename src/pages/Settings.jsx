@@ -17,6 +17,7 @@ import {
 
 const PREFS_KEY = 'iw_prefs';
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || '0.0.0';
+const STORAGE_LIMIT_MB = 5;
 function getPrefs()     { try { return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); } catch { return {}; } }
 function savePref(k, v) { const p = getPrefs(); p[k] = v; localStorage.setItem(PREFS_KEY, JSON.stringify(p)); }
 
@@ -26,7 +27,10 @@ function calcStorage() {
     const k = localStorage.key(i);
     if (k?.startsWith('iw_')) total += (localStorage.getItem(k) || '').length * 2;
   }
-  return (total / 1024).toFixed(1);
+  const kb = total / 1024;
+  const mb = kb / 1024;
+  const percent = Math.min(100, Math.max(2, (mb / STORAGE_LIMIT_MB) * 100));
+  return { bytes: total, kb: kb.toFixed(1), mb: mb.toFixed(2), percent };
 }
 
 function fmtDate(iso) {
@@ -46,14 +50,14 @@ function ImportNotesIcon() {
 
 export default function Settings() {
   const navigate                  = useNavigate();
-  const { notes, dispatch }       = useAppStore();
+  const { notes, notebooks, dispatch } = useAppStore();
   const { user, getToken }        = useAuth();
 
   const { theme, toggleTheme }    = useTheme();
   const { fontSize, setFontSize } = useFontSize();
 
   const [prefs,       setPrefs]      = useState(getPrefs);
-  const [storageKb,   setStorageKb]  = useState(() => calcStorage());
+  const [storageInfo, setStorageInfo] = useState(() => calcStorage());
   const [confirm,     setConfirm]    = useState(null);
 
   // Drive sync state
@@ -136,7 +140,7 @@ export default function Settings() {
             if (data.notes)     saveNotes(data.notes);
             if (data.notebooks) saveNotebooks(data.notebooks);
             dispatch({ type: 'RELOAD' });
-            setStorageKb(calcStorage());
+            setStorageInfo(calcStorage());
             showToast(`Restored ${(data.notes || []).length} notes`, 'fa-cloud-arrow-down');
           }
         } catch (err) {
@@ -199,7 +203,7 @@ export default function Settings() {
           `Imported ${addedNotes} note${addedNotes !== 1 ? 's' : ''}${skipped ? ` (${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped)` : ''}`,
           'fa-file-import'
         );
-        setStorageKb(calcStorage());
+        setStorageInfo(calcStorage());
       } catch {
         showToast('Import failed — invalid file', 'fa-circle-exclamation');
       }
@@ -219,7 +223,7 @@ export default function Settings() {
         saveNotes([]);
         dispatch({ type: 'RELOAD' });
         showToast('All notes deleted', 'fa-trash-can');
-        setStorageKb(calcStorage());
+        setStorageInfo(calcStorage());
       },
     });
   }
@@ -433,7 +437,13 @@ export default function Settings() {
             <div className="si-icon"><i className="fa-solid fa-database" /></div>
             <div className="si-body">
               <div className="si-label">Local usage</div>
-              <div className="si-sub">{storageKb} KB on this device</div>
+              <div className="si-sub">{storageInfo.kb} KB / {storageInfo.mb} MB on this device</div>
+              <div className="storage-meter" aria-label="Local storage usage"><span style={{ width: `${storageInfo.percent}%` }} /></div>
+              <div className="storage-count-grid">
+                <div><strong>{notes.length}</strong>Notes</div>
+                <div><strong>{notebooks.length}</strong>Books</div>
+                <div><strong>{tagCount}</strong>Tags</div>
+              </div>
             </div>
             <div className="si-right" style={{ color: 'var(--accent)', fontWeight: 600 }}>
               {notes.length} note{notes.length !== 1 ? 's' : ''}

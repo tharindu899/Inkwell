@@ -42,6 +42,18 @@
 
 ---
 
+## 🎨 App Icon & Branding
+
+Inkwell includes a matching dark/orange brand set for every app place:
+
+- `public/icon.svg` — scalable app icon for browser/README
+- `public/logo.svg` — README/header logo
+- `public/icon-512.png` — master Android/PWA icon
+- `public/icon-*.png`, `favicon-*`, `apple-touch-icon.png` — generated launcher/PWA sizes
+- GitHub Actions regenerates Android launcher/adaptive icons from `public/icon-512.png` during every APK build.
+
+---
+
 ## ✨ Features
 
 <table>
@@ -123,7 +135,7 @@
 ### 🔔 Auto-Update Checker
 - 🚀 Checks GitHub Releases on open + resume
 - 📬 Bottom-sheet prompt when newer version found
-- 📥 Download via Android `_system` intent
+- 📥 Download APK with MB/percent progress + system fallback
 - 🔕 Per-version dismissal (won't re-show same ver)
 - 🔐 Supports public & private repos
 
