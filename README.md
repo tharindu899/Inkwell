@@ -54,6 +54,16 @@ Inkwell includes a matching dark/orange brand set for every app place:
 
 ---
 
+
+## 🎨 App Icon
+
+<p align="center">
+  <img src="docs/app-icon-preview.png" width="160" alt="Inkwell app icon preview" />
+</p>
+
+The launcher icon uses the dark/orange **v27 Inkwell icon** style and matches the app UI.  
+See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md) for Android adaptive icon sizing notes.
+
 ## ✨ Features
 
 <table>
@@ -603,6 +613,15 @@ Android WebView lets users long-press and copy UI labels. `CopySelectGuard` inte
 </details>
 
 ---
+
+---
+
+## 📲 In-App APK Update Install
+
+The update checker now detects when you are already on the latest APK. For real updates, it downloads inside the app, opens Android Package Installer directly, and deletes the temporary APK from cache afterward.
+
+See [`docs/APP_UPDATE_INSTALL.md`](docs/APP_UPDATE_INSTALL.md).
+
 
 ## 📄 License
 

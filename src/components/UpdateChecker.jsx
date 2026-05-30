@@ -1,11 +1,11 @@
 /* ══════════════════════════════════════════
    Inkwell — src/components/UpdateChecker.jsx
 
-   Checks GitHub Releases for APK updates.
-   Auto check: shows a popup only when a newer APK release exists.
-   Manual check: always shows latest APK info.
-   Download button supports in-app MB/percent progress on Android/WebView,
-   and falls back to the system browser when streaming is blocked.
+   GitHub Releases APK updater.
+   Manual check shows either:
+   - New update sheet with Download & Install
+   - Already updated sheet, no download button
+   Android: downloads APK in-app, opens installer, then removes temp cache file.
    ══════════════════════════════════════════ */
 
 import { useEffect, useState, useRef, useCallback } from 'react';
@@ -33,6 +33,11 @@ function isNewer(remote, local) {
   return false;
 }
 
+function versionLabel(v = '') {
+  const clean = String(v || '').replace(/^v/i, '').trim();
+  return clean ? `v${clean}` : 'latest';
+}
+
 function fmtMb(bytes = 0) {
   if (!bytes || bytes < 0) return '—';
   return `${(bytes / 1024 / 1024).toFixed(bytes > 10 * 1024 * 1024 ? 1 : 2)} MB`;
@@ -45,6 +50,14 @@ function safeFileName(name = '') {
 
 function findApkAsset(release) {
   return release?.assets?.find(a => String(a?.name || '').toLowerCase().endsWith('.apk')) || null;
+}
+
+function cleanReleaseLine(line = '') {
+  return String(line)
+    .replace(/`/g, '')
+    .replace(/\[(.*?)\]\((.*?)\)/g, '$1')
+    .replace(/^[-*#>\s]+/, '')
+    .trim();
 }
 
 async function githubJson(url) {
@@ -98,23 +111,32 @@ function blobToBase64(blob) {
   });
 }
 
-async function saveAndShareApk(blob, fileName) {
+async function saveInstallAndCleanupApk(blob, fileName, onCleanup) {
+  const { Capacitor } = await import('@capacitor/core');
   const { Filesystem, Directory } = await import('@capacitor/filesystem');
-  const { Share } = await import('@capacitor/share');
   const data = await blobToBase64(blob);
-  const saved = await Filesystem.writeFile({
-    path: fileName,
+  const apkName = safeFileName(fileName);
+
+  await Filesystem.writeFile({
+    path: apkName,
     data,
-    directory: Directory.Documents,
+    directory: Directory.Cache,
     recursive: true,
   });
-  await Share.share({
-    title: 'Inkwell APK update',
-    text: 'Downloaded Inkwell update APK. Open it to install manually.',
-    url: saved.uri,
-    dialogTitle: 'Open or share APK',
-  });
-  return saved.uri;
+
+  const installer = Capacitor?.Plugins?.ApkInstaller;
+  if (!installer?.install) throw new Error('native installer missing');
+
+  await installer.install({ fileName: apkName });
+
+  window.setTimeout(async () => {
+    try {
+      await Filesystem.deleteFile({ path: apkName, directory: Directory.Cache });
+      onCleanup?.();
+    } catch {
+      // Safe to ignore: Android installer may still be reading it.
+    }
+  }, 5 * 60 * 1000);
 }
 
 export default function UpdateChecker() {
@@ -130,9 +152,11 @@ export default function UpdateChecker() {
     const apkAsset = findApkAsset(release);
     const downloadUrl = apkAsset?.browser_download_url || release.html_url;
     const remoteVersion = String(release.tag_name || release.name || '').replace(/^v/i, '') || 'latest';
+    const current = parseSemver(LOCAL_VERSION).join('.');
+    const remote = parseSemver(remoteVersion).join('.');
 
     setUpdate({
-      mode: newer ? 'update' : 'latest',
+      mode: newer ? 'update' : 'current',
       version: remoteVersion,
       downloadUrl,
       releaseUrl: release.html_url,
@@ -142,6 +166,7 @@ export default function UpdateChecker() {
       downloadCount: apkAsset?.download_count || 0,
       repo: GITHUB_REPO,
       hasApk: !!apkAsset,
+      sameVersion: current === remote,
     });
     setProgress({ loaded: 0, total: apkAsset?.size || 0, percent: 0, label: '' });
     setDownloadDone(false);
@@ -149,7 +174,7 @@ export default function UpdateChecker() {
     setDismissedVersion(null);
     setVisible(true);
 
-    if (manual) showToast(newer ? 'Update available' : 'Latest APK found', newer ? 'fa-download' : 'fa-circle-check');
+    if (manual) showToast(newer ? 'Update available' : 'You are already updated', newer ? 'fa-download' : 'fa-circle-check');
   }, []);
 
   const checkForUpdate = useCallback(async (options = {}) => {
@@ -165,16 +190,13 @@ export default function UpdateChecker() {
       const newer = isNewer(remoteVersion, LOCAL_VERSION);
       if (!manual && dismissedVersion && dismissedVersion === remoteVersion) return;
       if (newer) return showReleaseSheet(release, true, manual);
-      if (manual) showReleaseSheet(release, false, true);
+      if (manual) return showReleaseSheet(release, false, true);
     } catch (err) {
       if (!manual) return;
       if (err.status === 404) {
-        const hint = GITHUB_TOKEN
-          ? `Repo "${GITHUB_REPO}" not found — check VITE_GITHUB_REPO`
-          : `Repo "${GITHUB_REPO}" not found — repo must be public, or add VITE_GITHUB_TOKEN`;
-        showToast(hint, 'fa-circle-exclamation');
+        showToast(`Repo not found: ${GITHUB_REPO}. Make repo public and publish an APK release.`, 'fa-circle-exclamation');
       } else if (err.status === 403) {
-        showToast('GitHub rate-limited — add VITE_GITHUB_TOKEN', 'fa-circle-exclamation');
+        showToast('GitHub rate-limited — try again later', 'fa-circle-exclamation');
       } else {
         showToast(`Update check failed (${err.status || 'network error'})`, 'fa-circle-exclamation');
       }
@@ -182,9 +204,8 @@ export default function UpdateChecker() {
   }, [dismissedVersion, showReleaseSheet]);
 
   const downloadApk = useCallback(async () => {
-    if (!update?.downloadUrl) return;
+    if (!update?.downloadUrl || update.mode !== 'update') return;
 
-    // If release has no APK asset, open release page instead.
     if (!update.hasApk) return openSystemUrl(update.downloadUrl);
 
     setDownloading(true);
@@ -217,8 +238,10 @@ export default function UpdateChecker() {
       try {
         const { Capacitor } = await import('@capacitor/core');
         if (Capacitor.isNativePlatform()) {
-          await saveAndShareApk(blob, safeFileName(update.apkName));
-          showToast('APK downloaded — open it to install', 'fa-circle-check');
+          await saveInstallAndCleanupApk(blob, safeFileName(update.apkName), () => {
+            showToast('Temporary update APK deleted', 'fa-trash');
+          });
+          showToast('Opening Android installer…', 'fa-box-open');
           return;
         }
       } catch { /* fallback below */ }
@@ -231,8 +254,8 @@ export default function UpdateChecker() {
       setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
       showToast('APK downloaded', 'fa-circle-check');
     } catch {
-      showToast('Opening system download…', 'fa-up-right-from-square');
-      await openSystemUrl(update.downloadUrl);
+      showToast('In-app install blocked — opening release page', 'fa-up-right-from-square');
+      await openSystemUrl(update.releaseUrl || update.downloadUrl);
     } finally {
       setDownloading(false);
     }
@@ -272,30 +295,45 @@ export default function UpdateChecker() {
   }, [checkForUpdate]);
 
   if (!visible || !update) return null;
+
   const isRealUpdate = update.mode === 'update';
   const pct = progress.percent || 0;
+  const releaseLines = String(update.body || '')
+    .split('\n')
+    .map(cleanReleaseLine)
+    .filter(Boolean)
+    .filter(line => !/^https?:\/\//i.test(line))
+    .slice(0, 3);
 
   return createPortal(
     <div className="modal-overlay show update-overlay" onClick={() => { setVisible(false); setDismissedVersion(update?.version ?? null); }} style={{ zIndex: 9999 }}>
-      <div className="modal update-sheet" onClick={e => e.stopPropagation()}>
-        <div className="update-header">
-          <span className="update-icon"><i className={`fa-solid ${isRealUpdate ? 'fa-rocket' : 'fa-circle-check'}`} /></span>
-          <div>
-            <div className="modal-title">{isRealUpdate ? 'New update available' : 'Latest APK'}</div>
-            <div className="modal-sub">
-              {isRealUpdate ? (
-                <>v<strong>{update.version}</strong> is ready — installed v<strong>{LOCAL_VERSION}</strong></>
-              ) : (
-                <>Installed v<strong>{LOCAL_VERSION}</strong> · Latest v<strong>{update.version}</strong></>
-              )}
-            </div>
-          </div>
+      <div className="modal update-sheet clean-update-sheet" onClick={e => e.stopPropagation()}>
+        <button className="update-close" disabled={downloading} onClick={() => { setVisible(false); setDismissedVersion(update?.version ?? null); }} aria-label="Close">
+          <i className="fa-solid fa-xmark" />
+        </button>
+
+        <div className="update-hero">
+          <span className={`update-icon ${isRealUpdate ? 'hot' : 'ok'}`}>
+            <i className={`fa-solid ${isRealUpdate ? 'fa-download' : 'fa-circle-check'}`} />
+          </span>
+          <div className="update-version-pill">{isRealUpdate ? versionLabel(update.version) : 'Up to date'}</div>
+        </div>
+
+        <div className="update-title">
+          {isRealUpdate ? 'New APK update available' : 'You are already updated'}
+        </div>
+        <div className="update-subtitle">
+          {isRealUpdate ? (
+            <>Latest {versionLabel(update.version)} · Current {versionLabel(LOCAL_VERSION)}</>
+          ) : (
+            <>Current {versionLabel(LOCAL_VERSION)} matches latest {versionLabel(update.version)}</>
+          )}
         </div>
 
         <div className="update-meta-grid">
-          <div className="update-meta"><span>APK size</span><strong>{fmtMb(update.apkSize)}</strong></div>
+          <div className="update-meta"><span>Size</span><strong>{fmtMb(update.apkSize)}</strong></div>
           <div className="update-meta"><span>Downloads</span><strong>{update.downloadCount}</strong></div>
-          <div className="update-meta"><span>Repo</span><strong>{update.repo}</strong></div>
+          <div className="update-meta repo"><span>Repo</span><strong>{update.repo}</strong></div>
         </div>
 
         {(downloading || downloadDone) && (
@@ -311,23 +349,37 @@ export default function UpdateChecker() {
           </div>
         )}
 
-        {update.body && (
+        {isRealUpdate && releaseLines.length > 0 && (
           <div className="update-notes">
-            {update.body.split('\n').filter(l => l.trim()).slice(0, 4).map((line, i) => (
-              <div key={i} className="update-note-line">{line.replace(/^[-*#]+\s*/, '')}</div>
+            {releaseLines.map((line, i) => (
+              <div key={i} className="update-note-line">{line}</div>
             ))}
           </div>
         )}
 
-        <div className="modal-actions update-actions">
-          <button className="btn btn-ghost" disabled={downloading} onClick={() => { setVisible(false); setDismissedVersion(update?.version ?? null); }}>Later</button>
-          <button className="btn btn-primary" disabled={downloading} onClick={downloadApk}>
-            <i className={`fa-solid ${downloading ? 'fa-spinner fa-spin' : 'fa-download'}`} style={{ marginRight: 6 }} />
-            {downloading ? 'Downloading…' : isRealUpdate ? 'Download update' : 'Download APK'}
-          </button>
-        </div>
+        {!isRealUpdate && (
+          <div className="update-current-box">
+            <i className="fa-solid fa-shield-check" />
+            <span>No download needed. Your installed APK is the latest release.</span>
+          </div>
+        )}
 
-        <div className="update-version-pill">v{LOCAL_VERSION}</div>
+        <div className="modal-actions update-actions">
+          <button className="btn btn-ghost" disabled={downloading} onClick={() => { setVisible(false); setDismissedVersion(update?.version ?? null); }}>
+            {isRealUpdate ? 'Later' : 'Close'}
+          </button>
+          {isRealUpdate ? (
+            <button className="btn btn-primary" disabled={downloading} onClick={downloadApk}>
+              <i className={`fa-solid ${downloading ? 'fa-spinner fa-spin' : 'fa-download'}`} style={{ marginRight: 6 }} />
+              {downloading ? 'Downloading…' : 'Download & Install'}
+            </button>
+          ) : (
+            <button className="btn btn-primary" disabled={downloading} onClick={() => setVisible(false)}>
+              <i className="fa-solid fa-circle-check" style={{ marginRight: 6 }} />
+              Done
+            </button>
+          )}
+        </div>
       </div>
     </div>,
     document.body
