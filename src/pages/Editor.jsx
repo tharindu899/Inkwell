@@ -24,7 +24,7 @@
    • Saved-range preservation so toolbar taps don't lose selection
    ══════════════════════════════════════════ */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Toast, { showToast } from '../components/Toast';
 import { useAppStore }      from '../store/AppContext';
@@ -806,7 +806,7 @@ export default function Editor() {
   const { id: paramId }    = useParams();
   const [searchParams]     = useSearchParams();
   const navigate           = useNavigate();
-  const { dispatch, saveNotebook } = useAppStore();
+  const { dispatch, saveNotebook, notes } = useAppStore();
 
   /* ── refs ── */
   const bodyRef       = useRef(null);   // contenteditable div
@@ -1032,6 +1032,17 @@ export default function Editor() {
 
   /* ── tags input ── */
   const [tagInput, setTagInput] = useState('');
+
+  const savedTagOptions = useMemo(() => {
+    const current = new Set((note?.tags || []).map(t => String(t).toLowerCase()));
+    const all = Array.from(new Set(
+      (notes || [])
+        .flatMap(n => n?.tags || [])
+        .map(t => String(t).trim().toLowerCase())
+        .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b));
+    return all.filter(t => !current.has(t)).slice(0, 12);
+  }, [notes, note?.tags]);
 
   /* ── toolbar active-states ── */
   const [tbState, setTbState] = useState({});
@@ -2944,21 +2955,36 @@ export default function Editor() {
   /* ──────────────────────────────────────────────────
      Tags
      ────────────────────────────────────────────────── */
+  function commitTag(rawValue = tagInput) {
+    const v = String(rawValue || '').trim().replace(/^#/, '').replace(/,/g, '').toLowerCase();
+    if (!v) { setTagInput(''); return; }
+    if (!(note.tags || []).includes(v)) {
+      const updated = { ...note, tags: [...(note.tags || []), v] };
+      updateNote(updated);
+      markDirty();
+    }
+    setTagInput('');
+  }
+
   function tagKeydown(e) {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
-      const v = tagInput.trim().replace(/,/g, '').toLowerCase();
-      if (v && !(note.tags || []).includes(v)) {
-        const updated = { ...note, tags: [...(note.tags || []), v] };
-        updateNote(updated);
-        markDirty();
-      }
-      setTagInput('');
+      commitTag();
     }
     if (e.key === 'Backspace' && !tagInput && note.tags?.length) {
       updateNote(n => ({ ...n, tags: n.tags.slice(0, -1) }));
       markDirty();
     }
+  }
+
+  function selectSavedTag(t) {
+    if ((note.tags || []).includes(t)) {
+      removeTag(t);
+      return;
+    }
+    const updated = { ...note, tags: [...(note.tags || []), t] };
+    updateNote(updated);
+    markDirty();
   }
 
   function removeTag(t) {
@@ -3352,7 +3378,35 @@ export default function Editor() {
               onKeyDown={tagKeydown}
               maxLength={24}
             />
+            <button
+              type="button"
+              className="tag-add-btn"
+              title="Save tag"
+              aria-label="Save tag"
+              onClick={() => commitTag()}
+            >
+              <i className="fa-solid fa-plus" />
+            </button>
           </div>
+
+          {savedTagOptions.length > 0 && (
+            <div className="saved-tags-row">
+              <span className="saved-tags-label">Saved tags</span>
+              <div className="saved-tags-list">
+                {savedTagOptions.map(t => (
+                  <button
+                    type="button"
+                    key={t}
+                    className="saved-tag-option"
+                    onClick={() => selectSavedTag(t)}
+                  >
+                    <i className="fa-solid fa-tag" />
+                    <span>{t}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── Notebook selector ── */}
           <div className="nb-selector" id="nb-selector" onClick={() => setNbPicker(true)}>

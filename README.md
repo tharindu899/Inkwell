@@ -98,6 +98,7 @@ See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md).
 - 📖 Reading mode (distraction-free)
 - 🔢 Live word & character count
 - 🛡️ Safer auto-save/background-save behavior
+- 🏷️ Saved tag chips for quick tag selection in the editor
 
 </td>
 <td width="50%" valign="top">
@@ -677,7 +678,7 @@ The `docs/` folder keeps release/setup notes separate from the main README.
 | [`docs/APP_UPDATE_INSTALL.md`](docs/APP_UPDATE_INSTALL.md) | In-app APK update, installer, and cleanup flow |
 | [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md) | Android adaptive icon size and safe-zone notes |
 | [`docs/THEME.md`](docs/THEME.md) | Light/dark theme persistence details |
-| [`docs/EDITOR.md`](docs/EDITOR.md) | Editor save, markdown, paste, and mobile stability notes |
+| [`docs/EDITOR.md`](docs/EDITOR.md) | Editor save, markdown, paste, tag chips, and mobile stability notes |
 | [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md) | Final checks before publishing a public release |
 
 Recommended reading order:

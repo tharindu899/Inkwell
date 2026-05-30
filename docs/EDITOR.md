@@ -21,3 +21,9 @@ This document tracks editor stability behavior.
 4. Create checklist note from quick action.
 5. Paste long Markdown/code block and check horizontal scroll.
 6. Add image/drawing and save/reopen.
+
+## Tag UX
+
+- Saved tag chips can be tapped in the editor to attach them quickly.
+- The + button next to the tag input saves the typed tag.
+- Quick-create Tag and Quick-create Notebook now use in-app themed modals instead of native prompts.
