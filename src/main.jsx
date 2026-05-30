@@ -19,6 +19,18 @@ import { AppProvider } from './store/AppContext';
 import App from './App';
 import './styles/styles.css';
 
+// v38: apply saved theme before React renders.
+// Without this, reopening the Android app starts with CSS default dark theme
+// until Settings page mounts useTheme().
+try {
+  const savedTheme = localStorage.getItem('iw_theme');
+  const theme = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+} catch {
+  document.documentElement.setAttribute('data-theme', 'dark');
+}
+
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <HashRouter>

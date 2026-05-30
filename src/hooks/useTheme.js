@@ -15,19 +15,46 @@ export const FONT_SIZES = {
 };
 
 // ─── useTheme ─────────────────────────────
-export function useTheme() {
-  const [theme, setThemeState] = useState(
-    () => localStorage.getItem(K.theme) || 'dark'
-  );
+const normalizeTheme = (value) => (value === 'light' || value === 'dark' ? value : 'dark');
 
-  // Keep <html data-theme="..."> in sync whenever theme changes
+export function useTheme() {
+  const [theme, setThemeState] = useState(() => {
+    try { return normalizeTheme(localStorage.getItem(K.theme)); }
+    catch { return 'dark'; }
+  });
+
+  // Keep <html data-theme="..."> and storage in sync whenever theme changes.
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    const next = normalizeTheme(theme);
+    document.documentElement.setAttribute('data-theme', next);
+    try {
+      if (localStorage.getItem(K.theme) !== next) localStorage.setItem(K.theme, next);
+    } catch {}
   }, [theme]);
 
+  // If another part of the app/tab changes the theme, update this hook too.
+  useEffect(() => {
+    const syncTheme = () => {
+      try {
+        const saved = normalizeTheme(localStorage.getItem(K.theme));
+        setThemeState(saved);
+        document.documentElement.setAttribute('data-theme', saved);
+      } catch {}
+    };
+    window.addEventListener('storage', syncTheme);
+    window.addEventListener('inkwell-theme-changed', syncTheme);
+    return () => {
+      window.removeEventListener('storage', syncTheme);
+      window.removeEventListener('inkwell-theme-changed', syncTheme);
+    };
+  }, []);
+
   const setTheme = useCallback((t) => {
-    localStorage.setItem(K.theme, t);
-    setThemeState(t);
+    const next = normalizeTheme(t);
+    try { localStorage.setItem(K.theme, next); } catch {}
+    document.documentElement.setAttribute('data-theme', next);
+    setThemeState(next);
+    window.dispatchEvent(new CustomEvent('inkwell-theme-changed', { detail: next }));
   }, []);
 
   const toggleTheme = useCallback(() => {

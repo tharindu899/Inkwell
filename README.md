@@ -6,7 +6,7 @@
 
 **Beautiful, private note-taking — on the web and as an Android app**
 
-<a href="https://github.com/tharindu899/Inkwell/releases/latest/download/Inkwell-latest.apk">
+<a href="https://github.com/tharindu899/Inkwell/releases/latest">
   <img src="https://img.shields.io/badge/Download_APK-Inkwell-e77a2b?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
 </a>
 
@@ -673,6 +673,15 @@ See [`docs/APP_UPDATE_INSTALL.md`](docs/APP_UPDATE_INSTALL.md).
 The APK build uses correct Android launcher/adaptive icon sizes and safe-zone padding so MIUI/Android launchers do not crop the icon badly.
 
 See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md).
+
+
+---
+
+## 🌓 Theme Persistence
+
+Theme selection is saved in `iw_theme` and applied before React renders, so light mode stays active after closing and reopening the Android app.
+
+See [`docs/THEME.md`](docs/THEME.md).
 
 
 ## 📄 License
