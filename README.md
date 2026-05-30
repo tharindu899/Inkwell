@@ -1,30 +1,28 @@
 <div align="center">
 
-<img src="public/logo.svg" width="360" alt="Inkwell Logo" />
+<img src="public/logo.svg" width="300" alt="Inkwell Logo" />
 
-# 🖊️ Inkwell
+# Inkwell
 
-### Beautiful, private note-taking — on the web and as a native Android app
+**Beautiful, private note-taking — on the web and as an Android app**
 
-<p>
-  <a href="https://github.com/tharindu899/Inkwell/actions/workflows/build-apk.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/tharindu899/Inkwell/build-apk.yml?label=APK%20Build&logo=github&logoColor=white&style=for-the-badge" />
-  </a>
-  <img src="https://img.shields.io/badge/Vite-5-646CFF?style=for-the-badge&logo=vite&logoColor=white" />
-  <img src="https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black" />
-  <img src="https://img.shields.io/badge/Capacitor-6-119EFF?style=for-the-badge&logo=capacitor&logoColor=white" />
-</p>
-<p>
-  <img src="https://img.shields.io/badge/Node-20.x-339933?style=flat-square&logo=node.js&logoColor=white" />
-  <img src="https://img.shields.io/badge/PWA-ready-5A0FC8?style=flat-square&logo=pwa&logoColor=white" />
-  <img src="https://img.shields.io/badge/Android-APK-3DDC84?style=flat-square&logo=android&logoColor=white" />
-  <img src="https://img.shields.io/badge/Deploy-Vercel-000000?style=flat-square&logo=vercel&logoColor=white" />
-  <img src="https://img.shields.io/badge/Google-Drive%20Sync-4285F4?style=flat-square&logo=google-drive&logoColor=white" />
-  <img src="https://img.shields.io/badge/Auth-OAuth%202.0-EA4335?style=flat-square&logo=google&logoColor=white" />
-  <img src="https://img.shields.io/badge/Storage-localStorage-F7DF1E?style=flat-square&logo=javascript&logoColor=black" />
-</p>
+<a href="https://github.com/tharindu899/Inkwell/releases/latest/download/Inkwell-latest.apk">
+  <img src="https://img.shields.io/badge/Download_APK-Inkwell-e77a2b?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+</a>
 
-> Write beautifully, anywhere. Notes live **locally on your device** — synced privately to your own Google Drive. No servers. No tracking. No nonsense.
+<br />
+
+<img src="https://img.shields.io/github/actions/workflow/status/tharindu899/Inkwell/build-apk.yml?label=Build&logo=github&logoColor=white&style=flat-square" alt="Build" />
+<img src="https://img.shields.io/github/v/release/tharindu899/Inkwell?label=Release&logo=github&style=flat-square" alt="Release" />
+<img src="https://img.shields.io/github/downloads/tharindu899/Inkwell/total?label=Downloads&logo=github&style=flat-square" alt="Downloads" />
+<img src="https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" />
+<img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React" />
+<img src="https://img.shields.io/badge/Capacitor-6-119EFF?style=flat-square&logo=capacitor&logoColor=white" alt="Capacitor" />
+<img src="https://img.shields.io/badge/Google_Drive-Sync-4285F4?style=flat-square&logo=google-drive&logoColor=white" alt="Google Drive Sync" />
+
+<br />
+
+> Write beautifully, anywhere. Notes live **locally on your device** and sync privately to your own Google Drive.
 
 </div>
 
@@ -34,7 +32,7 @@
 
 | | | |
 |---|---|---|
-| [✨ Features](#-features) | [🛠️ Tech Stack](#️-tech-stack) | [🗂️ Project Structure](#️-project-structure) |
+| [📥 Download](#-download) | [✨ Features](#-features) | [🛠️ Tech Stack](#️-tech-stack) |
 | [⚡ Quick Start](#-quick-start) | [🌐 Deploy to Vercel](#-deploy-to-vercel) | [📱 Build Android APK](#-build-android-apk) |
 | [🔑 GitHub Secrets](#-github-secrets) | [☁️ Google Drive Sync](#️-google-drive-sync) | [⚙️ Environment Variables](#️-environment-variables) |
 | [🚀 CI/CD Pipeline](#-cicd-pipeline) | [🗄️ Data Model](#️-data-model) | [🔧 Troubleshooting](#-troubleshooting) |
@@ -42,6 +40,17 @@
 | [📄 License](#-license) | | |
 
 ---
+
+## 📥 Download
+
+<p align="center">
+  <a href="https://github.com/tharindu899/Inkwell/releases/latest">
+    <img src="https://img.shields.io/badge/Get_latest_release-APK-e77a2b?style=for-the-badge&logo=github&logoColor=white" alt="Get latest release" />
+  </a>
+</p>
+
+Install from **GitHub Releases**. The app also includes an in-app updater from **Settings → Check for updates**.
+
 
 ## 🎨 App Icon & Branding
 
