@@ -38,7 +38,8 @@
 | [⚡ Quick Start](#-quick-start) | [🌐 Deploy to Vercel](#-deploy-to-vercel) | [📱 Build Android APK](#-build-android-apk) |
 | [🔑 GitHub Secrets](#-github-secrets) | [☁️ Google Drive Sync](#️-google-drive-sync) | [⚙️ Environment Variables](#️-environment-variables) |
 | [🚀 CI/CD Pipeline](#-cicd-pipeline) | [🗄️ Data Model](#️-data-model) | [🔧 Troubleshooting](#-troubleshooting) |
-| [✅ Release Check](#-release-check) | [📄 License](#-license) | |
+| [✅ Release Check](#-release-check) | [📲 App Updates](#-app-updates) | [🎨 Android Icon](#-android-icon) |
+| [📄 License](#-license) | | |
 
 ---
 
@@ -616,11 +617,47 @@ Android WebView lets users long-press and copy UI labels. `CopySelectGuard` inte
 
 ---
 
-## 📲 In-App APK Update Install
+## 📲 App Updates
 
-The update checker now detects when you are already on the latest APK. For real updates, it downloads inside the app, opens Android Package Installer directly, and deletes the temporary APK from cache afterward.
+Inkwell checks GitHub Releases for a newer Android APK.
+
+### What the update popup shows
+
+| State | Result |
+|------|--------|
+| Current APK is older | **New APK update available** + **Download & Install** |
+| Current APK matches latest release | **You are already updated** |
+| Release has no APK asset | Opens the GitHub Release page |
+| In-app install is blocked | Falls back to the release page |
+
+### Download & install flow
+
+1. Open **Settings → Check for updates**.
+2. Inkwell checks the latest GitHub Release for `tharindu899/Inkwell`.
+3. If a newer APK exists, the popup shows:
+   - latest version
+   - installed version
+   - APK size
+   - download count
+   - repo name
+   - MB / percent progress bar
+4. Tap **Download & Install**.
+5. The APK downloads inside the app.
+6. Android Package Installer opens directly.
+7. Tap **Install / Update** manually.
+8. The temporary downloaded APK is deleted from app cache after a short delay.
+
+> Android does **not** allow silent APK updates for normal apps, so the final Install/Update tap is required.
 
 See [`docs/APP_UPDATE_INSTALL.md`](docs/APP_UPDATE_INSTALL.md).
+
+---
+
+## 🎨 Android Icon
+
+The APK build uses correct Android launcher/adaptive icon sizes and safe-zone padding so MIUI/Android launchers do not crop the icon badly.
+
+See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md).
 
 
 ## 📄 License
