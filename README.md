@@ -764,3 +764,5 @@ Made with 🖊️ by [tharindu899](https://github.com/tharindu899)
 - Manage Tags modal now uses horizontal scrolling compact tag chips and removes duplicate Add controls.
 
 - Editor tag selector now matches the notebook selector style, and the Tags page uses compact note-like tag pills.
+
+- Tags page uses independent note-size tag pills, and notebook badges use the matching notebook icon.

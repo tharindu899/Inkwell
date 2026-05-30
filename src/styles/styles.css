@@ -4162,3 +4162,118 @@ body,
     font-size:12px !important;
   }
 }
+
+
+/* v47: Tags page uses note-card-size pills, independent from old tag-pill card CSS */
+.tags-page .all-tags-chip-row{
+  display:flex !important;
+  flex-wrap:wrap !important;
+  align-items:center !important;
+  gap:8px !important;
+  margin:8px 0 16px !important;
+}
+.tags-page .all-tag-chip{
+  appearance:none !important;
+  border:1px solid rgba(240,138,57,.16) !important;
+  background:rgba(240,138,57,.10) !important;
+  color:var(--accent) !important;
+  min-height:28px !important;
+  height:28px !important;
+  max-width:150px !important;
+  padding:0 9px !important;
+  border-radius:999px !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  gap:6px !important;
+  font-family:var(--font-b) !important;
+  font-size:11px !important;
+  font-weight:800 !important;
+  line-height:1 !important;
+  letter-spacing:.02em !important;
+  box-shadow:none !important;
+  vertical-align:middle !important;
+}
+.tags-page .all-tag-chip i{
+  flex:0 0 auto !important;
+  font-size:9px !important;
+  color:var(--accent) !important;
+}
+.tags-page .all-tag-name{
+  min-width:0 !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+}
+.tags-page .all-tag-count{
+  flex:0 0 auto !important;
+  min-width:16px !important;
+  height:16px !important;
+  padding:0 5px !important;
+  border-radius:999px !important;
+  background:rgba(240,138,57,.16) !important;
+  color:var(--accent) !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  font-size:9px !important;
+  font-weight:900 !important;
+}
+.tags-page .all-tag-chip.active{
+  background:rgba(240,138,57,.20) !important;
+  border-color:rgba(240,138,57,.38) !important;
+  color:var(--accent) !important;
+}
+.tags-page .active-note-tag{
+  min-height:28px !important;
+  height:28px !important;
+  border-radius:999px !important;
+  padding:0 9px !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  gap:6px !important;
+  font-size:11px !important;
+  font-weight:800 !important;
+  color:var(--accent) !important;
+  background:rgba(240,138,57,.12) !important;
+  border:1px solid rgba(240,138,57,.22) !important;
+}
+.tags-page .active-note-tag i{font-size:9px !important;color:var(--accent) !important;}
+.tags-page .active-note-tag .rm{
+  width:18px !important;
+  height:18px !important;
+  border-radius:999px !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  background:rgba(255,255,255,.06) !important;
+  margin-left:2px !important;
+}
+.tags-page .active-note-tag .rm i{font-size:8px !important;}
+
+/* v47: notebook badge icon exactly matches notebook selector/book icon */
+.n-tag.n-notebook-tag{
+  display:inline-flex !important;
+  align-items:center !important;
+  gap:6px !important;
+}
+.n-tag .notebook-tag-icon{
+  font-size:12px !important;
+  width:13px !important;
+  min-width:13px !important;
+  line-height:1 !important;
+  color:currentColor !important;
+}
+
+@media(max-width:430px){
+  .tags-page .all-tags-chip-row{
+    gap:7px !important;
+  }
+  .tags-page .all-tag-chip{
+    max-width:132px !important;
+    height:27px !important;
+    min-height:27px !important;
+    padding:0 8px !important;
+    font-size:10.5px !important;
+  }
+}

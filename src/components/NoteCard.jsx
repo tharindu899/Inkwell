@@ -327,8 +327,8 @@ export default function NoteCard({
             {formatDate(note.updatedAt)}
           </span>
           {nb && (
-            <span className="n-tag" style={{ color: nb.color, background: `${nb.color}22` }}>
-              <i className="fa-solid fa-book-open" style={{ fontSize: '9px' }} />
+            <span className="n-tag n-notebook-tag" style={{ color: nb.color, background: `${nb.color}22` }}>
+              <i className="fa-solid fa-book-open notebook-tag-icon" />
               {nb.name}
             </span>
           )}

@@ -57,17 +57,19 @@ export default function Tags() {
             No tags yet. Add tags while editing a note.
           </div>
         ) : (
-          <div className="tag-cloud">
+          <div className="all-tags-chip-row">
             {tags.map(([t, c]) => (
-              <div
+              <button
+                type="button"
                 key={t}
-                className={`tag-pill${activeTag === t ? ' on' : ''}`}
+                className={`all-tag-chip${activeTag === t ? ' active' : ''}`}
                 onClick={() => selectTag(t)}
+                title={t}
               >
-                <i className="fa-solid fa-tag" style={{ fontSize: '11px' }} />
-                <span className="tag-name">{t}</span>
-                <span className="tag-cnt">{c}</span>
-              </div>
+                <i className="fa-solid fa-tag" />
+                <span className="all-tag-name">{t}</span>
+                <span className="all-tag-count">{c}</span>
+              </button>
             ))}
           </div>
         )}
@@ -81,9 +83,9 @@ export default function Tags() {
             </div>
 
             <div style={{ marginBottom: '14px' }}>
-              <span className="active-tag-label">
-                <i className="fa-solid fa-tag" style={{ fontSize: '11px' }} />
-                {activeTag}
+              <span className="active-tag-label active-note-tag">
+                <i className="fa-solid fa-tag" />
+                <span>{activeTag}</span>
                 <span className="rm" onClick={() => setActiveTag(null)}>
                   <i className="fa-solid fa-xmark" />
                 </span>
