@@ -27,3 +27,6 @@ This document tracks editor stability behavior.
 - Saved tag chips can be tapped in the editor to attach them quickly.
 - The + button next to the tag input saves the typed tag.
 - Quick-create Tag and Quick-create Notebook now use in-app themed modals instead of native prompts.
+
+
+- Tag selector updated: the editor footer now stays compact, and full tag management opens in a modal.

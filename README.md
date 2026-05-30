@@ -2,7 +2,7 @@
 
 <img src="public/logo.svg" width="300" alt="Inkwell Logo" />
 
-# 📖 Inkwell
+# Inkwell
 
 **Beautiful, private note-taking — on the web and as an Android app**
 
@@ -755,3 +755,6 @@ Made with 🖊️ by [tharindu899](https://github.com/tharindu899)
 ⭐ **Star the repo if you find it useful!**
 
 </div>
+
+
+- Tag selector updated: the editor footer now stays compact, and full tag management opens in a modal.

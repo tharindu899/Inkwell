@@ -1032,6 +1032,7 @@ export default function Editor() {
 
   /* ── tags input ── */
   const [tagInput, setTagInput] = useState('');
+  const [tagManageModal, setTagManageModal] = useState(false);
 
   const savedTagOptions = useMemo(() => {
     const current = new Set((note?.tags || []).map(t => String(t).toLowerCase()));
@@ -3358,55 +3359,32 @@ export default function Editor() {
 
           {/* ── Bottom editor panel: tags, notebook, words/chars */}
           <div className="editor-bottom-panel" id="editor-bottom-panel">
-          <div className="tags-row" id="tags-row">
+          <div className="tags-row tags-selector" id="tags-row" onClick={() => setTagManageModal(true)}>
             <i className="fa-solid fa-tag" />
-            <div id="tag-chips">
-              {(note.tags || []).map(t => (
-                <span key={t} className="tag-chip">
-                  {t}
-                  <span className="rm-tag" onClick={() => removeTag(t)}>
-                    <i className="fa-solid fa-xmark" />
-                  </span>
-                </span>
-              ))}
+            <div className="tag-selector-main">
+              {(note.tags || []).length ? (
+                <div className="tag-selector-chips">
+                  {(note.tags || []).slice(0, 2).map(t => (
+                    <span key={t} className="tag-chip compact">{t}</span>
+                  ))}
+                  {(note.tags || []).length > 2 && (
+                    <span className="tag-chip compact more">+{(note.tags || []).length - 2} more</span>
+                  )}
+                </div>
+              ) : (
+                <span className="tag-selector-placeholder">No tags selected</span>
+              )}
             </div>
-            <input
-              className="tag-input"
-              placeholder="Add tag…"
-              value={tagInput}
-              onChange={e => setTagInput(e.target.value)}
-              onKeyDown={tagKeydown}
-              maxLength={24}
-            />
             <button
               type="button"
-              className="tag-add-btn"
-              title="Save tag"
-              aria-label="Save tag"
-              onClick={() => commitTag()}
+              className="tag-picker-btn"
+              title="Manage tags"
+              aria-label="Manage tags"
+              onClick={(e) => { e.stopPropagation(); setTagManageModal(true); }}
             >
-              <i className="fa-solid fa-plus" />
+              <i className="fa-solid fa-chevron-up" style={{ fontSize: 11 }} />
             </button>
           </div>
-
-          {savedTagOptions.length > 0 && (
-            <div className="saved-tags-row">
-              <span className="saved-tags-label">Saved tags</span>
-              <div className="saved-tags-list">
-                {savedTagOptions.map(t => (
-                  <button
-                    type="button"
-                    key={t}
-                    className="saved-tag-option"
-                    onClick={() => selectSavedTag(t)}
-                  >
-                    <i className="fa-solid fa-tag" />
-                    <span>{t}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* ── Notebook selector ── */}
           <div className="nb-selector" id="nb-selector" onClick={() => setNbPicker(true)}>
@@ -3563,6 +3541,74 @@ export default function Editor() {
               </button>
             </div>
           </>
+        )}
+
+        {tagManageModal && (
+          <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) { setTagManageModal(false); setTagInput(''); } }}>
+            <div className="modal tag-manage-modal">
+              <div className="modal-title">Manage tags</div>
+              <div className="modal-sub">Add, remove, and reuse tags without covering the editor footer.</div>
+
+              <div className="modal-label">Current tags</div>
+              {(note.tags || []).length ? (
+                <div className="tag-manage-current">
+                  {(note.tags || []).map(t => (
+                    <button
+                      type="button"
+                      key={t}
+                      className="tag-chip manage"
+                      onClick={() => removeTag(t)}
+                      title={`Remove ${t}`}
+                    >
+                      <span>{t}</span>
+                      <i className="fa-solid fa-xmark" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="tag-manage-empty">No tags added yet.</div>
+              )}
+
+              <div className="modal-label" style={{ marginTop: '14px' }}>Add tag</div>
+              <div className="tag-manage-input-row">
+                <input
+                  className="modal-input"
+                  placeholder="e.g. code, github…"
+                  value={tagInput}
+                  onChange={e => setTagInput(e.target.value)}
+                  onKeyDown={tagKeydown}
+                  maxLength={24}
+                  autoFocus
+                />
+                <button type="button" className="btn btn-primary tag-manage-add" onClick={() => commitTag()}>
+                  Add
+                </button>
+              </div>
+
+              {savedTagOptions.length > 0 && (
+                <>
+                  <div className="modal-label" style={{ marginTop: '8px' }}>Saved tags</div>
+                  <div className="saved-tags-list in-modal">
+                    {savedTagOptions.map(t => (
+                      <button
+                        type="button"
+                        key={t}
+                        className="saved-tag-option"
+                        onClick={() => selectSavedTag(t)}
+                      >
+                        <i className="fa-solid fa-tag" />
+                        <span>{t}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <div className="modal-actions">
+                <button className="btn btn-ghost" onClick={() => { setTagManageModal(false); setTagInput(''); }}>Close</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {nbCreateModal && (

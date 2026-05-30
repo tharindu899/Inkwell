@@ -3743,3 +3743,145 @@ body,
   .tags-page .tag-pill .tag-name{font-size:11.5px !important;}
   .saved-tags-row{padding:0 14px 10px;}
 }
+
+
+/* v43: compact tag selector in editor footer */
+.tags-selector{
+  cursor:pointer;
+}
+.tag-selector-main{
+  flex:1;
+  min-width:0;
+}
+.tag-selector-placeholder{
+  font-size:13px;
+  color:var(--text-3);
+}
+.tag-selector-chips{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:nowrap;
+  overflow:hidden;
+}
+.tag-chip.compact{
+  flex-shrink:0;
+  max-width:120px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.tag-chip.compact.more{
+  background:var(--surface2);
+  color:var(--text-2);
+}
+.tag-picker-btn{
+  width:28px;
+  height:28px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text-3);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+}
+.tag-picker-btn:active{transform:scale(.98)}
+
+/* v43: tag manage modal */
+.tag-manage-modal{
+  max-width:430px !important;
+}
+.tag-manage-current{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.tag-chip.manage{
+  border:none;
+  cursor:pointer;
+}
+.tag-chip.manage i{
+  font-size:11px;
+}
+.tag-manage-empty{
+  border:1px dashed var(--border);
+  border-radius:14px;
+  padding:12px 14px;
+  color:var(--text-3);
+  background:var(--surface2);
+  font-size:13px;
+}
+.tag-manage-input-row{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.tag-manage-input-row .modal-input{
+  margin-bottom:0;
+}
+.tag-manage-add{
+  min-width:72px;
+  height:42px;
+}
+.saved-tags-list.in-modal{
+  max-height:180px;
+  overflow:auto;
+  padding-right:4px;
+}
+
+/* v43: tags page pills back to natural chip layout */
+.tags-page .tag-cloud{
+  display:flex !important;
+  flex-wrap:wrap !important;
+  gap:10px !important;
+  margin:6px 0 14px !important;
+}
+.tags-page .tag-pill{
+  width:auto !important;
+  max-width:100% !important;
+  min-height:40px !important;
+  height:auto !important;
+  padding:10px 12px !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  gap:8px !important;
+  border-radius:16px !important;
+}
+.tags-page .tag-pill .tag-name{
+  max-width:180px !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+  font-size:13px !important;
+  line-height:1.1 !important;
+}
+.tags-page .tag-cnt{
+  min-width:20px !important;
+  height:20px !important;
+  font-size:10px !important;
+  padding:0 6px !important;
+  margin-left:2px !important;
+}
+@media(max-width:430px){
+  .tags-page .tag-pill{
+    min-height:38px !important;
+    padding:9px 11px !important;
+  }
+  .tags-page .tag-pill .tag-name{
+    max-width:128px !important;
+    font-size:12px !important;
+  }
+  .tag-chip.compact{
+    max-width:88px;
+  }
+  .tag-manage-input-row{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .tag-manage-add{
+    width:100%;
+  }
+}
