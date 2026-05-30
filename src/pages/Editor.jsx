@@ -3570,7 +3570,7 @@ export default function Editor() {
               )}
 
               <div className="modal-label" style={{ marginTop: '14px' }}>Add tag</div>
-              <div className="tag-manage-input-row">
+              <div className="tag-manage-input-row single">
                 <input
                   className="modal-input"
                   placeholder="e.g. code, github…"
@@ -3580,9 +3580,6 @@ export default function Editor() {
                   maxLength={24}
                   autoFocus
                 />
-                <button type="button" className="btn btn-soft tag-manage-add" onClick={() => commitTag()}>
-                  Add
-                </button>
               </div>
 
               {savedTagOptions.length > 0 && (

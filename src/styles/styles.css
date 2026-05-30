@@ -3975,3 +3975,85 @@ body,
     border-radius:20px !important;
   }
 }
+
+
+/* v45: tag modal duplicate remove + compact horizontal chips */
+.tag-manage-input-row.single{
+  display:block !important;
+}
+.tag-manage-input-row.single .modal-input{
+  width:100% !important;
+}
+
+/* Current tags: horizontal scroll instead of wrapping/covering */
+.tag-manage-current{
+  display:flex !important;
+  flex-wrap:nowrap !important;
+  overflow-x:auto !important;
+  overflow-y:hidden !important;
+  gap:7px !important;
+  max-height:none !important;
+  padding:2px 2px 8px !important;
+  scrollbar-width:none !important;
+  -webkit-overflow-scrolling:touch !important;
+}
+.tag-manage-current::-webkit-scrollbar{display:none !important;}
+
+/* Saved tags: horizontal scroll, not 2-column grid */
+.saved-tags-list.in-modal{
+  display:flex !important;
+  flex-wrap:nowrap !important;
+  overflow-x:auto !important;
+  overflow-y:hidden !important;
+  gap:7px !important;
+  max-height:none !important;
+  padding:2px 2px 8px !important;
+  scrollbar-width:none !important;
+  -webkit-overflow-scrolling:touch !important;
+}
+.saved-tags-list.in-modal::-webkit-scrollbar{display:none !important;}
+
+/* Round-square compact tag chips */
+.tag-chip.manage,
+.saved-tags-list.in-modal .saved-tag-option,
+.tag-chip.compact{
+  flex:0 0 auto !important;
+  width:auto !important;
+  max-width:118px !important;
+  min-height:28px !important;
+  height:28px !important;
+  padding:0 9px !important;
+  border-radius:10px !important;
+  font-size:11px !important;
+  line-height:1 !important;
+  font-weight:800 !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+
+.tag-chip.manage span,
+.saved-tags-list.in-modal .saved-tag-option span,
+.tag-chip.compact{
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+}
+
+.saved-tags-list.in-modal .saved-tag-option{
+  justify-content:flex-start !important;
+  color:var(--text-2) !important;
+  background:var(--surface2) !important;
+  border:1px solid var(--border) !important;
+}
+
+.saved-tags-list.in-modal .saved-tag-option i,
+.tag-chip.manage i{
+  font-size:9px !important;
+  flex:0 0 auto !important;
+}
+
+/* Modal action remains only: Close + Add */
+.modal-actions-2col{
+  grid-template-columns:1fr 1fr !important;
+}
