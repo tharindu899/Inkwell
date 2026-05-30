@@ -758,3 +758,5 @@ Made with 🖊️ by [tharindu899](https://github.com/tharindu899)
 
 
 - Tag selector updated: the editor footer now stays compact, and full tag management opens in a modal.
+
+- Manage Tags modal is now compact, smaller, and uses a 2-column action layout.

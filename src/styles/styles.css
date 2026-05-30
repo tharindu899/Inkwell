@@ -3885,3 +3885,93 @@ body,
     width:100%;
   }
 }
+
+
+/* v44: compact manage tags modal */
+.tag-manage-modal{
+  width:min(92vw, 360px) !important;
+  max-width:360px !important;
+  padding:18px !important;
+  border-radius:22px !important;
+}
+.tag-manage-modal .modal-title{
+  font-size:20px !important;
+  margin-bottom:4px !important;
+}
+.tag-manage-modal .modal-sub{
+  font-size:12px !important;
+  line-height:1.45 !important;
+  margin-bottom:12px !important;
+}
+.tag-manage-modal .modal-label{
+  margin:0 0 7px !important;
+  font-size:11px !important;
+}
+.tag-manage-current{
+  gap:6px !important;
+  max-height:88px;
+  overflow:auto;
+  padding-right:2px;
+}
+.tag-chip.manage{
+  min-height:28px !important;
+  padding:0 10px !important;
+  font-size:12px !important;
+}
+.tag-chip.manage i{
+  font-size:10px !important;
+}
+.tag-manage-empty{
+  padding:10px 12px !important;
+  font-size:12px !important;
+  border-radius:12px !important;
+}
+.tag-manage-input-row{
+  gap:8px !important;
+}
+.tag-manage-input-row .modal-input{
+  min-height:40px !important;
+  padding:0 12px !important;
+  font-size:13px !important;
+}
+.tag-manage-add{
+  min-width:64px !important;
+  height:40px !important;
+  padding:0 14px !important;
+  border-radius:12px !important;
+}
+.saved-tags-list.in-modal{
+  display:grid !important;
+  grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+  gap:8px !important;
+  max-height:152px !important;
+  overflow:auto !important;
+  padding-right:2px !important;
+}
+.saved-tags-list.in-modal .saved-tag-option{
+  width:100% !important;
+  justify-content:flex-start !important;
+  min-height:34px !important;
+  border-radius:12px !important;
+  padding:0 10px !important;
+  font-size:12px !important;
+}
+.modal-actions-2col{
+  display:grid !important;
+  grid-template-columns:1fr 1fr !important;
+  gap:10px !important;
+  margin-top:14px !important;
+}
+.modal-actions-2col .btn{
+  width:100% !important;
+  min-height:42px !important;
+  border-radius:14px !important;
+}
+@media(max-width:430px){
+  .tag-manage-modal{
+    width:calc(100% - 26px) !important;
+    max-width:none !important;
+    padding:16px !important;
+    border-radius:20px !important;
+  }
+}

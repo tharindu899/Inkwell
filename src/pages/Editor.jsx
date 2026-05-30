@@ -3580,7 +3580,7 @@ export default function Editor() {
                   maxLength={24}
                   autoFocus
                 />
-                <button type="button" className="btn btn-primary tag-manage-add" onClick={() => commitTag()}>
+                <button type="button" className="btn btn-soft tag-manage-add" onClick={() => commitTag()}>
                   Add
                 </button>
               </div>
@@ -3604,8 +3604,26 @@ export default function Editor() {
                 </>
               )}
 
-              <div className="modal-actions">
-                <button className="btn btn-ghost" onClick={() => { setTagManageModal(false); setTagInput(''); }}>Close</button>
+              <div className="modal-actions modal-actions-2col">
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => { setTagManageModal(false); setTagInput(''); }}
+                >
+                  Close
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    if (tagInput.trim()) {
+                      commitTag();
+                    } else {
+                      setTagManageModal(false);
+                      setTagInput('');
+                    }
+                  }}
+                >
+                  Add
+                </button>
               </div>
             </div>
           </div>
