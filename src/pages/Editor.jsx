@@ -3359,31 +3359,19 @@ export default function Editor() {
 
           {/* ── Bottom editor panel: tags, notebook, words/chars */}
           <div className="editor-bottom-panel" id="editor-bottom-panel">
-          <div className="tags-row tags-selector" id="tags-row" onClick={() => setTagManageModal(true)}>
+          <div className="nb-selector tag-selector-row" id="tags-row" onClick={() => setTagManageModal(true)}>
             <i className="fa-solid fa-tag" />
-            <div className="tag-selector-main">
-              {(note.tags || []).length ? (
-                <div className="tag-selector-chips">
-                  {(note.tags || []).slice(0, 2).map(t => (
-                    <span key={t} className="tag-chip compact">{t}</span>
-                  ))}
-                  {(note.tags || []).length > 2 && (
-                    <span className="tag-chip compact more">+{(note.tags || []).length - 2} more</span>
-                  )}
-                </div>
-              ) : (
-                <span className="tag-selector-placeholder">No tags selected</span>
-              )}
-            </div>
-            <button
-              type="button"
-              className="tag-picker-btn"
-              title="Manage tags"
-              aria-label="Manage tags"
-              onClick={(e) => { e.stopPropagation(); setTagManageModal(true); }}
-            >
-              <i className="fa-solid fa-chevron-up" style={{ fontSize: 11 }} />
-            </button>
+            {(note.tags || []).length ? (
+              <span className="nb-sel-text tag-sel-text">
+                In <span className="tag-sel-name">{(note.tags || []).slice(0, 2).join(', ')}</span>
+                {(note.tags || []).length > 2 ? ` +${(note.tags || []).length - 2} more` : ''}
+              </span>
+            ) : (
+              <span className="nb-sel-text tag-sel-empty" style={{ color: 'var(--text-3)' }}>
+                No tags selected
+              </span>
+            )}
+            <i className="fa-solid fa-chevron-up" style={{ fontSize: 11, color: 'var(--text-3)' }} />
           </div>
 
           {/* ── Notebook selector ── */}

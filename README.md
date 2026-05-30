@@ -762,3 +762,5 @@ Made with 🖊️ by [tharindu899](https://github.com/tharindu899)
 - Manage Tags modal is now compact, smaller, and uses a 2-column action layout.
 
 - Manage Tags modal now uses horizontal scrolling compact tag chips and removes duplicate Add controls.
+
+- Editor tag selector now matches the notebook selector style, and the Tags page uses compact note-like tag pills.

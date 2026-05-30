@@ -4057,3 +4057,108 @@ body,
 .modal-actions-2col{
   grid-template-columns:1fr 1fr !important;
 }
+
+
+/* v46: editor tag selector matches notebook selector */
+.tag-selector-row{
+  cursor:pointer;
+}
+.tag-selector-row .tag-sel-text{
+  flex:1;
+  min-width:0;
+  font-size:13px;
+  color:var(--text-2);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.tag-selector-row .tag-sel-name{
+  color:var(--accent-text, var(--accent));
+  font-weight:700;
+}
+.tag-selector-row .tag-sel-empty{
+  flex:1;
+}
+.tag-selector-row .tag-sel-text,
+.tag-selector-row .tag-sel-empty{
+  padding-right:8px;
+}
+.tags-selector,
+.tag-selector-main,
+.tag-selector-chips,
+.tag-picker-btn{
+  all: unset;
+}
+#tags-row.tags-selector{
+  display:none !important;
+}
+
+/* v46: tags page all tags like note tags */
+.tags-page .tag-cloud{
+  display:flex !important;
+  flex-wrap:wrap !important;
+  gap:10px !important;
+  margin:8px 0 14px !important;
+}
+.tags-page .tag-pill{
+  width:auto !important;
+  max-width:100% !important;
+  min-height:38px !important;
+  height:38px !important;
+  padding:0 12px !important;
+  border-radius:16px !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  gap:8px !important;
+  background:var(--surface) !important;
+  border:1px solid var(--border) !important;
+  box-shadow:none !important;
+}
+.tags-page .tag-pill.on{
+  background:var(--accent-dim) !important;
+  border-color:rgba(240,138,57,.45) !important;
+}
+.tags-page .tag-pill i{
+  width:auto !important;
+  font-size:11px !important;
+  color:var(--accent) !important;
+}
+.tags-page .tag-pill .tag-name{
+  max-width:120px !important;
+  font-size:13px !important;
+  font-weight:700 !important;
+  line-height:1 !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+}
+.tags-page .tag-cnt{
+  min-width:20px !important;
+  height:20px !important;
+  padding:0 6px !important;
+  border-radius:10px !important;
+  font-size:10px !important;
+  line-height:20px !important;
+  background:rgba(255,255,255,.06) !important;
+  color:var(--text-2) !important;
+}
+.tags-page .tag-pill.on .tag-cnt{
+  background:rgba(240,138,57,.20) !important;
+  color:var(--accent) !important;
+}
+@media (max-width:430px){
+  .tags-page .tag-cloud{
+    gap:8px !important;
+  }
+  .tags-page .tag-pill{
+    min-height:36px !important;
+    height:36px !important;
+    padding:0 11px !important;
+    border-radius:15px !important;
+  }
+  .tags-page .tag-pill .tag-name{
+    max-width:96px !important;
+    font-size:12px !important;
+  }
+}
