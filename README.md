@@ -683,7 +683,7 @@ The `docs/` folder keeps release/setup notes separate from the main README.
 | [`docs/EDITOR.md`](docs/EDITOR.md) | Editor save, markdown, paste, tag chips, and mobile stability notes |
 | [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md) | Final checks before publishing a public release |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Full app update history and release notes template |
-| [`docs/WELCOME_NOTE.md`](docs/WELCOME_NOTE.md) | First-time welcome note and editor toolbar examples |
+| [`docs/WELCOME_NOTE.md`](docs/WELCOME_NOTE.md) | App welcome note and editor toolbar examples |
 
 Recommended reading order:
 
@@ -796,4 +796,8 @@ Made with 🖊️ by [tharindu899](https://github.com/tharindu899)
 
 - Added selected delete confirmation modal with 5-second Undo toast.
 
-- Welcome note demonstrates all main editor toolbar options for first-time users.
+- App welcome note v1.2.1 demonstrates all main editor toolbar options for first-time users.
+
+- App welcome note refreshes only the built-in `welcome-note`; it does not overwrite user notes.
+
+- Added full toolbar examples inside the actual app welcome note.

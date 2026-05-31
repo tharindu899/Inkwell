@@ -67,5 +67,5 @@ Optional:
 
 ## Current release run
 
-- Current release run: v1.2.0
+- Current release run: v1.2.1
 - Changelog top entry must match the GitHub Release tag.

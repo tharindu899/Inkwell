@@ -7,11 +7,23 @@ Use the GitHub Release description/body for the short changelog shown inside the
 
 ---
 
+## v1.2.1
+
+### Added
+- App welcome note now includes full toolbar examples.
+
+### Updated
+- App welcome note version updated to v1.2.1.
+- Welcome note seed refresh version updated to v1.2.1.
+
+---
+
 ## v1.2.0
 
 ### Added
-- Welcome note now includes examples for all main editor toolbar options.
+- App welcome note now includes examples for all main editor toolbar options.
 - Added `docs/WELCOME_NOTE.md`.
+- Refreshes existing `welcome-note` safely without touching real user notes.
 
 ### Updated
 - Changelog version corrected to the current release run.

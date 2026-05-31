@@ -4353,3 +4353,12 @@ body,
   font-size:22px;
   color:var(--accent);
 }
+
+
+/* v55: app welcome note full toolbar examples */
+.editor-body .drawing-placeholder{
+  background:linear-gradient(135deg, rgba(240,138,57,.10), var(--surface2));
+}
+.editor-body .image-placeholder span{
+  pointer-events:none;
+}
