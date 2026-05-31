@@ -227,6 +227,7 @@ See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md).
 │   ├── 🎨 ANDROID_ICON.md              # Android adaptive icon sizing
 │   ├── ✅ RELEASE_CHECK.md             # Release safety checklist
 │   ├── 📝 CHANGELOG.md                  # App update history
+│   ├── 👋 WELCOME_NOTE.md                # Welcome note toolbar examples
 │   ├── 🌓 THEME.md                     # Theme persistence notes
 │   ├── ✍️ EDITOR.md                    # Editor stability checklist
 │   └── 🖼️ app-icon-preview.png         # Icon preview for README
@@ -682,6 +683,7 @@ The `docs/` folder keeps release/setup notes separate from the main README.
 | [`docs/EDITOR.md`](docs/EDITOR.md) | Editor save, markdown, paste, tag chips, and mobile stability notes |
 | [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md) | Final checks before publishing a public release |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Full app update history and release notes template |
+| [`docs/WELCOME_NOTE.md`](docs/WELCOME_NOTE.md) | First-time welcome note and editor toolbar examples |
 
 Recommended reading order:
 
@@ -793,3 +795,5 @@ Made with 🖊️ by [tharindu899](https://github.com/tharindu899)
 - Tags page uses independent note-size tag pills, and notebook badges use the matching notebook icon.
 
 - Added selected delete confirmation modal with 5-second Undo toast.
+
+- Welcome note demonstrates all main editor toolbar options for first-time users.

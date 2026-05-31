@@ -64,3 +64,8 @@ Optional:
 - `docs/CHANGELOG.md` updated for the new version.
 - GitHub Release description/body includes the short changelog.
 - Release body does not contain very long commit URLs that make the app popup ugly.
+
+## Current release run
+
+- Current release run: v1.2.0
+- Changelog top entry must match the GitHub Release tag.

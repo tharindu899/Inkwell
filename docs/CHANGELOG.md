@@ -7,6 +7,17 @@ Use the GitHub Release description/body for the short changelog shown inside the
 
 ---
 
+## v1.2.0
+
+### Added
+- Welcome note now includes examples for all main editor toolbar options.
+- Added `docs/WELCOME_NOTE.md`.
+
+### Updated
+- Changelog version corrected to the current release run.
+
+---
+
 ## v1.0.9
 
 ### Fixed

@@ -4332,3 +4332,24 @@ body,
   min-height:44px !important;
   border-radius:15px !important;
 }
+
+
+/* v51: welcome guide note placeholders */
+.editor-body .image-placeholder{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  min-height:96px;
+  border:1px dashed var(--border);
+  background:var(--surface2);
+  color:var(--text-3);
+  border-radius:16px;
+  margin:10px 0;
+  font-size:13px;
+  font-weight:700;
+}
+.editor-body .image-placeholder i{
+  font-size:22px;
+  color:var(--accent);
+}
