@@ -56,3 +56,5 @@ Optional:
 - Markdown ON/OFF works for saved notes.
 - Reading Mode returns to previous editor mode.
 - Background save works on Android pause.
+
+- Added selected delete confirmation modal with 5-second Undo toast.

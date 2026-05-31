@@ -26,6 +26,7 @@ export default function Home() {
   // ── multi-select state ──────────────────
   const [selectMode, setSelectMode] = useState(false);
   const [selected,   setSelected]   = useState(new Set());
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const enterSelectMode = useCallback((firstId) => {
     setSelectMode(true);
@@ -42,6 +43,7 @@ export default function Home() {
   }, []);
 
   function cancelSelectMode() {
+    setDeleteConfirmOpen(false);
     setSelectMode(false);
     setSelected(new Set());
   }
@@ -75,12 +77,28 @@ export default function Home() {
   }
 
   function handleBulkDelete() {
+    if (selected.size === 0) return;
+    setDeleteConfirmOpen(true);
+    haptic('light');
+  }
+
+  function confirmBulkDelete() {
     const deletedNotes = [...selected].map(id => notes.find(n => n.id === id)).filter(Boolean);
     const count = deletedNotes.length;
+    if (!count) {
+      setDeleteConfirmOpen(false);
+      return;
+    }
+
     deletedNotes.forEach(n => deleteNote(n.id));
     dispatch({ type: 'RELOAD' });
+    setDeleteConfirmOpen(false);
+    setSelectMode(false);
+    setSelected(new Set());
+
     showToast(`${count} note${count > 1 ? 's' : ''} deleted`, 'fa-trash-can', {
       label: 'Undo',
+      // Toast action stays visible for about 5 seconds.
       onClick: () => {
         deletedNotes.forEach(n => saveNote(n));
         dispatch({ type: 'RELOAD' });
@@ -88,7 +106,6 @@ export default function Home() {
       },
     });
     haptic('heavy');
-    cancelSelectMode();
   }
 
   function movePinnedNote(activeId, overId) {
@@ -338,6 +355,31 @@ export default function Home() {
       </main>
 
       {!selectMode && <Fab />}
+      {deleteConfirmOpen && (
+        <div className="modal-overlay show select-delete-confirm" onClick={(e) => {
+          if (e.target === e.currentTarget) setDeleteConfirmOpen(false);
+        }}>
+          <div className="modal select-delete-modal">
+            <div className="select-delete-icon">
+              <i className="fa-regular fa-trash-can" />
+            </div>
+            <div className="modal-title">Delete selected notes?</div>
+            <div className="modal-sub">
+              {selected.size} selected note{selected.size !== 1 ? 's' : ''} will be deleted.
+              You can undo for 5 seconds after deleting.
+            </div>
+            <div className="modal-actions modal-actions-2col">
+              <button className="btn btn-ghost" onClick={() => setDeleteConfirmOpen(false)}>
+                Cancel
+              </button>
+              <button className="btn btn-danger" onClick={confirmBulkDelete}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <BottomNav active="home" />
       <Toast />
     </div>

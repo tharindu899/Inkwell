@@ -41,11 +41,11 @@ export default function Toast() {
     return () => { _setToast = null; };
   }, []);
 
-  // Auto-dismiss after 2600 ms, or a little longer when an Undo action is shown.
+  // Auto-dismiss after 2600 ms, or 5 seconds when an Undo action is shown.
   useEffect(() => {
     if (!toast) return;
     clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setToast(null), toast.action ? 5200 : 2600);
+    timerRef.current = setTimeout(() => setToast(null), toast.action ? 5000 : 2600);
     return () => clearTimeout(timerRef.current);
   }, [toast]);
 

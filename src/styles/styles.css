@@ -4283,3 +4283,52 @@ body,
 }
 
 /* v48: unselected all-tags chips are neutral; selected chips are highlighted */
+
+
+/* v49: selected delete confirmation + 5s undo */
+.select-delete-modal{
+  max-width:390px !important;
+  text-align:center !important;
+  padding:22px 20px 18px !important;
+  border-radius:26px !important;
+}
+.select-delete-icon{
+  width:58px;
+  height:58px;
+  margin:0 auto 12px;
+  border-radius:20px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(224,96,96,.14);
+  color:#e06060;
+  font-size:24px;
+}
+.select-delete-modal .modal-title{
+  font-family:var(--font-s);
+  font-size:24px !important;
+  line-height:1.1;
+  margin-bottom:8px !important;
+}
+.select-delete-modal .modal-sub{
+  color:var(--text-2);
+  font-size:13px;
+  line-height:1.5;
+  max-width:300px;
+  margin:0 auto 16px;
+}
+.btn-danger{
+  background:#e06060 !important;
+  color:#fff !important;
+  border-color:#e06060 !important;
+}
+.select-delete-modal .modal-actions-2col{
+  display:grid !important;
+  grid-template-columns:1fr 1fr !important;
+  gap:10px !important;
+}
+.select-delete-modal .modal-actions-2col .btn{
+  width:100% !important;
+  min-height:44px !important;
+  border-radius:15px !important;
+}
