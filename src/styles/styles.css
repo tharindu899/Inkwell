@@ -4174,9 +4174,9 @@ body,
 }
 .tags-page .all-tag-chip{
   appearance:none !important;
-  border:1px solid rgba(240,138,57,.16) !important;
-  background:rgba(240,138,57,.10) !important;
-  color:var(--accent) !important;
+  border:1px solid var(--border) !important;
+  background:var(--surface2) !important;
+  color:var(--text-1) !important;
   min-height:28px !important;
   height:28px !important;
   max-width:150px !important;
@@ -4211,8 +4211,8 @@ body,
   height:16px !important;
   padding:0 5px !important;
   border-radius:999px !important;
-  background:rgba(240,138,57,.16) !important;
-  color:var(--accent) !important;
+  background:rgba(255,255,255,.06) !important;
+  color:var(--text-2) !important;
   display:inline-flex !important;
   align-items:center !important;
   justify-content:center !important;
@@ -4222,6 +4222,10 @@ body,
 .tags-page .all-tag-chip.active{
   background:rgba(240,138,57,.20) !important;
   border-color:rgba(240,138,57,.38) !important;
+  color:var(--accent) !important;
+}
+.tags-page .all-tag-chip.active .all-tag-count{
+  background:rgba(240,138,57,.18) !important;
   color:var(--accent) !important;
 }
 .tags-page .active-note-tag{
@@ -4277,3 +4281,5 @@ body,
     font-size:10.5px !important;
   }
 }
+
+/* v48: unselected all-tags chips are neutral; selected chips are highlighted */
