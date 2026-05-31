@@ -9,6 +9,9 @@ Use the GitHub Release description/body for the short changelog shown inside the
 
 ## v1.2.1
 
+### Fixed
+- Fixed welcome note seed build syntax by escaping markdown backtick examples.
+
 ### Added
 - App welcome note now includes full toolbar examples.
 

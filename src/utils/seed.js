@@ -175,7 +175,7 @@ git push</code></pre>
           <td>Number list</td>
         </tr>
         <tr>
-          <td><code>```</code></td>
+          <td><code>&#96;&#96;&#96;</code></td>
           <td>Code block</td>
         </tr>
       </tbody>
