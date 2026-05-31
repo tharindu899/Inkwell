@@ -71,3 +71,5 @@ Optional:
 - Changelog top entry must match the GitHub Release tag.
 
 - Welcome note seed has no raw triple backticks inside JavaScript template literals.
+
+- Welcome note should not show a fixed version tag in title or tags.

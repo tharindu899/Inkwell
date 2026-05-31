@@ -26,8 +26,11 @@ The welcome note is only created when local note storage is empty. It does not o
 
 ## Current app welcome note
 
-- Current welcome note version: **v1.2.1**
+- Current welcome note title: **Welcome to Inkwell**
 - The actual app welcome note is created/updated by `src/utils/seed.js`.
 - It now includes examples for all main toolbar options.
 - Existing real user notes are not overwritten.
 - If a `welcome-note` already exists, only that built-in app welcome note is refreshed.
+
+- The visible welcome note does not show a fixed app version or version tag.
+- The internal seed version can still refresh the built-in welcome note after updates.

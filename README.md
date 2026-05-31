@@ -796,10 +796,12 @@ Made with 🖊️ by [tharindu899](https://github.com/tharindu899)
 
 - Added selected delete confirmation modal with 5-second Undo toast.
 
-- App welcome note v1.2.1 demonstrates all main editor toolbar options for first-time users.
+- App welcome note demonstrates all main editor toolbar options for first-time users.
 
 - App welcome note refreshes only the built-in `welcome-note`; it does not overwrite user notes.
 
 - Added full toolbar examples inside the actual app welcome note.
 
 - Added GitHub theme as the third app appearance option.
+
+- Welcome note no longer shows a fixed version tag; it can refresh through internal seed updates.

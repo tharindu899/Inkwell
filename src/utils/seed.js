@@ -7,13 +7,13 @@ import { K, saveNotes } from '../store/storage';
 import { countWords } from './helpers';
 
 const WELCOME_STORAGE_VERSION = 'iw_seed_version';
-const CURRENT_SEED_VERSION = 'welcome-all-toolbar-examples-v1.2.1';
+const CURRENT_SEED_VERSION = 'welcome-all-toolbar-examples-no-version-v1';
 
 export function createWelcomeNote() {
   const now = new Date().toISOString();
 
   const content = `
-    <h1>Welcome to Inkwell v1.2.1</h1>
+    <h1>Welcome to Inkwell</h1>
 
     <p>
       This is the built-in app welcome note. It shows examples for the main editor toolbar tools.
@@ -191,18 +191,24 @@ git push</code></pre>
       Reading mode hides editing controls for clean reading. Save keeps your note updated.
     </p>
 
+    <h2>19. App updates</h2>
+    <p>
+      This welcome note can be refreshed by app updates when new editor examples or guides are added.
+      It does not need to show a fixed version number.
+    </p>
+
     <p><strong>Tip:</strong> Select any text in this note and tap toolbar buttons to test every option.</p>
   `.trim();
 
   return {
     id: 'welcome-note',
-    title: 'Welcome to Inkwell v1.2.1',
+    title: 'Welcome to Inkwell',
     content,
     markdown: '',
     notebookId: null,
     notebookName: 'Welcome',
     notebookColor: '#E07B39',
-    tags: ['welcome', 'guide', 'toolbar', 'examples', 'v1.2.1'],
+    tags: ['welcome', 'guide', 'toolbar', 'examples'],
     pinned: true,
     favorite: false,
     createdAt: now,

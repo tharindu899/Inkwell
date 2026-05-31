@@ -344,13 +344,13 @@ export default function Settings() {
           <div className="sg-label">Appearance</div>
 
           <div className="si theme-setting-row">
-            <div className="si-icon ac"><i className="fa-brands fa-github" /></div>
+            <div className="si-icon ac"><i className="fa-solid fa-palette" /></div>
             <div className="si-body">
               <div className="si-label">Theme</div>
-              <div className="si-sub">Choose Light, Dark, or GitHub style</div>
+              <div className="si-sub">Light, Dark, or GitHub</div>
             </div>
-            <div className="si-right">
-              <div className="seg-control theme-seg">
+            <div className="si-right theme-right">
+              <div className="seg-control theme-seg icon-only" aria-label="Theme selector">
                 {[
                   { key: 'light', label: 'Light', icon: 'fa-regular fa-sun' },
                   { key: 'dark', label: 'Dark', icon: 'fa-regular fa-moon' },
@@ -358,6 +358,9 @@ export default function Settings() {
                 ].map(t => (
                   <button
                     key={t.key}
+                    type="button"
+                    title={t.label}
+                    aria-label={`${t.label} theme`}
                     className={`seg-btn theme-seg-btn${theme === t.key ? ' on' : ''}`}
                     onClick={() => {
                       setTheme(t.key);
@@ -365,7 +368,6 @@ export default function Settings() {
                     }}
                   >
                     <i className={t.icon} />
-                    <span>{t.label}</span>
                   </button>
                 ))}
               </div>

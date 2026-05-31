@@ -45,3 +45,7 @@ The GitHub theme uses GitHub dark style colors:
 - border: `#30363D`
 - accent blue: `#2F81F7`
 - text: `#E6EDF3`
+
+## Settings UI
+
+The Settings page theme selector is icon-only: sun, moon, and GitHub icons.

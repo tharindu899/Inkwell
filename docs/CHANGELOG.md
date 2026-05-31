@@ -9,6 +9,12 @@ Use the GitHub Release description/body for the short changelog shown inside the
 
 ## v1.2.1
 
+### Changed
+- Removed visible version text/tag from app welcome note.
+
+### Fixed
+- Settings theme selector is now icon-only and compact on mobile.
+
 ### Added
 - Added GitHub as a third app theme.
 
