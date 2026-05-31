@@ -226,6 +226,7 @@ See [`docs/ANDROID_ICON.md`](docs/ANDROID_ICON.md).
 │   ├── 📲 APP_UPDATE_INSTALL.md        # In-app APK updater/install flow
 │   ├── 🎨 ANDROID_ICON.md              # Android adaptive icon sizing
 │   ├── ✅ RELEASE_CHECK.md             # Release safety checklist
+│   ├── 📝 CHANGELOG.md                  # App update history
 │   ├── 🌓 THEME.md                     # Theme persistence notes
 │   ├── ✍️ EDITOR.md                    # Editor stability checklist
 │   └── 🖼️ app-icon-preview.png         # Icon preview for README
@@ -680,6 +681,7 @@ The `docs/` folder keeps release/setup notes separate from the main README.
 | [`docs/THEME.md`](docs/THEME.md) | Light/dark theme persistence details |
 | [`docs/EDITOR.md`](docs/EDITOR.md) | Editor save, markdown, paste, tag chips, and mobile stability notes |
 | [`docs/RELEASE_CHECK.md`](docs/RELEASE_CHECK.md) | Final checks before publishing a public release |
+| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Full app update history and release notes template |
 
 Recommended reading order:
 
@@ -690,9 +692,32 @@ Recommended reading order:
 5. `EDITOR.md`
 
 
+---
+
+## 📝 Changelog
+
+Full update history is available in [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
+
+For the in-app update popup, write the newest changes in the **GitHub Release description/body**. Inkwell reads that release body and shows the short changelog in the update sheet.
+
+Recommended release body format:
+
+```md
+## Inkwell v1.0.9
+
+### Fixed
+- Added selected delete confirmation
+- Added 5-second Undo after delete
+- Fixed Tags page selected/unselected colors
+
+### Install
+Tap Install in the app update popup or download the APK below.
+```
+
+
 ## 📲 App Updates
 
-Inkwell checks GitHub Releases for a newer Android APK.
+Inkwell checks GitHub Releases for a newer Android APK. The app uses the GitHub Release description/body as changelog text for the update popup.
 
 ### What the update popup shows
 

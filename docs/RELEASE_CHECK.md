@@ -58,3 +58,9 @@ Optional:
 - Background save works on Android pause.
 
 - Added selected delete confirmation modal with 5-second Undo toast.
+
+## Changelog checks
+
+- `docs/CHANGELOG.md` updated for the new version.
+- GitHub Release description/body includes the short changelog.
+- Release body does not contain very long commit URLs that make the app popup ugly.

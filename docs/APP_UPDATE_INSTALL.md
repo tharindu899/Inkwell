@@ -31,3 +31,18 @@ Silent install is not allowed for normal Android apps. The system installer conf
 | Installer does not open | Enable “Install unknown apps” for Inkwell |
 | Already updated | Installed version equals latest release tag |
 | No APK found | Attach the `.apk` file to the GitHub Release |
+
+## Release changelog
+
+The update popup can show a short changelog from the GitHub Release description/body.
+
+Keep it short and clean:
+
+```md
+### Fixed
+- Fixed selected delete confirmation
+- Fixed Tags page colors
+- Improved editor tag selector
+```
+
+For full history, use `docs/CHANGELOG.md`.
