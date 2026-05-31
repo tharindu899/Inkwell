@@ -53,7 +53,7 @@ export default function Settings() {
   const { notes, notebooks, dispatch } = useAppStore();
   const { user, getToken }        = useAuth();
 
-  const { theme, toggleTheme }    = useTheme();
+  const { theme, setTheme }       = useTheme();
   const { fontSize, setFontSize } = useFontSize();
 
   const [prefs,       setPrefs]      = useState(getPrefs);
@@ -343,20 +343,33 @@ export default function Settings() {
         <div className="settings-group">
           <div className="sg-label">Appearance</div>
 
-          <div className="si">
-            <div className="si-icon ac"><i className="fa-regular fa-moon" /></div>
+          <div className="si theme-setting-row">
+            <div className="si-icon ac"><i className="fa-brands fa-github" /></div>
             <div className="si-body">
-              <div className="si-label">Dark mode</div>
-              <div className="si-sub">Switch between light and dark themes</div>
+              <div className="si-label">Theme</div>
+              <div className="si-sub">Choose Light, Dark, or GitHub style</div>
             </div>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={theme === 'dark'}
-                onChange={() => { toggleTheme(); showToast(theme === 'dark' ? 'Light mode on' : 'Dark mode on', 'fa-moon'); }}
-              />
-              <div className="toggle-track"><div className="toggle-thumb" /></div>
-            </label>
+            <div className="si-right">
+              <div className="seg-control theme-seg">
+                {[
+                  { key: 'light', label: 'Light', icon: 'fa-regular fa-sun' },
+                  { key: 'dark', label: 'Dark', icon: 'fa-regular fa-moon' },
+                  { key: 'github', label: 'GitHub', icon: 'fa-brands fa-github' },
+                ].map(t => (
+                  <button
+                    key={t.key}
+                    className={`seg-btn theme-seg-btn${theme === t.key ? ' on' : ''}`}
+                    onClick={() => {
+                      setTheme(t.key);
+                      showToast(`${t.label} theme on`, t.icon);
+                    }}
+                  >
+                    <i className={t.icon} />
+                    <span>{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="si">

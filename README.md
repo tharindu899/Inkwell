@@ -801,3 +801,5 @@ Made with 🖊️ by [tharindu899](https://github.com/tharindu899)
 - App welcome note refreshes only the built-in `welcome-note`; it does not overwrite user notes.
 
 - Added full toolbar examples inside the actual app welcome note.
+
+- Added GitHub theme as the third app appearance option.

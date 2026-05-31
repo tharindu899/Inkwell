@@ -9,6 +9,9 @@ Use the GitHub Release description/body for the short changelog shown inside the
 
 ## v1.2.1
 
+### Added
+- Added GitHub as a third app theme.
+
 ### Fixed
 - Fixed welcome note seed build syntax by escaping markdown backtick examples.
 

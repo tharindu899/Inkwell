@@ -4362,3 +4362,132 @@ body,
 .editor-body .image-placeholder span{
   pointer-events:none;
 }
+
+
+/* v57: third theme — GitHub dark */
+[data-theme="github"]{
+  --accent:#2F81F7;
+  --accent2:#8B949E;
+  --ink:#E6EDF3;
+  --ink2:#8B949E;
+  --ink3:#484F58;
+  --surface:#0D1117;
+  --surface2:#161B22;
+  --surface3:#21262D;
+  --border:#30363D;
+  --green:#3FB950;
+  --red:#F85149;
+  --yellow:#D29922;
+
+  --bg:var(--surface);
+  --bg-card:var(--surface2);
+  --bg-elevated:var(--surface3);
+  --bg-input:var(--surface2);
+  --text-1:var(--ink);
+  --text-2:var(--ink2);
+  --text-3:var(--ink3);
+  --border-hi:var(--border);
+  --danger:var(--red);
+  --success:var(--green);
+  --info:var(--accent);
+  --accent-dim:rgba(47,129,247,.14);
+  --accent-glow:rgba(47,129,247,.30);
+  --sh:0 10px 30px rgba(1,4,9,.55);
+  --sh-sm:0 2px 12px rgba(1,4,9,.35);
+}
+
+[data-theme="github"] html,
+[data-theme="github"] body,
+[data-theme="github"] #root,
+[data-theme="github"] .app-shell{
+  background:#0D1117 !important;
+}
+
+[data-theme="github"] .top-bar,
+[data-theme="github"] .bottom-nav,
+[data-theme="github"] .settings-group,
+[data-theme="github"] .note-card,
+[data-theme="github"] .modal,
+[data-theme="github"] .search-bar,
+[data-theme="github"] .editor-toolbar,
+[data-theme="github"] .editor-bottom-panel{
+  background:#161B22 !important;
+  border-color:#30363D !important;
+}
+
+[data-theme="github"] .icon-btn,
+[data-theme="github"] .si,
+[data-theme="github"] .sort-btn,
+[data-theme="github"] .editor-stat-card,
+[data-theme="github"] .tb-btn,
+[data-theme="github"] .seg-control{
+  background:#21262D !important;
+  border-color:#30363D !important;
+}
+
+[data-theme="github"] .icon-btn:hover,
+[data-theme="github"] .icon-btn:active,
+[data-theme="github"] .sort-btn.on,
+[data-theme="github"] .seg-btn.on,
+[data-theme="github"] .tb-btn.on,
+[data-theme="github"] .tb-btn:hover{
+  background:#1F6FEB !important;
+  border-color:#2F81F7 !important;
+  color:#FFFFFF !important;
+}
+
+[data-theme="github"] .n-tag,
+[data-theme="github"] .tag-chip,
+[data-theme="github"] .all-tag-chip.active,
+[data-theme="github"] .active-note-tag{
+  background:rgba(47,129,247,.14) !important;
+  color:#58A6FF !important;
+  border-color:rgba(47,129,247,.28) !important;
+}
+
+[data-theme="github"] .editor-body pre,
+[data-theme="github"] .editor-body .ed-code,
+[data-theme="github"] .update-notes{
+  background:#0D1117 !important;
+  border-color:#30363D !important;
+  color:#E6EDF3 !important;
+}
+
+.theme-setting-row{
+  align-items:flex-start !important;
+}
+.theme-seg{
+  gap:3px !important;
+  flex-wrap:wrap !important;
+  justify-content:flex-end !important;
+  max-width:210px !important;
+}
+.theme-seg-btn{
+  display:inline-flex !important;
+  align-items:center !important;
+  gap:5px !important;
+  min-height:30px !important;
+  padding:6px 8px !important;
+  font-size:11px !important;
+}
+.theme-seg-btn i{
+  font-size:11px !important;
+}
+@media(max-width:430px){
+  .theme-setting-row{
+    flex-wrap:wrap !important;
+  }
+  .theme-setting-row .si-right{
+    width:100% !important;
+    margin-left:52px !important;
+  }
+  .theme-seg{
+    max-width:none !important;
+    width:100% !important;
+    justify-content:stretch !important;
+  }
+  .theme-seg-btn{
+    flex:1 1 0 !important;
+    justify-content:center !important;
+  }
+}

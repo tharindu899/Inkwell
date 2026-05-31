@@ -15,7 +15,8 @@ export const FONT_SIZES = {
 };
 
 // ─── useTheme ─────────────────────────────
-const normalizeTheme = (value) => (value === 'light' || value === 'dark' ? value : 'dark');
+const THEME_KEYS = ['light', 'dark', 'github'];
+const normalizeTheme = (value) => (THEME_KEYS.includes(value) ? value : 'dark');
 
 export function useTheme() {
   const [theme, setThemeState] = useState(() => {
@@ -58,7 +59,7 @@ export function useTheme() {
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
+    setTheme(theme === 'dark' ? 'github' : theme === 'github' ? 'light' : 'dark');
   }, [theme, setTheme]);
 
   return { theme, setTheme, toggleTheme };

@@ -24,7 +24,7 @@ import './styles/styles.css';
 // until Settings page mounts useTheme().
 try {
   const savedTheme = localStorage.getItem('iw_theme');
-  const theme = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark';
+  const theme = savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'github' ? savedTheme : 'dark';
   document.documentElement.setAttribute('data-theme', theme);
 } catch {
   document.documentElement.setAttribute('data-theme', 'dark');
