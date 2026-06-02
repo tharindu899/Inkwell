@@ -1252,7 +1252,9 @@ export default function Editor() {
       if (vv) {
         offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
       }
+      const visibleHeight = vv ? Math.max(0, vv.height) : window.innerHeight;
       root.style.setProperty('--keyboard-offset', `${Math.round(offset)}px`);
+      root.style.setProperty('--visible-viewport-h', `${Math.round(visibleHeight)}px`);
       root.classList.toggle('keyboard-open', offset > 80);
     };
     updateKeyboardOffset();
@@ -1261,6 +1263,7 @@ export default function Editor() {
     window.addEventListener('resize', updateKeyboardOffset);
     return () => {
       root.style.removeProperty('--keyboard-offset');
+      root.style.removeProperty('--visible-viewport-h');
       root.classList.remove('keyboard-open');
       window.visualViewport?.removeEventListener('resize', updateKeyboardOffset);
       window.visualViewport?.removeEventListener('scroll', updateKeyboardOffset);

@@ -4569,3 +4569,33 @@ body,
     width:36px !important;
   }
 }
+
+
+/* =========================================================
+   v50: remove typing-space footer while the mobile keyboard is open
+   - Hides tags/notebook/word footer during typing so the keyboard does
+     not waste editor space.
+   - Shrinks the editor shell to the real VisualViewport height, keeping
+     the caret and latest line above the Android keyboard.
+   ========================================================= */
+:root{--visible-viewport-h:100dvh;}
+html.keyboard-open .app-shell:has(.editor-shell){
+  height:var(--visible-viewport-h)!important;
+  min-height:var(--visible-viewport-h)!important;
+  max-height:var(--visible-viewport-h)!important;
+}
+html.keyboard-open .editor-content-area{
+  padding-bottom:0!important;
+}
+html.keyboard-open .editor-body{
+  padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))!important;
+  scroll-padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));
+}
+html.keyboard-open .editor-bottom-panel{
+  display:none!important;
+}
+html.keyboard-open .nb-picker-bottom,
+html.keyboard-open .modal-overlay,
+html.keyboard-open .sheet-overlay{
+  bottom:0!important;
+}
