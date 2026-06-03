@@ -165,22 +165,78 @@ function escAttr(str = '') {
 function htmlToMarkdown(html = '') {
   const wrap = document.createElement('div');
   wrap.innerHTML = html;
-  wrap.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-  wrap.querySelectorAll('hr').forEach(hr => hr.replaceWith('\n---\n'));
-  wrap.querySelectorAll('pre').forEach(pre =>
-    pre.replaceWith('\n```\n' + (pre.innerText || '').replace(/\n+$/, '') + '\n```\n'));
-  wrap.querySelectorAll('h1').forEach(e => e.replaceWith('# ' + e.innerText.trim() + '\n'));
-  wrap.querySelectorAll('h2').forEach(e => e.replaceWith('## ' + e.innerText.trim() + '\n'));
-  wrap.querySelectorAll('h3').forEach(e => e.replaceWith('### ' + e.innerText.trim() + '\n'));
-  wrap.querySelectorAll('blockquote').forEach(e =>
-    e.replaceWith('> ' + e.innerText.trim().replace(/\n/g, '\n> ') + '\n'));
-  wrap.querySelectorAll('strong,b').forEach(e => e.replaceWith('**' + e.innerText + '**'));
-  wrap.querySelectorAll('em,i').forEach(e => e.replaceWith('*' + e.innerText + '*'));
-  wrap.querySelectorAll('s,strike,del').forEach(e => e.replaceWith('~~' + e.innerText + '~~'));
-  wrap.querySelectorAll('u').forEach(e => e.replaceWith('<u>' + e.innerText + '</u>'));
-  wrap.querySelectorAll('a').forEach(e => e.replaceWith('[' + e.innerText + '](' + e.href + ')'));
-  wrap.querySelectorAll('code').forEach(e =>
-    e.closest('pre') ? null : e.replaceWith('`' + e.innerText + '`'));
+
+  // Convert complex blocks before reading text, otherwise reopened notes lose
+  // GitHub tables/images and degrade into plain pipe/text paragraphs.
+  wrap.querySelectorAll('pre').forEach(pre => {
+    const code = pre.querySelector('code');
+    const text = (code ? code.innerText : pre.innerText || pre.textContent || '')
+      .replace(/^(Copy|Delete|Bottom)\s*/g, '')
+      .replace(/\n+$/g, '');
+    pre.replaceWith(document.createTextNode(`\n\n\`\`\`\n${text}\n\`\`\`\n\n`));
+  });
+
+  wrap.querySelectorAll('.md-table-wrap').forEach(holder => {
+    const table = holder.querySelector('table');
+    if (!table) return;
+    holder.replaceWith(document.createTextNode(`\n\n${tableToMarkdown(table)}\n\n`));
+  });
+  wrap.querySelectorAll('table').forEach(table => {
+    table.replaceWith(document.createTextNode(`\n\n${tableToMarkdown(table)}\n\n`));
+  });
+
+  wrap.querySelectorAll('figure.editor-figure').forEach(fig => {
+    const img = fig.querySelector('img');
+    if (!img) return;
+    const src = normalizeMarkdownAssetUrl(img.getAttribute('src') || '');
+    const alt = img.getAttribute('alt') || 'image';
+    const link = img.closest('a')?.getAttribute('href') || '';
+    const md = src
+      ? (link ? `[![${alt.replace(/]/g, '\\]')}](${src})](${link})` : `![${alt.replace(/]/g, '\\]')}](${src})`)
+      : alt;
+    fig.replaceWith(document.createTextNode(`\n${md}\n`));
+  });
+
+  wrap.querySelectorAll('hr').forEach(hr => hr.replaceWith(document.createTextNode('\n\n---\n\n')));
+  wrap.querySelectorAll('br').forEach(br => br.replaceWith(document.createTextNode('\n')));
+
+  wrap.querySelectorAll('h1').forEach(e => e.replaceWith(document.createTextNode(`# ${e.innerText.trim()}\n\n`)));
+  wrap.querySelectorAll('h2').forEach(e => e.replaceWith(document.createTextNode(`## ${e.innerText.trim()}\n\n`)));
+  wrap.querySelectorAll('h3').forEach(e => e.replaceWith(document.createTextNode(`### ${e.innerText.trim()}\n\n`)));
+  wrap.querySelectorAll('h4').forEach(e => e.replaceWith(document.createTextNode(`#### ${e.innerText.trim()}\n\n`)));
+  wrap.querySelectorAll('h5').forEach(e => e.replaceWith(document.createTextNode(`##### ${e.innerText.trim()}\n\n`)));
+  wrap.querySelectorAll('h6').forEach(e => e.replaceWith(document.createTextNode(`###### ${e.innerText.trim()}\n\n`)));
+
+  wrap.querySelectorAll('blockquote').forEach(e => {
+    const text = (e.innerText || '').trim().replace(/\n/g, '\n> ');
+    e.replaceWith(document.createTextNode(text ? `\n> ${text}\n\n` : '\n'));
+  });
+
+  wrap.querySelectorAll('a').forEach(e => {
+    const img = e.querySelector('img');
+    if (img) {
+      const src = normalizeMarkdownAssetUrl(img.getAttribute('src') || '');
+      const alt = img.getAttribute('alt') || 'image';
+      const href = e.getAttribute('href') || '';
+      if (src && href) e.replaceWith(document.createTextNode(`[![${alt.replace(/]/g, '\\]')}](${src})](${href})`));
+      return;
+    }
+    const href = e.getAttribute('href') || '';
+    e.replaceWith(document.createTextNode(href ? `[${e.innerText || href}](${href})` : (e.innerText || '')));
+  });
+  wrap.querySelectorAll('img').forEach(e => {
+    const src = normalizeMarkdownAssetUrl(e.getAttribute('src') || '');
+    const alt = e.getAttribute('alt') || 'image';
+    e.replaceWith(document.createTextNode(src ? `![${alt.replace(/]/g, '\\]')}](${src})` : alt));
+  });
+  wrap.querySelectorAll('code').forEach(e => {
+    if (!e.closest('pre')) e.replaceWith(document.createTextNode('`' + (e.innerText || '').replace(/`/g, '\\`') + '`'));
+  });
+  wrap.querySelectorAll('strong,b').forEach(e => e.replaceWith(document.createTextNode('**' + e.innerText + '**')));
+  wrap.querySelectorAll('em,i').forEach(e => e.replaceWith(document.createTextNode('*' + e.innerText + '*')));
+  wrap.querySelectorAll('s,strike,del').forEach(e => e.replaceWith(document.createTextNode('~~' + e.innerText + '~~')));
+  wrap.querySelectorAll('u').forEach(e => e.replaceWith(document.createTextNode('<u>' + e.innerText + '</u>')));
+
   wrap.querySelectorAll('ol').forEach(ol =>
     [...ol.children].forEach((li, i) => { li.dataset.mdPrefix = (i + 1) + '. '; }));
   wrap.querySelectorAll('ul').forEach(ul =>
@@ -190,14 +246,12 @@ function htmlToMarkdown(html = '') {
     const box = li.querySelector('.check-box');
     const checked = input ? input.checked : (box?.dataset.checked === 'true');
     const isTask = !!input || !!box || !!li.closest('ul.check-list');
-    const prefix = isTask
-      ? (checked ? '- [x] ' : '- [ ] ')
-      : (li.dataset.mdPrefix || '- ');
+    const prefix = isTask ? (checked ? '- [x] ' : '- [ ] ') : (li.dataset.mdPrefix || '- ');
     if (input) input.remove();
     if (box) box.remove();
-    li.replaceWith(prefix + li.innerText.trim() + '\n');
+    li.replaceWith(document.createTextNode(prefix + li.innerText.trim() + '\n'));
   });
-  wrap.querySelectorAll('p,div').forEach(e => e.append('\n'));
+  wrap.querySelectorAll('p,div').forEach(e => e.append(document.createTextNode('\n')));
 
   return normalizeEditorMarkdownSpacing(wrap.innerText || wrap.textContent || '');
 }
@@ -253,7 +307,100 @@ function removeMarkdownTypingGaps(markdown = '') {
     return lines.filter(l => l.trim()).join('\n').trim();
   }
 
+
   return source.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function normalizeMarkdownTextCell(text = '') {
+  return String(text || '')
+    .replace(/\|/g, '\\|')
+    .replace(/\n+/g, '<br>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function htmlInlineToMarkdown(node) {
+  if (!node) return '';
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+  const tag = node.tagName.toLowerCase();
+  const childText = [...node.childNodes].map(htmlInlineToMarkdown).join('');
+
+  if (tag === 'br') return '<br>';
+  if (tag === 'code') return '`' + (node.innerText || node.textContent || '').replace(/`/g, '\\`') + '`';
+  if (tag === 'strong' || tag === 'b') return `**${childText}**`;
+  if (tag === 'em' || tag === 'i') return `*${childText}*`;
+  if (tag === 's' || tag === 'del' || tag === 'strike') return `~~${childText}~~`;
+  if (tag === 'u') return `<u>${childText}</u>`;
+  if (tag === 'img') {
+    const src = normalizeMarkdownAssetUrl(node.getAttribute('src') || '');
+    const alt = node.getAttribute('alt') || 'image';
+    return src ? `![${alt.replace(/]/g, '\\]')}](${src})` : alt;
+  }
+  if (tag === 'a') {
+    const href = node.getAttribute('href') || '';
+    if (!href) return childText;
+    return `[${childText.trim() || href}](${href})`;
+  }
+  return childText;
+}
+
+function tableToMarkdown(table) {
+  const rows = [...table.querySelectorAll('tr')].map(tr =>
+    [...tr.children]
+      .filter(cell => ['TH', 'TD'].includes(cell.tagName))
+      .map(cell => normalizeMarkdownTextCell([...cell.childNodes].map(htmlInlineToMarkdown).join('')))
+  ).filter(row => row.length);
+
+  if (!rows.length) return '';
+  const columnCount = Math.max(...rows.map(row => row.length));
+  const pad = row => Array.from({ length: columnCount }, (_, i) => row[i] || '');
+  const header = pad(rows[0]);
+  const bodyRows = rows.slice(1).map(pad);
+  const separator = header.map(() => '---');
+  return [header, separator, ...bodyRows]
+    .map(row => `| ${row.join(' | ')} |`)
+    .join('\n');
+}
+
+function extractTitleFromMarkdownSource(source = '') {
+  const raw = String(source || '');
+  const h1 = raw.match(/^\s{0,3}#\s+(.+?)\s*#*\s*$/m);
+  const htmlH1 = raw.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
+  const candidate = h1?.[1] || htmlH1?.[1] || '';
+  const cleaned = String(candidate || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[`*_~>#]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.slice(0, 80);
+}
+
+function isDefaultUntitledTitle(title = '') {
+  const t = String(title || '').trim();
+  return !t || /^untitled$/i.test(t) || /^new note$/i.test(t);
+}
+
+function markdownSourceLikelyDegradedForContent(contentHtml = '', markdown = '') {
+  const html = String(contentHtml || '');
+  const md = String(markdown || '');
+  if (!html.trim() || !md.trim()) return false;
+
+  const hasTableHtml = /<table\b/i.test(html);
+  const hasMarkdownTable = /^\s*\|.*\|\s*\n\s*\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/m.test(md);
+  if (hasTableHtml && !hasMarkdownTable) return true;
+
+  const htmlImageCount = (html.match(/<img\b/gi) || []).length;
+  const markdownImageCount = (md.match(/!\[[^\]]*\]\([^)]*\)/g) || []).length + (md.match(/<img\b/gi) || []).length;
+  if (htmlImageCount > markdownImageCount) return true;
+
+  const hasComplexHtml = /<(details|summary|thead|tbody|tr|th|td)\b/i.test(html);
+  const hasComplexMarkdown = /(<details\b|<summary\b|^\s*\|.*\|\s*$)/mi.test(md);
+  if (hasComplexHtml && !hasComplexMarkdown) return true;
+
+  return false;
 }
 
 function normalizeMarkdownAssetUrl(url = '') {
@@ -529,7 +676,10 @@ function getNoteMarkdownSource(note = {}) {
   const content = String(note.content || '');
   const rawText = stripHtml(content);
 
-  if (savedMd.trim() && !markdownSourceLooksStale(content, savedMd)) return removeMarkdownTypingGaps(savedMd);
+  if (savedMd.trim() && !markdownSourceLooksStale(content, savedMd) && !markdownSourceLikelyDegradedForContent(content, savedMd)) {
+    return removeMarkdownTypingGaps(savedMd);
+  }
+  if (content && !contentLooksLikeRawSource(content)) return htmlToMarkdown(content);
   if (content && (looksLikeHtmlSource(rawText) || looksLikeMarkdown(rawText))) return removeMarkdownTypingGaps(rawText);
   return htmlToMarkdown(content);
 }
@@ -1026,6 +1176,12 @@ export default function Editor() {
   // Before switching to text view or saving, rebuild the Markdown source from
   // the visible DOM so ON/OFF never drops freshly typed lines.
   const renderedDomDirtyRef = useRef(false);
+  // True when markdownSourceRef already contains the exact text the user pasted
+  // or typed in source mode. Saving rendered mode should not rebuild it unless
+  // the user edits the rendered DOM afterwards.
+  const preserveExactMarkdownSourceRef = useRef(false);
+  const pasteRenderGuardRef = useRef(false);
+  const dirtyRef = useRef(false);
 
   const [spellcheckEnabled, setSpellcheckEnabled] = useState(() => {
     const p = getPrefs();
@@ -1054,6 +1210,9 @@ export default function Editor() {
     // is no longer trustworthy; rebuild from the visible editor before any
     // mode switch/read/save operation.
     if (renderedDomDirtyRef.current && body && !sourceViewRef.current) {
+      if (preserveExactMarkdownSourceRef.current && String(markdownSourceRef.current || '').trim()) {
+        return markdownSourceRef.current;
+      }
       const fresh = htmlToMarkdown(getCleanHtml());
       markdownSourceRef.current = fresh;
       return fresh;
@@ -1081,6 +1240,7 @@ export default function Editor() {
     if (renderedMode && currentlySource) {
       const source = body.textContent || body.innerText || '';
       markdownSourceRef.current = source;
+      preserveExactMarkdownSourceRef.current = true;
       const renderedOk = safeSetEditorHtml(body, safeMarkdownToHtml(source), source);
       sourceViewRef.current = !renderedOk;
       renderedDomDirtyRef.current = false;
@@ -1092,6 +1252,7 @@ export default function Editor() {
       // Markdown stays stable across ON/OFF toggles.
       const source = getStableMarkdownSource();
       markdownSourceRef.current = source;
+      preserveExactMarkdownSourceRef.current = true;
       body.textContent = source;
       sourceViewRef.current = true;
       renderedDomDirtyRef.current = false;
@@ -1115,6 +1276,7 @@ export default function Editor() {
       ? (body.textContent || body.innerText || '')
       : getStableMarkdownSource();
     markdownSourceRef.current = source || '';
+    preserveExactMarkdownSourceRef.current = true;
 
     const renderedOk = safeSetEditorHtml(body, safeMarkdownToHtml(source || ''), source || '');
     sourceViewRef.current = !renderedOk;
@@ -1300,8 +1462,10 @@ export default function Editor() {
     const source = getNoteMarkdownSource(note);
     const content = String(note.content || '');
     const hasMarkdownSource = !!String(note.markdown || '').trim();
-    const shouldUseSavedHtml = !hasMarkdownSource && !!content.trim() && !contentLooksLikeRawSource(content);
+    const degradedMarkdown = hasMarkdownSource && markdownSourceLikelyDegradedForContent(content, note.markdown || '');
+    const shouldUseSavedHtml = (!hasMarkdownSource || degradedMarkdown) && !!content.trim() && !contentLooksLikeRawSource(content);
     markdownSourceRef.current = source || '';
+    preserveExactMarkdownSourceRef.current = true;
     renderedDomDirtyRef.current = false;
     if (markdownEnabled) {
       const renderedOk = safeSetEditorHtml(
@@ -1332,7 +1496,7 @@ export default function Editor() {
   /* ─────────────────── Save flush on background / unmount ── */
   useEffect(() => {
     const flush = () => {
-      if (dirty) saveNowRef.current?.(true);
+      if (dirtyRef.current) saveNowRef.current?.(true);
     };
 
     const onVisibility = () => {
@@ -1554,6 +1718,7 @@ export default function Editor() {
     if (sourceViewRef.current) {
       const source = body.textContent || body.innerText || '';
       markdownSourceRef.current = source;
+      preserveExactMarkdownSourceRef.current = true;
       renderedDomDirtyRef.current = false;
       return source;
     }
@@ -1613,6 +1778,7 @@ export default function Editor() {
     if (data.sourceMode) {
       bodyRef.current.textContent = data.content || '';
       markdownSourceRef.current = data.content || '';
+      preserveExactMarkdownSourceRef.current = true;
       sourceViewRef.current = true;
       renderedDomDirtyRef.current = false;
       setMarkdownSourceClass(true);
@@ -1620,6 +1786,7 @@ export default function Editor() {
       bodyRef.current.innerHTML = data.content || '';
       sourceViewRef.current = false;
       renderedDomDirtyRef.current = !!data.renderedDirty;
+      preserveExactMarkdownSourceRef.current = !data.renderedDirty;
       setMarkdownSourceClass(false);
       safeEnhanceEditorBody(bodyRef.current, markDirty);
     }
@@ -1691,18 +1858,21 @@ export default function Editor() {
   const saveNow = useCallback((silent = false) => {
     if (savingLockRef.current) return;
 
-    const title   = (titleRef.current?.value || '').trim();
+    const typedTitle = (titleRef.current?.value || '').trim();
+    const markdownSource = getMarkdownSource();
     const content = getCleanHtml();
     const text    = getCleanText();
+    const derivedTitle = extractTitleFromMarkdownSource(markdownSource);
+    const finalTitle = isDefaultUntitledTitle(typedTitle) ? (derivedTitle || typedTitle || 'Untitled') : typedTitle;
 
     const base = noteRef.current;
     if (!base) return;
 
     const updated = {
       ...base,
-      title:     title || 'Untitled',
+      title:     finalTitle || 'Untitled',
       content,
-      markdown:  getMarkdownSource(),
+      markdown:  markdownSource,
       wordCount: countWords(text),
       updatedAt: new Date().toISOString(),
     };
@@ -1717,7 +1887,7 @@ export default function Editor() {
       pinned: !!updated.pinned,
     });
 
-    if (!dirty && lastSavedHashRef.current === saveHash) return;
+    if (!dirtyRef.current && lastSavedHashRef.current === saveHash) return;
 
     savingLockRef.current = true;
     try {
@@ -1726,6 +1896,8 @@ export default function Editor() {
       updateNote(updated);
       lastSavedHashRef.current = saveHash;
       renderedDomDirtyRef.current = false;
+      preserveExactMarkdownSourceRef.current = true;
+      dirtyRef.current = false;
       if (isMountedRef.current) {
         setDirty(false);
         setSaveState('saved');
@@ -1740,11 +1912,12 @@ export default function Editor() {
     } finally {
       savingLockRef.current = false;
     }
-  }, [dispatch, dirty]);
+  }, [dispatch]);
   saveNowRef.current = saveNow;
 
   function markDirty(recordHistory = true) {
     if (!noteRef.current) return;
+    dirtyRef.current = true;
     setDirty(true);
     setSaveState('saving');
     if (recordHistory) scheduleEditorHistory();
@@ -2939,13 +3112,20 @@ export default function Editor() {
     const body = bodyRef.current;
     if (sourceViewRef.current) {
       markdownSourceRef.current = body?.textContent || body?.innerText || '';
+      preserveExactMarkdownSourceRef.current = true;
       renderedDomDirtyRef.current = false;
       markDirty();
       updateWC();
       updateTbState();
       return;
     }
-    renderedDomDirtyRef.current = true;
+    if (pasteRenderGuardRef.current) {
+      renderedDomDirtyRef.current = false;
+      preserveExactMarkdownSourceRef.current = true;
+    } else {
+      renderedDomDirtyRef.current = true;
+      preserveExactMarkdownSourceRef.current = false;
+    }
     enhanceCodeBlocks(body);
     enhanceCheckLists(body);
     // Debounce collapse enhance: normalizeNestedLists moves DOM nodes and
@@ -3123,9 +3303,20 @@ export default function Editor() {
       markdownSourceRef.current = `${before}${before.trim() ? '\n\n' : ''}${pasteSource}`;
     }
 
+    preserveExactMarkdownSourceRef.current = true;
+    pasteRenderGuardRef.current = true;
     document.execCommand('insertHTML', false, rendered);
+    window.setTimeout(() => { pasteRenderGuardRef.current = false; }, 250);
     safeEnhanceEditorBody(body, markDirty);
-    if (!sourceViewRef.current) renderedDomDirtyRef.current = true;
+    if (!sourceViewRef.current) renderedDomDirtyRef.current = false;
+
+    const suggestedTitle = extractTitleFromMarkdownSource(pasteSource);
+    if (suggestedTitle && titleRef.current && isDefaultUntitledTitle(titleRef.current.value)) {
+      titleRef.current.value = suggestedTitle;
+      autoResize(titleRef.current);
+      updateNote(n => n ? { ...n, title: suggestedTitle } : n);
+    }
+
     markDirty(false);
     updateWC();
     updateTbState();
@@ -3298,6 +3489,7 @@ export default function Editor() {
     setNbCreateModal(false);
     setNbPicker(false);
     setNbForm(EMPTY_NOTEBOOK_FORM);
+    dirtyRef.current = false;
     setDirty(false);
     setSaveState('saved');
     showToast('Notebook created and selected', 'fa-book-open');
@@ -3374,7 +3566,7 @@ export default function Editor() {
      Back
      ────────────────────────────────────────────────── */
   function handleBack() {
-    if (dirty) saveNowRef.current?.(true);
+    if (dirtyRef.current) saveNowRef.current?.(true);
     navigate(-1);
   }
 

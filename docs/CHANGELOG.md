@@ -7,6 +7,20 @@ Use the GitHub Release description/body for the short changelog shown inside the
 
 ---
 
+## v1.2.4
+
+### Fixed
+- Fixed pasted GitHub Markdown being saved as degraded rendered text after closing and reopening a note.
+- Fixed README table, badge, image, and link structure staying intact after Save and reopen.
+- Fixed new Markdown notes deriving the note title from the first `# Heading` instead of saving as Untitled.
+- Fixed immediate Save/back after paste by using a dirty-state ref so changes are not missed.
+
+### Tested
+- Tested locally with `npm run dev` in a mobile viewport using the uploaded README sample.
+- Verified reopen keeps GitHub tables and images rendered in the editor.
+
+---
+
 ## v1.2.3
 
 ### Fixed
