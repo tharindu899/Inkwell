@@ -261,6 +261,26 @@ function safeUrlAttr(url = '') {
   return '';
 }
 
+function clampNumber(value, min, max, fallback = min) {
+  const n = Number.parseFloat(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function mediaFigureHtml(src = '', alt = 'image', href = '') {
+  const s = safeUrlAttr(src);
+  if (!s) return escH(alt || 'image');
+  const label = escAttr(alt || 'image');
+  const isDrawing = /drawing|sketch/i.test(String(alt || ''));
+  const media = isDrawing ? 'drawing' : 'image';
+  const figClass = isDrawing ? 'drawing-figure' : 'photo-figure';
+  const width = isDrawing ? 190 : 180;
+  const img = `<img src="${s}" alt="${label}" class="editor-inline-image" loading="lazy">`;
+  const h = href ? safeUrlAttr(href) : '';
+  const content = h ? `<a href="${h}" target="_blank" rel="noreferrer">${img}</a>` : img;
+  return `<figure class="editor-figure ${figClass}" contenteditable="false" data-media="${media}" style="width:${width}px">${content}</figure>`;
+}
+
 function preprocessPastedMarkdown(md = '') {
   let text = String(md || '').replace(/\r\n/g, '\n');
 
@@ -305,13 +325,10 @@ function inlineMarkdown(text = '') {
   let html = escH(text);
 
   html = html.replace(new RegExp('\\[!\\[([^\\]]*)\\]\\(' + imgUrl + '\\)\\]\\((https?:\\/\\/[^\\s)]+)\\)', 'g'), (m, alt, src, href) => {
-    const s = safeUrlAttr(src);
-    const h = safeUrlAttr(href);
-    return s && h ? `<a href="${h}" target="_blank" rel="noreferrer"><img src="${s}" alt="${escAttr(alt)}" loading="lazy"></a>` : escH(alt);
+    return mediaFigureHtml(src, alt || 'image', href);
   });
   html = html.replace(new RegExp('!\\[([^\\]]*)\\]\\(' + imgUrl + '\\)', 'g'), (m, alt, src) => {
-    const s = safeUrlAttr(src);
-    return s ? `<img src="${s}" alt="${escAttr(alt)}" loading="lazy">` : escH(alt);
+    return mediaFigureHtml(src, alt || 'image');
   });
   return html
     .replace(/`([^`\n]+)`/g, '<code>$1</code>')
@@ -529,7 +546,7 @@ function renderStoredMarkdownSource(note = {}) {
 function sanitizeEditorHtml(raw = '') {
   const doc = new DOMParser().parseFromString(String(raw), 'text/html');
   doc.querySelectorAll('script,style,iframe,object,embed,form,input,button,textarea,select,meta,link').forEach(n => n.remove());
-  const allowed = new Set(['P','DIV','BR','H1','H2','H3','H4','H5','H6','UL','OL','LI','BLOCKQUOTE','PRE','CODE','STRONG','B','EM','I','U','S','DEL','A','IMG','TABLE','THEAD','TBODY','TR','TH','TD','HR','SPAN','CENTER']);
+  const allowed = new Set(['P','DIV','BR','H1','H2','H3','H4','H5','H6','UL','OL','LI','BLOCKQUOTE','PRE','CODE','STRONG','B','EM','I','U','S','DEL','A','IMG','FIGURE','TABLE','THEAD','TBODY','TR','TH','TD','HR','SPAN','CENTER']);
 
   const cleanNode = (node) => {
     if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent || '');
@@ -538,6 +555,19 @@ function sanitizeEditorHtml(raw = '') {
     const tag = allowed.has(node.tagName) ? node.tagName.toLowerCase() : 'span';
     const el = document.createElement(tag === 'center' ? 'div' : tag);
     if (tag === 'center') el.style.textAlign = 'center';
+
+    if (tag === 'figure') {
+      const media = String(node.getAttribute('data-media') || '').toLowerCase() === 'drawing' ? 'drawing' : 'image';
+      el.className = `editor-figure ${media === 'drawing' ? 'drawing-figure' : 'photo-figure'}`;
+      el.setAttribute('contenteditable', 'false');
+      el.dataset.media = media;
+      const width = clampNumber(node.style?.width || node.getAttribute('width') || '', 90, 900, media === 'drawing' ? 190 : 180);
+      el.style.width = `${width}px`;
+      const ml = clampNumber(node.style?.marginLeft || '', 0, 900, 0);
+      const mt = clampNumber(node.style?.marginTop || '', 0, 300, 0);
+      if (ml) el.style.marginLeft = `${ml}px`;
+      if (mt) el.style.marginTop = `${mt}px`;
+    }
 
     if (tag === 'a') {
       const href = node.getAttribute('href') || '';
@@ -1007,6 +1037,7 @@ export default function Editor() {
       enhanceCheckLists(body);
       enhanceCollapsibleLists(body);
       enhanceMediaItems(body);
+      normalizeFigurePositions(body);
       attachCodeBlockHandlers(body, markDirty);
     } else if (!renderedMode && !currentlySource) {
       // If the user typed in rendered mode, rebuild source from the visible DOM.
@@ -1497,6 +1528,13 @@ export default function Editor() {
     if (sourceViewRef.current) return markdownToHtml(body.textContent || body.innerText || '');
     const clone = body.cloneNode(true);
     clone.querySelectorAll('.code-actions,.media-delete-btn,.media-resize-handle,.media-drag-chip,.li-collapse-toggle').forEach(b => b.remove());
+    clone.querySelectorAll('figure.editor-figure').forEach(fig => {
+      fig.style.transform = '';
+      fig.removeAttribute('data-x');
+      fig.removeAttribute('data-y');
+      fig.setAttribute('contenteditable', 'false');
+      fig.style.maxWidth = 'calc(100% - 8px)';
+    });
     clone.querySelectorAll('ul,ol').forEach(list => {
       if (list.style && list.style.display === 'none') list.style.display = '';
     });
@@ -1915,6 +1953,7 @@ export default function Editor() {
     enhanceCheckLists(body);
     enhanceCollapsibleLists(body);
     enhanceMediaItems(body);
+    normalizeFigurePositions(body);
     attachCodeBlockHandlers(body, markDirty);
     placeCaretInCode(code);
     markDirty();
@@ -2197,8 +2236,11 @@ export default function Editor() {
     const start = getClientPoint(e);
     const startX = start.x;
     const startY = start.y;
-    const baseX = Number(fig.dataset.x || '0');
-    const baseY = Number(fig.dataset.y || '0');
+    const body = bodyRef.current;
+    const figRect = fig.getBoundingClientRect();
+    const maxLeft = Math.max(0, (body?.clientWidth || 360) - figRect.width - 20);
+    const baseX = clampNumber(fig.style.marginLeft || fig.dataset.x || '', 0, maxLeft, 0);
+    const baseY = clampNumber(fig.style.marginTop || fig.dataset.y || '', 0, 80, 0);
     const useTouch = start.isTouch;
     let moved = false;
 
@@ -2210,11 +2252,17 @@ export default function Editor() {
       const dx = Math.round(p.x - startX);
       const dy = Math.round(p.y - startY);
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-      const nextX = Math.max(-220, Math.min(220, baseX + dx));
-      const nextY = Math.max(-220, Math.min(220, baseY + dy));
-      fig.dataset.x = String(nextX);
-      fig.dataset.y = String(nextY);
-      fig.style.transform = `translate(${nextX}px, ${nextY}px)`;
+
+      // Use margins instead of transform. Transform only moves the pixels while
+      // the original figure still keeps its old layout space, which caused the
+      // Markdown render mode image/drawing to overlap text and create fake gaps.
+      const nextX = Math.max(0, Math.min(maxLeft, baseX + dx));
+      const nextY = Math.max(0, Math.min(80, baseY + dy));
+      fig.style.transform = '';
+      fig.removeAttribute('data-x');
+      fig.removeAttribute('data-y');
+      fig.style.marginLeft = nextX ? `${nextX}px` : '';
+      fig.style.marginTop = nextY ? `${nextY}px` : '';
     };
 
     const onUp = () => {
@@ -2223,6 +2271,7 @@ export default function Editor() {
       window.removeEventListener(useTouch ? 'touchend' : 'pointerup', onUp, true);
       if (!useTouch) window.removeEventListener('pointercancel', onUp, true);
       if (moved) {
+        normalizeFigurePositions(bodyRef.current);
         markDirty();
         updateTbState();
         showToast('Media moved', 'fa-arrows-up-down-left-right');
@@ -2306,38 +2355,88 @@ export default function Editor() {
     showToast('Media deleted', 'fa-trash-can');
   }
 
+  function wrapLooseEditorImages(root = bodyRef.current) {
+    if (!root) return;
+    root.querySelectorAll('img').forEach(img => {
+      if (img.closest('figure.editor-figure')) return;
+      if (img.closest('.media-delete-btn,.media-resize-handle,.media-drag-chip')) return;
+
+      const link = img.parentElement?.tagName === 'A' ? img.parentElement : null;
+      const subject = link || img;
+      const alt = img.getAttribute('alt') || 'image';
+      const isDrawing = /drawing|sketch/i.test(alt);
+      const figure = document.createElement('figure');
+      figure.className = `editor-figure ${isDrawing ? 'drawing-figure' : 'photo-figure'}`;
+      figure.contentEditable = 'false';
+      figure.dataset.media = isDrawing ? 'drawing' : 'image';
+      figure.style.width = isDrawing ? '190px' : '180px';
+      img.classList.add('editor-inline-image');
+      img.loading = 'lazy';
+      subject.replaceWith(figure);
+      figure.appendChild(subject);
+    });
+  }
+
   function enhanceMediaItems(root = bodyRef.current) {
     if (!root) return;
+    wrapLooseEditorImages(root);
     root.querySelectorAll('figure.editor-figure').forEach(fig => ensureMediaControls(fig));
   }
 
-  // Migrate old saved notes: figures stored inside <p> tags (invalid HTML) caused
-  // drawings to overlap text. This hoists every figure to be a direct child of
-  // the editor body and clears any stale inline display style.
+  // Migrate old saved notes: figures stored inside <p> tags or moved with CSS
+  // transforms caused drawings/photos to overlap text and create fake blank space.
+  // Keep media as normal block content so Markdown render mode stays stable.
   function normalizeFigurePositions(body) {
     if (!body) return;
-    body.querySelectorAll('figure.editor-figure').forEach(fig => {
-      // 1. Always clear inline display so the CSS class (display:block) wins
-      fig.style.display = '';
+    wrapLooseEditorImages(body);
+    const maxW = Math.max(120, (body.clientWidth || 360) - 28);
 
-      // 2. If the figure is nested inside something other than body, hoist it out
+    body.querySelectorAll('figure.editor-figure').forEach(fig => {
+      const isDrawing = fig.dataset.media === 'drawing' || fig.classList.contains('drawing-figure');
+
+      // 1. Always use normal document flow: no floating, no transform overlay.
+      const oldX = clampNumber(fig.dataset.x || '', -900, 900, 0);
+      const oldY = clampNumber(fig.dataset.y || '', -900, 900, 0);
+      fig.style.display = '';
+      fig.style.float = '';
+      fig.style.position = '';
+      fig.style.transform = '';
+      fig.removeAttribute('data-x');
+      fig.removeAttribute('data-y');
+
+      const width = clampNumber(fig.style.width || '', 90, maxW, isDrawing ? 190 : 180);
+      fig.style.width = `${width}px`;
+      fig.style.maxWidth = 'calc(100% - 8px)';
+      fig.style.boxSizing = 'border-box';
+
+      const ml = clampNumber(fig.style.marginLeft || oldX, 0, Math.max(0, maxW - width), 0);
+      const mt = clampNumber(fig.style.marginTop || oldY, 0, 80, 0);
+      fig.style.marginLeft = ml ? `${ml}px` : '';
+      fig.style.marginTop = mt ? `${mt}px` : '';
+
+      // 2. If the figure is nested inside a paragraph/div, hoist it out as a block.
       if (fig.parentNode !== body) {
         const parent = fig.parentNode;
-        // Insert figure right after its parent block
         parent.after(fig);
-        // If parent became empty, give it a placeholder
-        if (!parent.textContent?.trim() && !parent.querySelector(':not(br)')) {
-          parent.innerHTML = '<br>';
+        if (!parent.textContent?.trim() && !parent.querySelector('img,figure,table,pre,code')) {
+          parent.remove();
         }
       }
 
-      // 3. Ensure there is a paragraph right after the figure to type into
-      const next = fig.nextSibling;
-      if (!next || (next.nodeType === 1 && next.tagName !== 'P')) {
+      // 3. Remove accidental empty spacer block immediately before media.
+      const prev = fig.previousElementSibling;
+      if (prev && prev.matches('p,div') && !prev.textContent.trim() && !prev.querySelector('img,figure,table,pre,code')) {
+        prev.remove();
+      }
+
+      // 4. Keep one editable paragraph after media only when it is the last item.
+      if (!fig.nextElementSibling) {
         const after = document.createElement('p');
         after.innerHTML = '<br>';
         fig.after(after);
       }
+
+      ensureMediaControls(fig);
     });
   }
 
@@ -2407,6 +2506,7 @@ export default function Editor() {
     if (placeholder) placeholder.remove();
 
     enhanceMediaItems(body);
+    normalizeFigurePositions(body);
     placeCaretAtEnd(after);
     if (sel) {
       const next = document.createRange();
@@ -2982,6 +3082,7 @@ export default function Editor() {
     enhanceCheckLists(body);
     enhanceCollapsibleLists(body);
     enhanceMediaItems(body);
+    normalizeFigurePositions(body);
     attachCodeBlockHandlers(body, markDirty);
     if (!sourceViewRef.current) renderedDomDirtyRef.current = true;
     markDirty(false);
@@ -3331,7 +3432,9 @@ export default function Editor() {
         .draw-swatch.on{outline:2px solid var(--accent);outline-offset:2px}
         .draw-canvas-wrap{margin-top:12px;border:1px solid var(--border-hi);border-radius:16px;overflow:hidden;background:#f7f0df}
         .draw-canvas{display:block;width:100%;height:240px;touch-action:none;cursor:crosshair;background:#f7f0df}
-        .editor-figure{position:relative;display:block;clear:both;margin:10px 0 12px 0;width:180px;max-width:none;touch-action:none;user-select:none;cursor:default}
+        .editor-figure{position:relative;display:block;clear:both;margin:8px 0 10px 0;width:180px;max-width:calc(100% - 8px);box-sizing:border-box;touch-action:none;user-select:none;cursor:default;float:none!important;transform:none!important}
+        .editor-body > .editor-figure{margin-right:0}
+        .editor-body > .editor-figure + p{margin-top:0!important}
         .editor-figure:active{cursor:default}
         .editor-figure.media-selected{outline:2px solid var(--accent);outline-offset:4px;border-radius:16px}
         .editor-inline-image{display:block;width:100%;max-width:100%;height:auto;max-height:none;object-fit:contain;border-radius:14px;border:1px solid var(--border-hi);box-shadow:var(--sh);background:var(--bg-elevated);pointer-events:none}
@@ -3344,7 +3447,7 @@ export default function Editor() {
         .media-drag-chip{left:6px;top:6px;width:28px;height:28px;border-radius:999px;background:rgba(20,20,20,.64);color:#fff;font-size:11px;cursor:grab;touch-action:none}
         .media-drag-chip:active{cursor:grabbing}
         .image-placeholder{display:flex;align-items:center;justify-content:center;gap:10px;padding:26px 18px;border:1px dashed var(--border-hi);border-radius:16px;color:var(--text-3);background:var(--bg-elevated);margin:14px 0}
-        @media(max-width:430px){.editor-figure{width:150px}.drawing-figure{width:160px}.media-delete-btn,.media-resize-handle{width:28px;height:28px;font-size:11px}.media-drag-chip{width:26px;height:26px}}
+        @media(max-width:430px){.editor-figure{width:150px;max-width:calc(100% - 8px)}.drawing-figure{width:160px}.media-delete-btn,.media-resize-handle{width:28px;height:28px;font-size:11px}.media-drag-chip{width:26px;height:26px}}
       `}</style>
 
       <div className={`app-shell${isReadMode ? ' read-mode' : ''}`}>

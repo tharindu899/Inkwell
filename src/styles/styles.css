@@ -4650,3 +4650,34 @@ html.keyboard-open .sheet-overlay{
   margin-top:4px!important;
   margin-bottom:4px!important;
 }
+
+
+/* v43: flow-safe editor media — fixes Markdown ON image/drawing fake space */
+.editor-body figure.editor-figure{
+  position:relative !important;
+  display:block !important;
+  clear:both !important;
+  float:none !important;
+  transform:none !important;
+  max-width:calc(100% - 8px) !important;
+  box-sizing:border-box !important;
+  margin-top:8px;
+  margin-bottom:10px;
+}
+.editor-body figure.editor-figure + p{
+  margin-top:0 !important;
+}
+.editor-body figure.editor-figure img.editor-inline-image,
+.editor-body figure.editor-figure img{
+  display:block !important;
+  width:100% !important;
+  max-width:100% !important;
+  height:auto !important;
+  object-fit:contain !important;
+}
+.editor-body > img,
+.editor-body p > img{
+  display:block !important;
+  max-width:calc(100% - 8px) !important;
+  margin:8px 0 10px !important;
+}
