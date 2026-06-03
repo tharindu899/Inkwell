@@ -4599,3 +4599,54 @@ html.keyboard-open .modal-overlay,
 html.keyboard-open .sheet-overlay{
   bottom:0!important;
 }
+
+/* =========================================================
+   v51: remove extra typing line/paragraph space inside editor
+   - Normal Enter now looks like normal note typing, not big paragraphs.
+   - Keeps headings, lists, code blocks, quotes, tables and media spacing intact.
+   ========================================================= */
+.editor-body[contenteditable="true"]{
+  line-height:1.42!important;
+  letter-spacing:0!important;
+}
+.editor-body[contenteditable="true"] > p,
+.editor-body[contenteditable="true"] > div:not(.md-table-wrap):not(.code-actions):not(.code-scroll):not(.image-placeholder):not(.drawing-placeholder):not(.media-controls),
+.editor-body[contenteditable="true"] p{
+  margin-top:0!important;
+  margin-bottom:0!important;
+  line-height:1.42!important;
+  min-height:1.42em;
+}
+.editor-body[contenteditable="true"] > p + p,
+.editor-body[contenteditable="true"] > div + div,
+.editor-body[contenteditable="true"] > p + div,
+.editor-body[contenteditable="true"] > div + p{
+  margin-top:0!important;
+}
+.editor-body[contenteditable="true"] p:empty,
+.editor-body[contenteditable="true"] div:empty,
+.editor-body[contenteditable="true"] p:has(> br:only-child),
+.editor-body[contenteditable="true"] div:has(> br:only-child){
+  margin:0!important;
+  min-height:1.42em!important;
+}
+.editor-body[contenteditable="true"] ul,
+.editor-body[contenteditable="true"] ol{
+  margin-top:2px!important;
+  margin-bottom:4px!important;
+}
+.editor-body[contenteditable="true"] li{
+  margin-top:0!important;
+  margin-bottom:2px!important;
+  line-height:1.42!important;
+}
+.editor-body[contenteditable="true"] h1,
+.editor-body[contenteditable="true"] h2,
+.editor-body[contenteditable="true"] h3{
+  margin-top:8px!important;
+  margin-bottom:3px!important;
+}
+.editor-body[contenteditable="true"] blockquote{
+  margin-top:4px!important;
+  margin-bottom:4px!important;
+}

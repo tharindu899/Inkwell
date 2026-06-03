@@ -3149,10 +3149,11 @@ export default function Editor() {
         .editor-shell{display:flex;flex-direction:column;height:100%}
         .editor-content-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
         .editor-title{border-bottom:1px solid var(--border);font-size:21px;padding:16px 20px 14px;flex-shrink:0;width:100%;box-sizing:border-box;background:transparent;color:var(--text-1);resize:none;border-left:none;border-right:none;border-top:none;outline:none;font-family:var(--font-b)}
-        .editor-body{flex:1;overflow-y:auto;padding:12px 20px 24px;font-size:var(--editor-fs,15px);outline:none;min-height:120px}
+        .editor-body{flex:1;overflow-y:auto;padding:12px 20px 24px;font-size:var(--editor-fs,15px);line-height:1.42;outline:none;min-height:120px}
         .editor-body.markdown-source-mode{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace!important;line-height:1.55;letter-spacing:0;tab-size:2}
         .editor-body.markdown-source-mode *{white-space:pre-wrap!important}
         .editor-body:empty::before{content:attr(data-placeholder);color:var(--text-3);pointer-events:none}
+        .editor-body[contenteditable="true"] > p,.editor-body[contenteditable="true"] > div:not(.md-table-wrap):not(.code-actions):not(.code-scroll):not(.image-placeholder):not(.drawing-placeholder):not(.media-controls),.editor-body[contenteditable="true"] p{margin:0!important;line-height:1.42!important;min-height:1.42em}
         .editor-body-serif{font-family:'Lora',Georgia,serif!important}
         .tb-group{display:flex;align-items:center;gap:1px}
         .tb-group.tool-group-hidden{display:none}
