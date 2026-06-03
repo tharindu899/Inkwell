@@ -425,8 +425,50 @@ function contentLooksLikeRawSource(html = '') {
   return looksLikeHtmlSource(plain) || looksLikeMarkdown(plain);
 }
 
+function normalizeSourceCompareText(text = '') {
+  return String(text || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function markdownSourceLooksStale(contentHtml = '', markdown = '') {
+  const savedMd = String(markdown || '');
+  if (!contentHtml || !savedMd.trim()) return false;
+  if (contentLooksLikeRawSource(contentHtml)) return false;
+
+  try {
+    const contentText = normalizeSourceCompareText(stripHtml(contentHtml));
+    const mdText = normalizeSourceCompareText(stripHtml(markdownToHtml(savedMd)));
+    if (!contentText || !mdText || contentText === mdText) return false;
+
+    // A previously bad save could keep an old Markdown source while the visual
+    // editor HTML contains newer typed lines. Prefer the visible content when
+    // it has clear extra text that the Markdown source does not contain.
+    if (contentText.length > mdText.length + 10 && !mdText.includes(contentText)) return true;
+
+    const contentTokens = contentText.split(' ').filter(Boolean);
+    const mdTokenSet = new Set(mdText.split(' ').filter(Boolean));
+    const missing = contentTokens.filter(t => !mdTokenSet.has(t)).length;
+    return contentTokens.length >= 4 && missing >= 3 && missing / contentTokens.length > 0.18;
+  } catch {
+    return false;
+  }
+}
+
+function getNoteMarkdownSource(note = {}) {
+  const savedMd = String(note.markdown || '');
+  const content = String(note.content || '');
+  const rawText = stripHtml(content);
+
+  if (savedMd.trim() && !markdownSourceLooksStale(content, savedMd)) return savedMd;
+  if (content && (looksLikeHtmlSource(rawText) || looksLikeMarkdown(rawText))) return rawText;
+  return htmlToMarkdown(content);
+}
+
 function renderStoredMarkdownSource(note = {}) {
-  const source = note.markdown || stripHtml(note.content || '') || htmlToMarkdown(note.content || '');
+  const source = getNoteMarkdownSource(note);
   return markdownToHtml(source);
 }
 
@@ -844,6 +886,10 @@ export default function Editor() {
   // Render mode and Text mode. Toggling must not re-convert the note and
   // change tables, links, badges, code fences, or raw GitHub HTML.
   const markdownSourceRef = useRef('');
+  // True when the user has typed/edited in rendered Markdown view.
+  // Before switching to text view or saving, rebuild the Markdown source from
+  // the visible DOM so ON/OFF never drops freshly typed lines.
+  const renderedDomDirtyRef = useRef(false);
 
   const [spellcheckEnabled, setSpellcheckEnabled] = useState(() => {
     const p = getPrefs();
@@ -866,12 +912,22 @@ export default function Editor() {
   }, []);
 
   function getStableMarkdownSource(fallbackNote = noteRef.current) {
+    const body = bodyRef.current;
+
+    // Rendered view is editable. If the user typed there, the old stable source
+    // is no longer trustworthy; rebuild from the visible editor before any
+    // mode switch/read/save operation.
+    if (renderedDomDirtyRef.current && body && !sourceViewRef.current) {
+      const fresh = htmlToMarkdown(getCleanHtml());
+      markdownSourceRef.current = fresh;
+      return fresh;
+    }
+
     const existing = String(markdownSourceRef.current || '').trim();
     if (existing) return markdownSourceRef.current;
-    if (fallbackNote?.markdown && String(fallbackNote.markdown).trim()) return fallbackNote.markdown;
-    const rawText = stripHtml(fallbackNote?.content || '');
-    if (looksLikeHtmlSource(rawText) || looksLikeMarkdown(rawText)) return rawText;
-    return htmlToMarkdown(fallbackNote?.content || '');
+    const source = getNoteMarkdownSource(fallbackNote || {});
+    markdownSourceRef.current = source || '';
+    return markdownSourceRef.current;
   }
 
   function setMarkdownSourceClass(isSource) {
@@ -891,6 +947,7 @@ export default function Editor() {
       markdownSourceRef.current = source;
       body.innerHTML = markdownToHtml(source);
       sourceViewRef.current = false;
+      renderedDomDirtyRef.current = false;
       setMarkdownSourceClass(false);
       enhanceCodeBlocks(body);
       enhanceCheckLists(body);
@@ -898,12 +955,14 @@ export default function Editor() {
       enhanceMediaItems(body);
       attachCodeBlockHandlers(body, markDirty);
     } else if (!renderedMode && !currentlySource) {
-      // Do NOT rebuild Markdown from the rendered DOM here. Rebuilding is lossy
-      // for GitHub README content and causes the exact problem in the screenshots.
+      // If the user typed in rendered mode, rebuild source from the visible DOM.
+      // If nothing changed, keep the exact original source so README/code/table
+      // Markdown stays stable across ON/OFF toggles.
       const source = getStableMarkdownSource();
       markdownSourceRef.current = source;
       body.textContent = source;
       sourceViewRef.current = true;
+      renderedDomDirtyRef.current = false;
       setMarkdownSourceClass(true);
     }
 
@@ -927,6 +986,7 @@ export default function Editor() {
 
     body.innerHTML = markdownToHtml(source || '');
     sourceViewRef.current = false;
+    renderedDomDirtyRef.current = false;
     setMarkdownSourceClass(false);
     enhanceCodeBlocks(body);
     enhanceCheckLists(body);
@@ -950,6 +1010,7 @@ export default function Editor() {
       markdownSourceRef.current = source || '';
       body.textContent = source || '';
       sourceViewRef.current = true;
+      renderedDomDirtyRef.current = false;
       setMarkdownSourceClass(true);
     } else {
       applyMarkdownView(true);
@@ -1109,14 +1170,15 @@ export default function Editor() {
   /* ─────────────────── Load note into DOM ── */
   useEffect(() => {
     if (!note || !bodyRef.current) return;
-    const rawText = stripHtml(note.content || '');
-    const source = note.markdown || ((looksLikeHtmlSource(rawText) || looksLikeMarkdown(rawText)) ? rawText : htmlToMarkdown(note.content || ''));
+    const source = getNoteMarkdownSource(note);
+    const content = String(note.content || '');
+    const shouldUseSavedHtml = !!content.trim() && !contentLooksLikeRawSource(content);
     markdownSourceRef.current = source || '';
+    renderedDomDirtyRef.current = false;
     if (markdownEnabled) {
-      const hasSavedMarkdown = !!(note.markdown && String(note.markdown).trim());
-      bodyRef.current.innerHTML = (hasSavedMarkdown || contentLooksLikeRawSource(note.content || ''))
-        ? markdownToHtml(source)
-        : (note.content || markdownToHtml(source));
+      bodyRef.current.innerHTML = shouldUseSavedHtml
+        ? sanitizeEditorHtml(content)
+        : markdownToHtml(source);
       sourceViewRef.current = false;
       setMarkdownSourceClass(false);
       enhanceCodeBlocks(bodyRef.current);
@@ -1367,10 +1429,9 @@ export default function Editor() {
     if (sourceViewRef.current) {
       const source = body.textContent || body.innerText || '';
       markdownSourceRef.current = source;
+      renderedDomDirtyRef.current = false;
       return source;
     }
-    // In rendered Markdown mode, keep the original source. This prevents ON/OFF
-    // toggles and auto-save from changing README Markdown into different text.
     const stable = getStableMarkdownSource();
     markdownSourceRef.current = stable;
     return stable;
@@ -1403,6 +1464,7 @@ export default function Editor() {
       content: sourceViewRef.current ? (bodyRef.current?.innerText || '') : getCleanHtml(),
       markdownSource: getMarkdownSource(),
       sourceMode: sourceViewRef.current,
+      renderedDirty: renderedDomDirtyRef.current,
     });
   }
 
@@ -1420,10 +1482,12 @@ export default function Editor() {
       bodyRef.current.textContent = data.content || '';
       markdownSourceRef.current = data.content || '';
       sourceViewRef.current = true;
+      renderedDomDirtyRef.current = false;
       setMarkdownSourceClass(true);
     } else {
       bodyRef.current.innerHTML = data.content || '';
       sourceViewRef.current = false;
+      renderedDomDirtyRef.current = !!data.renderedDirty;
       setMarkdownSourceClass(false);
       enhanceCodeBlocks(bodyRef.current);
       enhanceCheckLists(bodyRef.current);
@@ -1534,6 +1598,7 @@ export default function Editor() {
       dispatch({ type: 'RELOAD' });
       updateNote(updated);
       lastSavedHashRef.current = saveHash;
+      renderedDomDirtyRef.current = false;
       if (isMountedRef.current) {
         setDirty(false);
         setSaveState('saved');
@@ -2674,11 +2739,13 @@ export default function Editor() {
     const body = bodyRef.current;
     if (sourceViewRef.current) {
       markdownSourceRef.current = body?.textContent || body?.innerText || '';
+      renderedDomDirtyRef.current = false;
       markDirty();
       updateWC();
       updateTbState();
       return;
     }
+    renderedDomDirtyRef.current = true;
     enhanceCodeBlocks(body);
     enhanceCheckLists(body);
     // Debounce collapse enhance: normalizeNestedLists moves DOM nodes and
@@ -2862,6 +2929,7 @@ export default function Editor() {
     enhanceCollapsibleLists(body);
     enhanceMediaItems(body);
     attachCodeBlockHandlers(body, markDirty);
+    if (!sourceViewRef.current) renderedDomDirtyRef.current = true;
     markDirty(false);
     updateWC();
     updateTbState();
