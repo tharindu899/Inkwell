@@ -10,6 +10,7 @@ import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-
 import { useAuth } from './auth/AuthContext';
 
 import UpdateChecker  from './components/UpdateChecker';
+import ErrorBoundary from './components/ErrorBoundary';
 import Login          from './pages/Login';
 import Home           from './pages/Home';
 import Editor         from './pages/Editor';
@@ -151,7 +152,7 @@ export default function App() {
   const { isLoggedIn } = useAuth();
 
   return (
-    <>
+    <ErrorBoundary>
       <OfflineBanner />
       <AndroidBackHandler />
       <CopySelectGuard />
@@ -177,6 +178,6 @@ export default function App() {
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-    </>
+    </ErrorBoundary>
   );
 }

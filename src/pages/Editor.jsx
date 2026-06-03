@@ -504,6 +504,25 @@ function normalizeSourceCompareText(text = '') {
     .toLowerCase();
 }
 
+function markdownToCompareText(markdown = '') {
+  let text = String(markdown || '').replace(/\r\n/g, '\n');
+  text = preprocessPastedMarkdown(text);
+  return text
+    .replace(/```[\s\S]*?```/g, ' code block ')
+    .replace(/<img\b[^>]*alt=["']([^"']*)["'][^>]*>/gi, '$1')
+    .replace(/<img\b[^>]*>/gi, ' image ')
+    .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (m, href, label) => String(label || href).replace(/<[^>]+>/g, ' ').trim() || href)
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s{0,3}>\s?/gm, '')
+    .replace(/^\s{0,3}[-*+]\s+\[[ xX]\]\s+/gm, '')
+    .replace(/^\s{0,3}[-*+]\s+/gm, '')
+    .replace(/^\s{0,3}\d+[.)]\s+/gm, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[|*_~`#>-]+/g, ' ');
+}
+
 function markdownSourceLooksStale(contentHtml = '', markdown = '') {
   const savedMd = String(markdown || '');
   if (!contentHtml || !savedMd.trim()) return false;
@@ -511,7 +530,7 @@ function markdownSourceLooksStale(contentHtml = '', markdown = '') {
 
   try {
     const contentText = normalizeSourceCompareText(stripHtml(contentHtml));
-    const mdText = normalizeSourceCompareText(stripHtml(markdownToHtml(savedMd)));
+    const mdText = normalizeSourceCompareText(markdownToCompareText(savedMd));
     if (!contentText || !mdText || contentText === mdText) return false;
 
     // A previously bad save could keep an old Markdown source while the visual
@@ -540,7 +559,7 @@ function getNoteMarkdownSource(note = {}) {
 
 function renderStoredMarkdownSource(note = {}) {
   const source = getNoteMarkdownSource(note);
-  return markdownToHtml(source);
+  return safeMarkdownToHtml(source);
 }
 
 function sanitizeEditorHtml(raw = '') {
@@ -579,7 +598,7 @@ function sanitizeEditorHtml(raw = '') {
     }
     if (tag === 'img') {
       const src = node.getAttribute('src') || '';
-      if (/^(https?:\/\/|data:image\/)/i.test(src)) {
+      if (/^(https?:\/\/|data:image\/|\.?\.?\/|[\w.-]+\/)/i.test(src)) {
         el.setAttribute('src', src);
         el.setAttribute('alt', node.getAttribute('alt') || 'image');
         el.setAttribute('loading', 'lazy');
@@ -599,10 +618,6 @@ function sanitizeEditorHtml(raw = '') {
   return wrap.innerHTML || '<p><br></p>';
 }
 
-function renderPastedText(text = '') {
-  return markdownToHtml(text);
-}
-
 function htmlToPlainSourceHtml(text = '') {
   const escaped = escH(String(text || ''));
   if (!escaped.trim()) return '<p><br></p>';
@@ -610,6 +625,32 @@ function htmlToPlainSourceHtml(text = '') {
     .split(/\n{2,}/)
     .map(part => `<p>${part.replace(/\n/g, '<br>') || '<br>'}</p>`)
     .join('');
+}
+
+function safeMarkdownToHtml(source = '') {
+  try {
+    const html = markdownToHtml(source);
+    return sanitizeEditorHtml(html || '<p><br></p>');
+  } catch (err) {
+    console.error('[Inkwell] Markdown render failed, opening as safe text:', err);
+    return htmlToPlainSourceHtml(source);
+  }
+}
+
+function safeSetEditorHtml(body, html, fallbackSource = '') {
+  if (!body) return false;
+  try {
+    body.innerHTML = html || '<p><br></p>';
+    return true;
+  } catch (err) {
+    console.error('[Inkwell] Editor HTML insert failed, falling back to source text:', err);
+    body.textContent = fallbackSource || '';
+    return false;
+  }
+}
+
+function renderPastedText(text = '') {
+  return safeMarkdownToHtml(text);
 }
 
 /* ─────────────────────────────────────────
@@ -1029,16 +1070,11 @@ export default function Editor() {
     if (renderedMode && currentlySource) {
       const source = body.textContent || body.innerText || '';
       markdownSourceRef.current = source;
-      body.innerHTML = markdownToHtml(source);
-      sourceViewRef.current = false;
+      const renderedOk = safeSetEditorHtml(body, safeMarkdownToHtml(source), source);
+      sourceViewRef.current = !renderedOk;
       renderedDomDirtyRef.current = false;
-      setMarkdownSourceClass(false);
-      enhanceCodeBlocks(body);
-      enhanceCheckLists(body);
-      enhanceCollapsibleLists(body);
-      enhanceMediaItems(body);
-      normalizeFigurePositions(body);
-      attachCodeBlockHandlers(body, markDirty);
+      setMarkdownSourceClass(!renderedOk);
+      if (renderedOk) safeEnhanceEditorBody(body, markDirty);
     } else if (!renderedMode && !currentlySource) {
       // If the user typed in rendered mode, rebuild source from the visible DOM.
       // If nothing changed, keep the exact original source so README/code/table
@@ -1069,16 +1105,11 @@ export default function Editor() {
       : getStableMarkdownSource();
     markdownSourceRef.current = source || '';
 
-    body.innerHTML = markdownToHtml(source || '');
-    sourceViewRef.current = false;
+    const renderedOk = safeSetEditorHtml(body, safeMarkdownToHtml(source || ''), source || '');
+    sourceViewRef.current = !renderedOk;
     renderedDomDirtyRef.current = false;
-    setMarkdownSourceClass(false);
-    enhanceCodeBlocks(body);
-    enhanceCheckLists(body);
-    enhanceCollapsibleLists(body);
-    enhanceMediaItems(body);
-    normalizeFigurePositions(body);
-    attachCodeBlockHandlers(body, markDirty);
+    setMarkdownSourceClass(!renderedOk);
+    if (renderedOk) safeEnhanceEditorBody(body, markDirty);
 
     // If a wide table/code block was horizontally scrolled in edit mode, reset it.
     requestAnimationFrame(() => {
@@ -1261,17 +1292,14 @@ export default function Editor() {
     markdownSourceRef.current = source || '';
     renderedDomDirtyRef.current = false;
     if (markdownEnabled) {
-      bodyRef.current.innerHTML = shouldUseSavedHtml
-        ? sanitizeEditorHtml(content)
-        : markdownToHtml(source);
-      sourceViewRef.current = false;
-      setMarkdownSourceClass(false);
-      enhanceCodeBlocks(bodyRef.current);
-      enhanceCheckLists(bodyRef.current);
-      enhanceCollapsibleLists(bodyRef.current);
-      enhanceMediaItems(bodyRef.current);
-      normalizeFigurePositions(bodyRef.current);
-      attachCodeBlockHandlers(bodyRef.current, markDirty);
+      const renderedOk = safeSetEditorHtml(
+        bodyRef.current,
+        shouldUseSavedHtml ? sanitizeEditorHtml(content) : safeMarkdownToHtml(source),
+        source
+      );
+      sourceViewRef.current = !renderedOk;
+      setMarkdownSourceClass(!renderedOk);
+      if (renderedOk) safeEnhanceEditorBody(bodyRef.current, markDirty);
     } else {
       bodyRef.current.textContent = source;
       sourceViewRef.current = true;
@@ -1525,7 +1553,7 @@ export default function Editor() {
   function getCleanHtml() {
     const body = bodyRef.current;
     if (!body) return '';
-    if (sourceViewRef.current) return markdownToHtml(body.textContent || body.innerText || '');
+    if (sourceViewRef.current) return safeMarkdownToHtml(body.textContent || body.innerText || '');
     const clone = body.cloneNode(true);
     clone.querySelectorAll('.code-actions,.media-delete-btn,.media-resize-handle,.media-drag-chip,.li-collapse-toggle').forEach(b => b.remove());
     clone.querySelectorAll('figure.editor-figure').forEach(fig => {
@@ -1581,12 +1609,7 @@ export default function Editor() {
       sourceViewRef.current = false;
       renderedDomDirtyRef.current = !!data.renderedDirty;
       setMarkdownSourceClass(false);
-      enhanceCodeBlocks(bodyRef.current);
-      enhanceCheckLists(bodyRef.current);
-      enhanceCollapsibleLists(bodyRef.current);
-      enhanceMediaItems(bodyRef.current);
-      normalizeFigurePositions(bodyRef.current);
-      attachCodeBlockHandlers(bodyRef.current, markDirty);
+      safeEnhanceEditorBody(bodyRef.current, markDirty);
     }
     updateWC();
     updateTbState();
@@ -1949,12 +1972,7 @@ export default function Editor() {
     } else {
       body.append(pre, after);
     }
-    enhanceCodeBlocks(body);
-    enhanceCheckLists(body);
-    enhanceCollapsibleLists(body);
-    enhanceMediaItems(body);
-    normalizeFigurePositions(body);
-    attachCodeBlockHandlers(body, markDirty);
+    safeEnhanceEditorBody(body, markDirty);
     placeCaretInCode(code);
     markDirty();
   }
@@ -2439,6 +2457,22 @@ export default function Editor() {
       ensureMediaControls(fig);
     });
   }
+
+  function safeEnhanceEditorBody(bodyEl, onDirty) {
+  if (!bodyEl) return;
+  const steps = [
+    () => enhanceCodeBlocks(bodyEl),
+    () => enhanceCheckLists(bodyEl),
+    () => enhanceCollapsibleLists(bodyEl),
+    () => enhanceMediaItems(bodyEl),
+    () => normalizeFigurePositions(bodyEl),
+    () => attachCodeBlockHandlers(bodyEl, onDirty),
+  ];
+  steps.forEach(step => {
+    try { step(); }
+    catch (err) { console.error('[Inkwell] Editor enhance skipped one step:', err); }
+  });
+}
 
   function insertImageFromDataUrl(src, alt = 'Inserted image', type = 'image') {
     if (!src || !bodyRef.current) return;
@@ -3078,12 +3112,7 @@ export default function Editor() {
     }
 
     document.execCommand('insertHTML', false, rendered);
-    enhanceCodeBlocks(body);
-    enhanceCheckLists(body);
-    enhanceCollapsibleLists(body);
-    enhanceMediaItems(body);
-    normalizeFigurePositions(body);
-    attachCodeBlockHandlers(body, markDirty);
+    safeEnhanceEditorBody(body, markDirty);
     if (!sourceViewRef.current) renderedDomDirtyRef.current = true;
     markDirty(false);
     updateWC();
