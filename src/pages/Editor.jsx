@@ -256,8 +256,20 @@ function removeMarkdownTypingGaps(markdown = '') {
   return source.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function normalizeMarkdownAssetUrl(url = '') {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+
+  // GitHub README files often reference Vite public assets as public/foo.svg.
+  // Inside the app those files are served from the web root, so render them
+  // as ./foo.svg instead of showing a broken image in the mobile editor.
+  if (/^\/?public\//i.test(raw)) return raw.replace(/^\/?public\//i, './');
+
+  return raw;
+}
+
 function safeUrlAttr(url = '') {
-  const u = String(url || '').trim();
+  const u = normalizeMarkdownAssetUrl(url);
   if (/^(https?:\/\/|data:image\/|\.?\.?\/|[\w.-]+\/)/i.test(u)) return escAttr(u);
   return '';
 }
@@ -342,13 +354,10 @@ function inlineMarkdown(text = '') {
 
 
 function normalizeMarkdownTables(md = '') {
-  // Mobile keyboards / some paste sources can collapse Markdown tables into one line.
-  // Rebuild obvious GitHub-style pipe table row boundaries before parsing.
-  return String(md)
-    .replace(/\r\n/g, '\n')
-    .replace(/\|\s+\|(?=\s*:?-{3,}:?\s*\|)/g, '|\n|')
-    .replace(/(\|\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?)\s+\|/g, '$1\n|')
-    .replace(/\|\s+\|(?=\s*[^|\n]+?\s*\|)/g, '|\n|');
+  // Preserve GitHub-Flavored Markdown tables exactly. Previous row-splitting
+  // tried to repair collapsed mobile pastes, but it broke valid GitHub tables
+  // such as `| | | |` headers and made them show as raw pipe text.
+  return String(md || '').replace(/\r\n/g, '\n');
 }
 
 function splitMarkdownTableRow(row = '') {
@@ -594,7 +603,7 @@ function sanitizeEditorHtml(raw = '') {
       }
     }
     if (tag === 'img') {
-      const src = node.getAttribute('src') || '';
+      const src = normalizeMarkdownAssetUrl(node.getAttribute('src') || '');
       if (/^(https?:\/\/|data:image\/|\.?\.?\/|[\w.-]+\/)/i.test(src)) {
         el.setAttribute('src', src);
         el.setAttribute('alt', node.getAttribute('alt') || 'image');
@@ -1290,7 +1299,8 @@ export default function Editor() {
     if (!note || !bodyRef.current) return;
     const source = getNoteMarkdownSource(note);
     const content = String(note.content || '');
-    const shouldUseSavedHtml = !!content.trim() && !contentLooksLikeRawSource(content);
+    const hasMarkdownSource = !!String(note.markdown || '').trim();
+    const shouldUseSavedHtml = !hasMarkdownSource && !!content.trim() && !contentLooksLikeRawSource(content);
     markdownSourceRef.current = source || '';
     renderedDomDirtyRef.current = false;
     if (markdownEnabled) {

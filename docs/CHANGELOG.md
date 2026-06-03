@@ -7,6 +7,19 @@ Use the GitHub Release description/body for the short changelog shown inside the
 
 ---
 
+## v1.2.3
+
+### Fixed
+- Fixed valid GitHub Markdown tables rendering as raw pipe text in the mobile editor.
+- Fixed README-style `public/...` image paths so Vite public assets render inside the app.
+- Fixed Markdown notes with saved source so the renderer prefers fresh Markdown over old cached HTML.
+
+### Changed
+- Removed remote font imports from the app CSS to make local/mobile rendering more reliable offline.
+- Tested the editor with a local mobile viewport screenshot using a full README Markdown sample.
+
+---
+
 ## v1.2.2
 
 ### Added
