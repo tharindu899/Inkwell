@@ -168,11 +168,11 @@ function htmlToMarkdown(html = '') {
   wrap.querySelectorAll('hr').forEach(hr => hr.replaceWith('\n---\n'));
   wrap.querySelectorAll('pre').forEach(pre =>
     pre.replaceWith('\n```\n' + (pre.innerText || '').replace(/\n+$/, '') + '\n```\n'));
-  wrap.querySelectorAll('h1').forEach(e => e.replaceWith('# ' + e.innerText.trim() + '\n\n'));
-  wrap.querySelectorAll('h2').forEach(e => e.replaceWith('## ' + e.innerText.trim() + '\n\n'));
-  wrap.querySelectorAll('h3').forEach(e => e.replaceWith('### ' + e.innerText.trim() + '\n\n'));
+  wrap.querySelectorAll('h1').forEach(e => e.replaceWith('# ' + e.innerText.trim() + '\n'));
+  wrap.querySelectorAll('h2').forEach(e => e.replaceWith('## ' + e.innerText.trim() + '\n'));
+  wrap.querySelectorAll('h3').forEach(e => e.replaceWith('### ' + e.innerText.trim() + '\n'));
   wrap.querySelectorAll('blockquote').forEach(e =>
-    e.replaceWith('> ' + e.innerText.trim().replace(/\n/g, '\n> ') + '\n\n'));
+    e.replaceWith('> ' + e.innerText.trim().replace(/\n/g, '\n> ') + '\n'));
   wrap.querySelectorAll('strong,b').forEach(e => e.replaceWith('**' + e.innerText + '**'));
   wrap.querySelectorAll('em,i').forEach(e => e.replaceWith('*' + e.innerText + '*'));
   wrap.querySelectorAll('s,strike,del').forEach(e => e.replaceWith('~~' + e.innerText + '~~'));
@@ -196,9 +196,63 @@ function htmlToMarkdown(html = '') {
     if (box) box.remove();
     li.replaceWith(prefix + li.innerText.trim() + '\n');
   });
-  wrap.querySelectorAll('p,div').forEach(e => e.append('\n\n'));
+  wrap.querySelectorAll('p,div').forEach(e => e.append('\n'));
 
-  return (wrap.innerText || wrap.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+  return normalizeEditorMarkdownSpacing(wrap.innerText || wrap.textContent || '');
+}
+
+function normalizeEditorMarkdownSpacing(markdown = '') {
+  const lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+  let inFence = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i].replace(/[ \t]+$/g, '');
+    if (/^\s*(```|~~~)/.test(line)) {
+      if (out.length && out[out.length - 1] !== '') out.push('');
+      out.push(line);
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) { out.push(line); continue; }
+    if (!line.trim()) {
+      const prev = out[out.length - 1];
+      const next = lines.slice(i + 1).find(v => String(v).trim());
+      if (!prev || !next) continue;
+      const prevIsFence = /^\s*(```|~~~)/.test(prev);
+      const nextIsFence = /^\s*(```|~~~)/.test(String(next));
+      if ((prevIsFence || nextIsFence) && out[out.length - 1] !== '') out.push('');
+      continue;
+    }
+    out.push(line);
+  }
+
+  return out.join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/^\n+|\n+$/g, '')
+    .trim();
+}
+
+function removeMarkdownTypingGaps(markdown = '') {
+  const source = String(markdown || '').replace(/\r\n/g, '\n');
+  if (!source.trim()) return '';
+
+  // Avoid rewriting advanced Markdown where blank lines can be intentional.
+  if (/(^|\n)\s*(```|~~~|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+|>\s?|\|.*\||-{3,}|\*{3,}|_{3,})/m.test(source)) {
+    return source.replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  const lines = source.split('\n');
+  const nonEmpty = lines.filter(l => l.trim()).length;
+  const empty = lines.length - nonEmpty;
+
+  // Fix old notes created by the previous Markdown toggle bug: every normal
+  // typed line was saved with an extra blank line between it.
+  if (nonEmpty >= 2 && empty >= Math.max(1, nonEmpty - 1)) {
+    return lines.filter(l => l.trim()).join('\n').trim();
+  }
+
+  return source.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function safeUrlAttr(url = '') {
@@ -401,7 +455,7 @@ function markdownToHtml(md = '') {
     while (i < lines.length && lines[i].trim() && !/^\s{0,3}(#{1,6})\s+/.test(lines[i]) && !/^\s{0,3}([-*+]\s+|\d+[.)]\s+|>\s?|```|~~~)/.test(lines[i]) && !(isLikelyMarkdownTableRow(lines[i]) && i + 1 < lines.length && isMarkdownTableSeparator(lines[i + 1]))) {
       para.push(lines[i].trim()); i += 1;
     }
-    out.push(`<p>${inlineMarkdown(para.join(' '))}</p>`);
+    out.push(`<p>${para.map(part => inlineMarkdown(part)).join('<br>')}</p>`);
   }
   closeList();
   if (inCode) out.push(`<pre><code>${escH(code.join('\n')) || '<br>'}</code></pre>`);
@@ -462,8 +516,8 @@ function getNoteMarkdownSource(note = {}) {
   const content = String(note.content || '');
   const rawText = stripHtml(content);
 
-  if (savedMd.trim() && !markdownSourceLooksStale(content, savedMd)) return savedMd;
-  if (content && (looksLikeHtmlSource(rawText) || looksLikeMarkdown(rawText))) return rawText;
+  if (savedMd.trim() && !markdownSourceLooksStale(content, savedMd)) return removeMarkdownTypingGaps(savedMd);
+  if (content && (looksLikeHtmlSource(rawText) || looksLikeMarkdown(rawText))) return removeMarkdownTypingGaps(rawText);
   return htmlToMarkdown(content);
 }
 
@@ -3218,7 +3272,7 @@ export default function Editor() {
         .editor-content-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
         .editor-title{border-bottom:1px solid var(--border);font-size:21px;padding:16px 20px 14px;flex-shrink:0;width:100%;box-sizing:border-box;background:transparent;color:var(--text-1);resize:none;border-left:none;border-right:none;border-top:none;outline:none;font-family:var(--font-b)}
         .editor-body{flex:1;overflow-y:auto;padding:12px 20px 24px;font-size:var(--editor-fs,15px);line-height:1.42;outline:none;min-height:120px}
-        .editor-body.markdown-source-mode{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace!important;line-height:1.55;letter-spacing:0;tab-size:2}
+        .editor-body.markdown-source-mode{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace!important;line-height:1.42;letter-spacing:0;tab-size:2}
         .editor-body.markdown-source-mode *{white-space:pre-wrap!important}
         .editor-body:empty::before{content:attr(data-placeholder);color:var(--text-3);pointer-events:none}
         .editor-body[contenteditable="true"] > p,.editor-body[contenteditable="true"] > div:not(.md-table-wrap):not(.code-actions):not(.code-scroll):not(.image-placeholder):not(.drawing-placeholder):not(.media-controls),.editor-body[contenteditable="true"] p{margin:0!important;line-height:1.42!important;min-height:1.42em}
