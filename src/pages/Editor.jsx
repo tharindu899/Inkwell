@@ -25,6 +25,7 @@
    ══════════════════════════════════════════ */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { marked } from 'marked';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Toast, { showToast } from '../components/Toast';
 import { useAppStore }      from '../store/AppContext';
@@ -376,107 +377,74 @@ function isLikelyMarkdownTableRow(line = '') {
   return line.includes('|') && splitMarkdownTableRow(line).length >= 2;
 }
 
+function wrapGithubTables(html = '') {
+  if (typeof DOMParser === 'undefined') return html;
+  const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+  doc.body.querySelectorAll('table').forEach(table => {
+    if (table.parentElement?.classList?.contains('md-table-wrap')) return;
+    const wrap = doc.createElement('div');
+    wrap.className = 'md-table-wrap';
+    table.parentNode.insertBefore(wrap, table);
+    wrap.appendChild(table);
+  });
+  return doc.body.innerHTML;
+}
+
+function convertGithubTaskLists(html = '') {
+  if (typeof DOMParser === 'undefined') return html;
+  const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+  doc.body.querySelectorAll('li > input[type="checkbox"]').forEach(input => {
+    const li = input.closest('li');
+    const ul = li?.closest('ul');
+    if (!li || !ul) return;
+
+    const checked = input.hasAttribute('checked') || input.checked;
+    ul.classList.add('check-list');
+    ul.setAttribute('data-type', 'taskList');
+    li.setAttribute('data-checked', checked ? 'true' : 'false');
+
+    const label = doc.createElement('label');
+    label.setAttribute('data-check-label', 'true');
+
+    const box = doc.createElement('span');
+    box.className = 'check-box';
+    box.setAttribute('role', 'checkbox');
+    box.setAttribute('tabindex', '-1');
+    box.setAttribute('contenteditable', 'false');
+    box.dataset.checked = checked ? 'true' : 'false';
+    box.setAttribute('aria-checked', checked ? 'true' : 'false');
+
+    const text = doc.createElement('span');
+    text.className = 'check-text';
+
+    input.remove();
+    while (li.firstChild) text.appendChild(li.firstChild);
+    label.appendChild(box);
+    label.appendChild(doc.createTextNode(' '));
+    label.appendChild(text);
+    li.appendChild(label);
+  });
+  return doc.body.innerHTML;
+}
+
 function markdownToHtml(md = '') {
-  const prepared = preprocessPastedMarkdown(md);
-  const lines = normalizeMarkdownTables(prepared).split('\n');
-  const out = [];
-  let i = 0;
-  let inCode = false;
-  let code = [];
-  let list = null;
+  const source = normalizeMarkdownTables(String(md || '').replace(/\r\n/g, '\n'));
+  marked.setOptions({
+    async: false,
+    gfm: true,
+    breaks: false,
+    pedantic: false,
+    mangle: false,
+    headerIds: false,
+  });
 
-  const closeList = () => {
-    if (!list) return;
-    out.push(`<${list.type}${list.task ? ' class="check-list" data-type="taskList"' : ''}>${list.items.join('')}</${list.type}>`);
-    list = null;
-  };
+  const html = marked.parse(source || '', {
+    async: false,
+    gfm: true,
+    breaks: false,
+  });
 
-  const addListItem = (type, html, task = false, checked = false) => {
-    if (!list || list.type !== type || list.task !== task) closeList();
-    if (!list) list = { type, task, items: [] };
-    if (task) {
-      list.items.push(`<li data-checked="${checked ? 'true' : 'false'}"><label><span class="check-box" role="checkbox" tabindex="-1" contenteditable="false" data-checked="${checked ? 'true' : 'false'}" aria-checked="${checked ? 'true' : 'false'}"></span> <span class="check-text">${html || '<br>'}</span></label></li>`);
-    } else {
-      list.items.push(`<li>${html || '<br>'}</li>`);
-    }
-  };
-
-  while (i < lines.length) {
-    const raw = lines[i];
-    const line = raw.replace(/\t/g, '  ');
-
-    if (/^\s*(```|~~~)/.test(line)) {
-      closeList();
-      if (!inCode) { inCode = true; code = []; }
-      else {
-        out.push(`<pre><code>${escH(code.join('\n')) || '<br>'}</code></pre>`);
-        inCode = false; code = [];
-      }
-      i += 1; continue;
-    }
-    if (inCode) { code.push(raw); i += 1; continue; }
-
-    if (!line.trim()) { closeList(); i += 1; continue; }
-
-    const h = line.match(/^\s{0,3}(#{1,6})\s+(.+)$/);
-    if (h) { closeList(); const level = Math.min(h[1].length, 6); out.push(`<h${level}>${inlineMarkdown(h[2].trim())}</h${level}>`); i += 1; continue; }
-
-    const quote = line.match(/^\s{0,3}>\s?(.*)$/);
-    if (quote) {
-      closeList();
-      const parts = [];
-      while (i < lines.length) {
-        const q = lines[i].match(/^\s{0,3}>\s?(.*)$/);
-        if (!q) break;
-        parts.push(q[1]); i += 1;
-      }
-      out.push(`<blockquote>${inlineMarkdown(parts.join('<br>'))}</blockquote>`);
-      continue;
-    }
-
-
-    // GitHub-style pipe table
-    if (isLikelyMarkdownTableRow(line) && i + 1 < lines.length && isMarkdownTableSeparator(lines[i + 1])) {
-      closeList();
-      const headers = splitMarkdownTableRow(line);
-      i += 2; // skip header + separator
-      const rows = [];
-      while (i < lines.length && isLikelyMarkdownTableRow(lines[i]) && lines[i].trim()) {
-        rows.push(splitMarkdownTableRow(lines[i]));
-        i += 1;
-      }
-      const headHtml = headers.map(h => `<th>${inlineMarkdown(h)}</th>`).join('');
-      const bodyHtml = rows.map(row => {
-        const cells = headers.map((_, idx) => `<td>${inlineMarkdown(row[idx] || '')}</td>`).join('');
-        return `<tr>${cells}</tr>`;
-      }).join('');
-      out.push(`<div class="md-table-wrap"><table><thead><tr>${headHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`);
-      continue;
-    }
-
-    const task = line.match(/^\s{0,3}[-*+]\s+\[( |x|X)\]\s*(.*)$/);
-    if (task) { addListItem('ul', inlineMarkdown(task[2].trim()), true, task[1].toLowerCase() === 'x'); i += 1; continue; }
-
-    const ul = line.match(/^\s{0,3}[-*+]\s+(.+)$/);
-    if (ul) { addListItem('ul', inlineMarkdown(ul[1].trim()), false); i += 1; continue; }
-
-    const ol = line.match(/^\s{0,3}\d+[.)]\s+(.+)$/);
-    if (ol) { addListItem('ol', inlineMarkdown(ol[1].trim()), false); i += 1; continue; }
-
-    const hr = line.match(/^\s{0,3}(-{3,}|\*{3,}|_{3,})\s*$/);
-    if (hr) { closeList(); out.push('<hr>'); i += 1; continue; }
-
-    closeList();
-    const para = [line.trim()];
-    i += 1;
-    while (i < lines.length && lines[i].trim() && !/^\s{0,3}(#{1,6})\s+/.test(lines[i]) && !/^\s{0,3}([-*+]\s+|\d+[.)]\s+|>\s?|```|~~~)/.test(lines[i]) && !(isLikelyMarkdownTableRow(lines[i]) && i + 1 < lines.length && isMarkdownTableSeparator(lines[i + 1]))) {
-      para.push(lines[i].trim()); i += 1;
-    }
-    out.push(`<p>${para.map(part => inlineMarkdown(part)).join('<br>')}</p>`);
-  }
-  closeList();
-  if (inCode) out.push(`<pre><code>${escH(code.join('\n')) || '<br>'}</code></pre>`);
-  return out.join('') || '<p><br></p>';
+  return convertGithubTaskLists(wrapGithubTables(html || '<p><br></p>')) || '<p><br></p>';
 }
 
 function looksLikeMarkdown(text = '') {
@@ -488,7 +456,7 @@ function looksLikeMarkdown(text = '') {
 
 function looksLikeHtmlSource(text = '') {
   if (!text || !text.trim()) return false;
-  return /<\/?(div|p|h[1-6]|img|a|br|ul|ol|li|table|thead|tbody|tr|th|td|blockquote|pre|code|strong|b|em|i|u|s|span|center|hr)\b[^>]*>/i.test(text);
+  return /<\/?(div|p|h[1-6]|img|a|br|ul|ol|li|table|thead|tbody|tr|th|td|blockquote|pre|code|strong|b|em|i|u|s|span|center|hr|mark|kbd|details|summary)\b[^>]*>/i.test(text);
 }
 
 function contentLooksLikeRawSource(html = '') {
@@ -565,7 +533,12 @@ function renderStoredMarkdownSource(note = {}) {
 function sanitizeEditorHtml(raw = '') {
   const doc = new DOMParser().parseFromString(String(raw), 'text/html');
   doc.querySelectorAll('script,style,iframe,object,embed,form,input,button,textarea,select,meta,link').forEach(n => n.remove());
-  const allowed = new Set(['P','DIV','BR','H1','H2','H3','H4','H5','H6','UL','OL','LI','BLOCKQUOTE','PRE','CODE','STRONG','B','EM','I','U','S','DEL','A','IMG','FIGURE','TABLE','THEAD','TBODY','TR','TH','TD','HR','SPAN','CENTER']);
+  const allowed = new Set(['P','DIV','BR','H1','H2','H3','H4','H5','H6','UL','OL','LI','LABEL','BLOCKQUOTE','PRE','CODE','STRONG','B','EM','I','U','S','DEL','A','IMG','FIGURE','TABLE','THEAD','TBODY','TR','TH','TD','HR','SPAN','CENTER','MARK','KBD','DETAILS','SUMMARY']);
+  const safeClasses = new Set(['md-table-wrap','check-list','check-box','check-text','editor-figure','photo-figure','drawing-figure','editor-inline-image']);
+  const keepSafeClasses = (src, dest) => {
+    const classes = [...(src.classList || [])].filter(cls => safeClasses.has(cls) || /^language-[a-z0-9_-]+$/i.test(cls));
+    if (classes.length) dest.className = classes.join(' ');
+  };
 
   const cleanNode = (node) => {
     if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent || '');
@@ -573,7 +546,31 @@ function sanitizeEditorHtml(raw = '') {
 
     const tag = allowed.has(node.tagName) ? node.tagName.toLowerCase() : 'span';
     const el = document.createElement(tag === 'center' ? 'div' : tag);
+    keepSafeClasses(node, el);
     if (tag === 'center') el.style.textAlign = 'center';
+    if (tag === 'details' && node.hasAttribute('open')) el.setAttribute('open', '');
+    if (tag === 'ul' && node.classList?.contains('check-list')) {
+      el.classList.add('check-list');
+      el.setAttribute('data-type', 'taskList');
+    }
+    if (tag === 'li' && node.hasAttribute('data-checked')) {
+      el.setAttribute('data-checked', node.getAttribute('data-checked') === 'true' ? 'true' : 'false');
+    }
+    if (tag === 'label' && node.hasAttribute('data-check-label')) {
+      el.setAttribute('data-check-label', 'true');
+    }
+    if (tag === 'span' && node.classList?.contains('check-box')) {
+      el.className = 'check-box';
+      el.setAttribute('contenteditable', 'false');
+      el.setAttribute('role', 'checkbox');
+      el.setAttribute('tabindex', '-1');
+      const checked = node.getAttribute('data-checked') === 'true' || node.getAttribute('aria-checked') === 'true';
+      el.dataset.checked = checked ? 'true' : 'false';
+      el.setAttribute('aria-checked', checked ? 'true' : 'false');
+    }
+    if (tag === 'span' && node.classList?.contains('check-text')) {
+      el.className = 'check-text';
+    }
 
     if (tag === 'figure') {
       const media = String(node.getAttribute('data-media') || '').toLowerCase() === 'drawing' ? 'drawing' : 'image';
@@ -602,6 +599,11 @@ function sanitizeEditorHtml(raw = '') {
         el.setAttribute('src', src);
         el.setAttribute('alt', node.getAttribute('alt') || 'image');
         el.setAttribute('loading', 'lazy');
+        el.classList.add('editor-inline-image');
+        const w = clampNumber(node.getAttribute('width') || node.style?.width || '', 24, 900, 0);
+        const h = clampNumber(node.getAttribute('height') || node.style?.height || '', 24, 900, 0);
+        if (w) el.style.width = `${w}px`;
+        if (h) el.style.height = `${h}px`;
       } else {
         return document.createTextNode(node.getAttribute('alt') || '');
       }

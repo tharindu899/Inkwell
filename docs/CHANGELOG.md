@@ -7,6 +7,18 @@ Use the GitHub Release description/body for the short changelog shown inside the
 
 ---
 
+## v1.2.2
+
+### Added
+- Added GitHub-Flavored Markdown rendering for the mobile editor.
+- Added GitHub-style mobile Markdown spacing, tables, task lists, code blocks, blockquotes, images, links, details, and keyboard/source mode styles.
+
+### Fixed
+- Fixed Markdown task list and table classes being stripped during safe rendering.
+- Fixed package lock registry URL for the new Markdown renderer dependency.
+
+---
+
 ## v1.2.1
 
 ### Changed
