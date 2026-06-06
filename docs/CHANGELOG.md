@@ -7,6 +7,20 @@ Use the GitHub Release description/body for the short changelog shown inside the
 
 ---
 
+## v1.2.5
+
+### Fixed
+- Rewrote the editor toolbar command path so tools keep the saved cursor/selection before running.
+- Fixed rich tools being applied while the editor was in Markdown text/source mode by switching safely back to rendered edit mode first.
+- Added fallback insertion for HTML/text tools when `document.execCommand` fails on mobile WebView.
+- Fixed Markdown toolbar toggle to apply the view immediately and save the preference.
+- Hardened toolbar active-state checks so query-command errors do not break the editor.
+
+### Tested
+- Verified the project builds successfully with `npm run build`.
+
+---
+
 ## v1.2.4
 
 ### Fixed

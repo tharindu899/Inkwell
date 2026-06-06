@@ -1128,7 +1128,8 @@ function currentBlockEl(bodyEl) {
 }
 
 function currentBlockTag() {
-  const raw = (document.queryCommandValue('formatBlock') || '').toLowerCase().replace(/[<>]/g, '');
+  let raw = '';
+  try { raw = (document.queryCommandValue('formatBlock') || '').toLowerCase().replace(/[<>]/g, ''); } catch { raw = ''; }
   if (!raw || raw === 'div') return 'p';
   return raw;
 }
@@ -2127,6 +2128,146 @@ export default function Editor() {
     savedRangeRef.current = range.cloneRange();
   }
 
+  function getActiveEditorRange() {
+    const body = bodyRef.current;
+    if (!body) return null;
+
+    focusEditor();
+    const sel = window.getSelection();
+    let range = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+
+    if (!range || !rangeBelongsToBody(range)) {
+      if (savedRangeRef.current && rangeBelongsToBody(savedRangeRef.current)) {
+        range = savedRangeRef.current.cloneRange();
+      } else {
+        range = document.createRange();
+        range.selectNodeContents(body);
+        range.collapse(false);
+      }
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
+
+    savedRangeRef.current = range.cloneRange();
+    return range;
+  }
+
+  function setCaretAfterNode(node) {
+    if (!node) return;
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.setStartAfter(node);
+    range.collapse(true);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    savedRangeRef.current = range.cloneRange();
+  }
+
+  function runEditorCommand(cmd, value = null) {
+    focusEditor();
+    try {
+      return document.execCommand(cmd, false, value);
+    } catch (err) {
+      console.warn(`[Inkwell] editor command failed: ${cmd}`, err);
+      return false;
+    }
+  }
+
+  function insertHTMLAtCaret(html = '') {
+    const body = bodyRef.current;
+    if (!body) return false;
+
+    if (runEditorCommand('insertHTML', html)) return true;
+
+    const range = getActiveEditorRange();
+    if (!range) return false;
+
+    const tpl = document.createElement('template');
+    tpl.innerHTML = String(html || '');
+    const frag = tpl.content;
+    const last = frag.lastChild;
+    range.deleteContents();
+    range.insertNode(frag);
+    setCaretAfterNode(last || range.commonAncestorContainer);
+    return true;
+  }
+
+  function insertTextAtCaret(text = '') {
+    const body = bodyRef.current;
+    if (!body) return false;
+
+    if (runEditorCommand('insertText', text)) return true;
+
+    const range = getActiveEditorRange();
+    if (!range) return false;
+
+    const node = document.createTextNode(String(text || ''));
+    range.deleteContents();
+    range.insertNode(node);
+    setCaretAfterNode(node);
+    return true;
+  }
+
+  function replaceCurrentBlockFallback(tag = 'p') {
+    const body = bodyRef.current;
+    const block = currentBlockEl(body);
+    if (!block || block === body || block.closest?.('li')) return false;
+
+    const safeTag = ['h1','h2','h3','p','blockquote'].includes(tag) ? tag : 'p';
+    const next = document.createElement(safeTag);
+    while (block.firstChild) next.appendChild(block.firstChild);
+    if (!next.childNodes.length) next.innerHTML = '<br>';
+    block.replaceWith(next);
+    placeCaretAtEnd(next);
+    return true;
+  }
+
+  function wrapSelectionFallback(tagName) {
+    const range = getActiveEditorRange();
+    if (!range || range.collapsed) return false;
+    const el = document.createElement(tagName);
+    try {
+      range.surroundContents(el);
+    } catch {
+      const fragment = range.extractContents();
+      el.appendChild(fragment);
+      range.insertNode(el);
+    }
+    setCaretAfterNode(el);
+    return true;
+  }
+
+  function ensureRenderedEditorForTool(key) {
+    // Source/text mode is for editing raw Markdown. Rich toolbar tools need the
+    // rendered DOM, otherwise browsers insert broken HTML into the raw source.
+    const sourceSafeTools = new Set(['markdown', 'undo', 'redo']);
+    if (sourceSafeTools.has(key) || !sourceViewRef.current) return true;
+
+    const body = bodyRef.current;
+    if (!body) return false;
+    const source = body.textContent || body.innerText || markdownSourceRef.current || '';
+    markdownSourceRef.current = source;
+    preserveExactMarkdownSourceRef.current = true;
+
+    const renderedOk = safeSetEditorHtml(body, safeMarkdownToHtml(source), source);
+    sourceViewRef.current = !renderedOk;
+    renderedDomDirtyRef.current = false;
+    setMarkdownSourceClass(!renderedOk);
+    if (renderedOk) {
+      setMarkdownEnabled(true);
+      safeEnhanceEditorBody(body, markDirty);
+      requestAnimationFrame(() => {
+        focusEditor();
+        updateWC();
+        updateTbState();
+      });
+      return true;
+    }
+    showToast('Could not switch from Markdown text mode', 'fa-circle-exclamation');
+    return false;
+  }
+
+
   /* ──────────────────────────────────────────────────
      Toolbar: prevent blur on button tap
      ────────────────────────────────────────────────── */
@@ -2156,7 +2297,11 @@ export default function Editor() {
         closestNode('check-list', bodyRef.current)) {
       return;
     }
-    document.execCommand(cmd, false, val || null);
+    const ok = runEditorCommand(cmd, val || null);
+    if (!ok) {
+      const fallbackTags = { bold: 'strong', italic: 'em', underline: 'u', strikeThrough: 's', superscript: 'sup', subscript: 'sub' };
+      if (fallbackTags[cmd]) wrapSelectionFallback(fallbackTags[cmd]);
+    }
     if (['insertUnorderedList', 'insertOrderedList', 'indent', 'outdent'].includes(cmd)) {
       enhanceCollapsibleLists(bodyRef.current);
     }
@@ -2172,7 +2317,7 @@ export default function Editor() {
     if (tag === 'p' && closestNode('LI', body)) return;
     const active  = currentBlockTag();
     const nextTag = (active === tag && tag !== 'p') ? 'p' : tag;
-    document.execCommand('formatBlock', false, '<' + nextTag + '>');
+    if (!runEditorCommand('formatBlock', '<' + nextTag + '>')) replaceCurrentBlockFallback(nextTag);
     updateTbState();
     updateWC();
     markDirty();
@@ -2238,7 +2383,7 @@ export default function Editor() {
 
   function insertHR() {
     focusEditor();
-    document.execCommand('insertHTML', false, '<hr><p><br></p>');
+    insertHTMLAtCaret('<hr><p><br></p>');
     updateTbState();
     updateWC();
     markDirty();
@@ -2334,19 +2479,20 @@ export default function Editor() {
     focusEditor();
     const bg = String(document.queryCommandValue('backColor') || '').toLowerCase();
     if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') {
-      document.execCommand('backColor', false, 'transparent');
-      document.execCommand('removeFormat', false, null);
+      runEditorCommand('backColor', 'transparent');
+      runEditorCommand('removeFormat');
     } else {
-      document.execCommand('backColor', false, '#c9a96e55');
+      runEditorCommand('backColor', '#c9a96e55');
     }
     markDirty(); updateTbState();
   }
 
   function insertTable() {
     focusEditor();
-    document.execCommand('insertHTML', false,
+    insertHTMLAtCaret(
       '<table><thead><tr><th>Column 1</th><th>Column 2</th></tr></thead>' +
-      '<tbody><tr><td>Text</td><td>Text</td></tr></tbody></table><p><br></p>');
+      '<tbody><tr><td>Text</td><td>Text</td></tr></tbody></table><p><br></p>'
+    );
     updateTbState();
     updateWC();
     markDirty();
@@ -2354,7 +2500,7 @@ export default function Editor() {
 
   function insertDateTime() {
     focusEditor();
-    document.execCommand('insertText', false, new Date().toLocaleString());
+    insertTextAtCaret(new Date().toLocaleString());
     markDirty(); updateTbState();
   }
 
@@ -2367,9 +2513,9 @@ export default function Editor() {
     if (active === 'end')   active = 'right';
     const cmdMap = { center: 'justifyCenter', right: 'justifyRight', left: 'justifyLeft' };
     if ((where === 'center' && active === 'center') || (where === 'right' && active === 'right')) {
-      document.execCommand('justifyLeft');
+      runEditorCommand('justifyLeft');
     } else {
-      document.execCommand(cmdMap[where] || 'justifyLeft');
+      runEditorCommand(cmdMap[where] || 'justifyLeft');
     }
     updateWC();
     markDirty();
@@ -2378,11 +2524,11 @@ export default function Editor() {
 
   function clearFormatting() {
     focusEditor();
-    document.execCommand('removeFormat');
+    runEditorCommand('removeFormat');
     // Only reset block to <p> when NOT inside a list (would break list structure).
     const block = currentBlockEl(bodyRef.current);
     if (!block?.closest?.('li')) {
-      document.execCommand('formatBlock', false, '<p>');
+      if (!runEditorCommand('formatBlock', '<p>')) replaceCurrentBlockFallback('p');
     }
     updateWC();
     markDirty();
@@ -2428,19 +2574,11 @@ export default function Editor() {
     const sel = window.getSelection();
     const selected = sel ? sel.toString().trim() : '';
     if (!selected && label) {
-      document.execCommand(
-        'insertHTML',
-        false,
-        `<a href="${escH(url)}" target="_blank" rel="noreferrer">${escH(label)}</a>`
-      );
+      insertHTMLAtCaret(`<a href="${escAttr(url)}" target="_blank" rel="noreferrer">${escH(label)}</a>`);
     } else if (!selected) {
-      document.execCommand(
-        'insertHTML',
-        false,
-        `<a href="${escH(url)}" target="_blank" rel="noreferrer">${escH(url)}</a>`
-      );
+      insertHTMLAtCaret(`<a href="${escAttr(url)}" target="_blank" rel="noreferrer">${escH(url)}</a>`);
     } else {
-      document.execCommand('createLink', false, url);
+      if (!runEditorCommand('createLink', url)) insertHTMLAtCaret(`<a href="${escAttr(url)}" target="_blank" rel="noreferrer">${escH(selected || label || url)}</a>`);
       bodyRef.current?.querySelectorAll('a').forEach(a => {
         a.target = '_blank';
         a.rel = 'noreferrer';
@@ -3097,7 +3235,7 @@ export default function Editor() {
     // Tab → two spaces
     if (e.key === 'Tab') {
       e.preventDefault();
-      document.execCommand('insertText', false, '  ');
+      insertTextAtCaret('  ');
       markDirty();
       return;
     }
@@ -3119,7 +3257,7 @@ export default function Editor() {
       const selected = sel && sel.rangeCount && !sel.isCollapsed ? sel.toString() : '';
       if (selected) {
         e.preventDefault();
-        document.execCommand('insertHTML', false, '<code>' + escH(selected) + '</code>');
+        insertHTMLAtCaret('<code>' + escH(selected) + '</code>');
         markDirty();
       }
       return;
@@ -3441,7 +3579,7 @@ export default function Editor() {
 
     preserveExactMarkdownSourceRef.current = true;
     pasteRenderGuardRef.current = true;
-    document.execCommand('insertHTML', false, rendered);
+    insertHTMLAtCaret(rendered);
     window.setTimeout(() => { pasteRenderGuardRef.current = false; }, 250);
     safeEnhanceEditorBody(body, markDirty);
     if (!sourceViewRef.current) renderedDomDirtyRef.current = false;
@@ -3464,25 +3602,33 @@ export default function Editor() {
      ────────────────────────────────────────────────── */
   function updateTbState() {
     const body     = bodyRef.current;
-    const block    = (document.queryCommandValue('formatBlock') || '').toLowerCase().replace(/[<>]/g, '');
+    if (!body) return;
+    const safeValue = (cmd) => {
+      try { return document.queryCommandValue(cmd) || ''; } catch { return ''; }
+    };
+    const safeState = (cmd) => {
+      try { return !!document.queryCommandState(cmd); } catch { return false; }
+    };
+
+    const block    = String(safeValue('formatBlock') || currentBlockEl(body)?.tagName || '').toLowerCase().replace(/[<>]/g, '');
     const blockEl  = currentBlockEl(body);
     const align    = blockEl ? (blockEl.style.textAlign || getComputedStyle(blockEl).textAlign) : '';
-    const bg       = String(document.queryCommandValue('backColor') || '').toLowerCase();
+    const bg       = String(safeValue('backColor')).toLowerCase();
     const inCB     = !!insideCodeBlock(body);
     const inCode   = !!closestNode('CODE', body) && !inCB;
     const inLink   = !!closestNode('A', body);
     const inCheck  = !!closestNode('check-list', body);
-    const inUL     = document.queryCommandState('insertUnorderedList');
-    const inOL     = document.queryCommandState('insertOrderedList');
+    const inUL     = safeState('insertUnorderedList');
+    const inOL     = safeState('insertOrderedList');
 
     setTbState({
       markdown: markdownEnabled,
-      bold:      document.queryCommandState('bold'),
-      italic:    document.queryCommandState('italic'),
-      underline: document.queryCommandState('underline'),
-      strike:    document.queryCommandState('strikeThrough'),
-      sup:       document.queryCommandState('superscript'),
-      sub:       document.queryCommandState('subscript'),
+      bold:      safeState('bold'),
+      italic:    safeState('italic'),
+      underline: safeState('underline'),
+      strike:    safeState('strikeThrough'),
+      sup:       safeState('superscript'),
+      sub:       safeState('subscript'),
       h1: block === 'h1', h2: block === 'h2', h3: block === 'h3',
       p:  block === 'p' || block === 'div' || block === '',
       bq: block === 'blockquote',
@@ -3500,6 +3646,8 @@ export default function Editor() {
   function toggleMarkdownMode() {
     const next = !markdownEnabled;
     setMarkdownEnabled(next);
+    savePref('markdownMode', next);
+    applyMarkdownView(next);
     showToast(next ? 'Markdown render mode on' : 'Markdown text mode on', next ? 'fa-markdown' : 'fa-file-lines');
     requestAnimationFrame(updateTbState);
   }
@@ -3509,6 +3657,8 @@ export default function Editor() {
      ────────────────────────────────────────────────── */
   function handleToolClick(key) {
     if (isEditorReadLocked(true)) return;
+    if (!ensureRenderedEditorForTool(key)) return;
+    if (key !== 'markdown') restoreSavedSelection();
     switch (key) {
       case 'markdown':  return toggleMarkdownMode();
       case 'undo':      return undoEditor();
@@ -3538,7 +3688,11 @@ export default function Editor() {
       case 'hr':        return insertHR();
       case 'code':      return fmtInlineCode();
       case 'codeblock': return insertCodeBlock();
-      case 'photo':     return setImageModal(true);
+      case 'photo': {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount && rangeBelongsToBody(sel.getRangeAt(0))) savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+        return setImageModal(true);
+      }
       case 'draw':      return openDrawModal();
       case 'clear':     return clearFormatting();
       case 'link':      return toggleLinkPopover();
