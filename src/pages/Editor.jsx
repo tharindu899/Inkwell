@@ -1289,6 +1289,80 @@ export default function Editor() {
     });
   }
 
+  function blurEditorKeyboard() {
+    try {
+      const active = document.activeElement;
+      if (active && active !== document.body) active.blur?.();
+    } catch {}
+    try { window.getSelection?.()?.removeAllRanges?.(); } catch {}
+    try {
+      const root = document.documentElement;
+      root.classList.remove('keyboard-open');
+      root.style.removeProperty('--keyboard-offset');
+    } catch {}
+  }
+
+  function lockDomForReading() {
+    const body = bodyRef.current;
+    const title = titleRef.current;
+
+    if (title) {
+      title.readOnly = true;
+      title.tabIndex = -1;
+      title.setAttribute('readonly', 'readonly');
+      title.setAttribute('aria-readonly', 'true');
+      title.setAttribute('inputmode', 'none');
+    }
+
+    if (body) {
+      body.contentEditable = 'false';
+      body.tabIndex = -1;
+      body.setAttribute('contenteditable', 'false');
+      body.setAttribute('aria-readonly', 'true');
+      body.setAttribute('inputmode', 'none');
+
+      // Markdown rendering can create nested editable code nodes while the body
+      // is still in edit mode. Force every descendant read-only so tapping code
+      // in Reading Mode never opens the Android/iOS keyboard.
+      body.querySelectorAll('[contenteditable="true"], pre code, .ed-code, textarea, input').forEach(el => {
+        el.setAttribute('contenteditable', 'false');
+        el.setAttribute('aria-readonly', 'true');
+        el.setAttribute('tabindex', '-1');
+        el.setAttribute('inputmode', 'none');
+        if ('readOnly' in el) el.readOnly = true;
+      });
+    }
+
+    blurEditorKeyboard();
+  }
+
+  function unlockDomAfterReading() {
+    const body = bodyRef.current;
+    const title = titleRef.current;
+
+    if (title) {
+      title.readOnly = false;
+      title.tabIndex = 0;
+      title.removeAttribute('readonly');
+      title.setAttribute('aria-readonly', 'false');
+      title.removeAttribute('inputmode');
+    }
+
+    if (body) {
+      body.contentEditable = 'true';
+      body.tabIndex = 0;
+      body.setAttribute('contenteditable', 'true');
+      body.setAttribute('aria-readonly', 'false');
+      body.removeAttribute('inputmode');
+      body.querySelectorAll('pre code, .ed-code').forEach(el => {
+        el.setAttribute('contenteditable', 'true');
+        el.setAttribute('aria-readonly', 'false');
+        el.removeAttribute('tabindex');
+        el.removeAttribute('inputmode');
+      });
+    }
+  }
+
   function renderForReadingMode() {
     const body = bodyRef.current;
     if (!body) return;
@@ -1305,16 +1379,16 @@ export default function Editor() {
     sourceViewRef.current = !renderedOk;
     renderedDomDirtyRef.current = false;
     setMarkdownSourceClass(!renderedOk);
-    if (renderedOk) safeEnhanceEditorBody(body, markDirty);
 
-    // Lock the DOM immediately; React will also apply readOnly/contentEditable on the next render.
-    body.setAttribute('contenteditable', 'false');
-    body.setAttribute('aria-readonly', 'true');
-    titleRef.current?.setAttribute('readonly', 'readonly');
-    try { document.activeElement?.blur?.(); } catch {}
+    // Lock before and after enhancement because code-block enhancement reads
+    // contenteditable state and must create non-focusable code in Reading Mode.
+    lockDomForReading();
+    if (renderedOk) safeEnhanceEditorBody(body, markDirty);
+    lockDomForReading();
 
     // If a wide table/code block was horizontally scrolled in edit mode, reset it.
     requestAnimationFrame(() => {
+      lockDomForReading();
       body.querySelectorAll('.md-table-wrap, pre, .ed-code').forEach(el => { el.scrollLeft = 0; });
       updateWC();
     });
@@ -1333,9 +1407,7 @@ export default function Editor() {
     } else {
       applyMarkdownView(true);
     }
-    body.setAttribute('contenteditable', 'true');
-    body.setAttribute('aria-readonly', 'false');
-    titleRef.current?.removeAttribute('readonly');
+    unlockDomAfterReading();
     requestAnimationFrame(updateTbState);
   }
 
@@ -3878,7 +3950,10 @@ export default function Editor() {
               rows={1}
               readOnly={isReadMode}
               aria-readonly={isReadMode}
-              tabIndex={isReadMode ? -1 : undefined}
+              inputMode={isReadMode ? 'none' : undefined}
+              tabIndex={isReadMode ? -1 : 0}
+              onPointerDown={e => { if (isEditorReadLocked()) { e.preventDefault(); blurEditorKeyboard(); } }}
+              onFocus={e => { if (isEditorReadLocked()) { e.currentTarget.blur(); blurEditorKeyboard(); } }}
               onInput={e => { if (isEditorReadLocked()) return; autoResize(e.target); markDirty(); }}
               onKeyDown={titleKeydown}
             />
@@ -3888,18 +3963,20 @@ export default function Editor() {
               spellCheck={spellcheckEnabled}
               contentEditable={!isReadMode}
               aria-readonly={isReadMode}
-              tabIndex={isReadMode ? 0 : undefined}
+              inputMode={isReadMode ? 'none' : undefined}
+              tabIndex={isReadMode ? -1 : 0}
               suppressContentEditableWarning
               data-placeholder="Start writing…"
+              onFocusCapture={e => { if (isEditorReadLocked()) { e.currentTarget.blur(); blurEditorKeyboard(); } }}
               onBeforeInput={onBodyBeforeInput}
               onInput={onBodyInput}
               onPaste={onBodyPaste}
               onKeyDown={editorKeydown}
               onKeyUp={editorKeyup}
-              onMouseUp={updateTbState}
-              onPointerDownCapture={editorCheckEvent}
-              onTouchStartCapture={editorCheckEvent}
-              onClickCapture={editorCheckEvent}
+              onMouseUp={isReadMode ? undefined : updateTbState}
+              onPointerDownCapture={e => { if (isEditorReadLocked()) { blurEditorKeyboard(); return; } editorCheckEvent(e); }}
+              onTouchStartCapture={e => { if (isEditorReadLocked()) { blurEditorKeyboard(); return; } editorCheckEvent(e); }}
+              onClickCapture={e => { if (isEditorReadLocked()) { blurEditorKeyboard(); return; } editorCheckEvent(e); }}
             />
           </div>
 
