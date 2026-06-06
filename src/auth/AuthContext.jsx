@@ -156,7 +156,8 @@ export function AuthProvider({ children }) {
           email:       result.email       || '',
           picture:     result.imageUrl    || '',
           accessToken: result.authentication?.accessToken || '',
-          expiry:      Date.now() + 3600 * 1000,
+          // Use expires_in from the result if available; fall back to 1 h
+          expiry:      Date.now() + ((result.authentication?.expires_in ?? 3600) * 1000),
           savedAt:     Date.now(),
         };
         localStorage.setItem(AUTH_KEY, JSON.stringify(userData));
@@ -211,9 +212,12 @@ export function AuthProvider({ children }) {
       // Web GIS silent refresh
       if (!tokenClientRef.current) { resolve(null); return; }
       const orig = tokenClientRef.current.callback;
+      // Track whether a real user-visible sign-in was in progress so the
+      // silent refresh doesn't accidentally reset the spinner.
+      const wasSigningIn = false; // silent refresh never calls setSigningIn(true)
       tokenClientRef.current.callback = (resp) => {
         tokenClientRef.current.callback = orig;
-        setSigningIn(false);
+        if (wasSigningIn) setSigningIn(false);
         if (resp.error) {
           setError(null);
           resolve(null);

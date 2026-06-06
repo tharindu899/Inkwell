@@ -16,11 +16,10 @@ import { showToast } from '../components/Toast';
 import { haptic }    from '../utils/haptics';
 
 export default function Home() {
-  const { notes, sortOrder, setSortOrder, dispatch } = useAppStore();
+  const { notes, sortedNotes, sortOrder, setSortOrder, dispatch } = useAppStore();
   const stats  = getStats();
-  const sorted = sortNotes(notes);
-  const pinnedNotes = sorted.filter(n => n.pinned);
-  const recentNotes = sorted.filter(n => !n.pinned);
+  const pinnedNotes = sortedNotes.filter(n => n.pinned);
+  const recentNotes = sortedNotes.filter(n => !n.pinned);
   const draggingPinnedRef = useRef(null);
 
   // ── multi-select state ──────────────────
@@ -293,14 +292,14 @@ export default function Home() {
         )}
 
         {/* ── Notes ── */}
-        {sorted.length === 0 ? (
+        {sortedNotes.length === 0 ? (
           <EmptyState
             icon="fa-regular fa-note-sticky"
             title="No notes yet"
             sub="Tap the + button to write your first note."
           />
         ) : selectMode ? (
-          sorted.map(n => (
+          sortedNotes.map(n => (
             <NoteCard
               key={n.id}
               note={n}
@@ -356,7 +355,7 @@ export default function Home() {
 
       {!selectMode && <Fab />}
       {deleteConfirmOpen && (
-        <div className="modal-overlay show select-delete-confirm" onClick={(e) => {
+        <div className="modal-overlay show" onClick={(e) => {
           if (e.target === e.currentTarget) setDeleteConfirmOpen(false);
         }}>
           <div className="modal select-delete-modal">

@@ -38,9 +38,13 @@
     <!-- ── Google Identity Services (OAuth 2.0 / Sign-In) ── -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-    <!-- ── Service Worker Registration (Network-Only) ───── -->
+    <!-- ── Service Worker Registration (Network-Only, web/PWA only) ── -->
     <script>
-      if ('serviceWorker' in navigator) {
+      // Skip SW registration inside Capacitor native WebView — the WebView
+      // uses file:// or capacitor:// scheme and the SW can't intercept those
+      // requests. Registering anyway causes spurious console warnings.
+      const isCapacitor = !!(window.Capacitor?.isNativePlatform?.());
+      if ('serviceWorker' in navigator && !isCapacitor) {
         window.addEventListener('load', () => {
           navigator.serviceWorker
             .register('/sw.js', { scope: '/', updateViaCache: 'none' })

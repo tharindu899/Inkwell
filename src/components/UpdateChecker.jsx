@@ -91,26 +91,6 @@ async function fetchLatestRelease() {
   }
 }
 
-async function openSystemUrl(url) {
-  try {
-    const { Capacitor } = await import('@capacitor/core');
-    if (Capacitor.isNativePlatform()) {
-      window.open(url, '_system');
-      return;
-    }
-  } catch { /* browser */ }
-  window.open(url, '_blank', 'noopener,noreferrer');
-}
-
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-    reader.readAsDataURL(blob);
-  });
-}
-
 async function nativeDownloadInstallApk(url, fileName) {
   const { Capacitor } = await import('@capacitor/core');
   const installer = Capacitor?.Plugins?.ApkInstaller;

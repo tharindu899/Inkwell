@@ -239,7 +239,6 @@ export default function NoteCard({
   if (dismissed) return null;
 
   // ── styles ─────────────────────────────────────────────────────────────────
-  const isScaled  = menuOpen || pressing;
   const cardStyle = {
     position:     'relative',
     marginBottom: 10,

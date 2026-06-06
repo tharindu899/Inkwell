@@ -2,7 +2,7 @@
   "name": "Inkwell",
   "short_name": "Inkwell",
   "description": "Your minimal, beautiful notebook app.",
-  "start_url": "/",
+  "start_url": "/#/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#0b0b12",

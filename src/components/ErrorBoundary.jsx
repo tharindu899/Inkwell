@@ -27,7 +27,7 @@ export default class ErrorBoundary extends React.Component {
 
     return (
       <div className="app-shell" style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
-        <div className="modal-card" style={{ width: 'min(92vw, 420px)', textAlign: 'center' }}>
+        <div className="modal" style={{ width: 'min(92vw, 420px)', textAlign: 'center' }}>
           <div style={{ fontSize: 42, color: 'var(--accent)', marginBottom: 12 }}>
             <i className="fa-solid fa-triangle-exclamation" />
           </div>
@@ -40,7 +40,7 @@ export default class ErrorBoundary extends React.Component {
               {this.state.message}
             </small>
           ) : null}
-          <button className="primary-btn" type="button" onClick={this.reset}>
+          <button className="btn btn-primary" type="button" onClick={this.reset}>
             Back to notes
           </button>
         </div>

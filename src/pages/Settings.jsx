@@ -526,7 +526,7 @@ export default function Settings() {
       {/* Hidden file input */}
       <input type="file" id="import-file" accept=".json" style={{ display: 'none' }} onChange={processImport} />
 
-      <BottomNav active="settings" />
+      <BottomNav />
       <Toast />
     </div>
   );

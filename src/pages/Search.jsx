@@ -218,7 +218,7 @@ export default function Search() {
         )}
       </div>
 
-      <BottomNav active="search" />
+      <BottomNav />
       <Toast />
     </div>
   );

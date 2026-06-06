@@ -185,7 +185,7 @@ export default function Profile() {
         </div>
       )}
 
-      <BottomNav active="settings" />
+      <BottomNav />
       <Toast />
     </div>
   );
