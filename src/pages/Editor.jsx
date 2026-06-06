@@ -628,11 +628,32 @@ function normalizeSourceCompareText(text = '') {
     .toLowerCase();
 }
 
+function codeBlockTextForCompare(code = '') {
+  return String(code || '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/^(Copy|Delete|Bottom)\s*/i, '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function replaceCodeBlocksForCompare(source = '') {
+  return String(source || '')
+    .replace(/(^|\n)\s*```[^\n`]*\n([\s\S]*?)\n\s*```(?=\n|$)/g, (m, lead, code) => `${lead}${codeBlockTextForCompare(code)}`)
+    .replace(/(^|\n)\s*~~~[^\n~]*\n([\s\S]*?)\n\s*~~~(?=\n|$)/g, (m, lead, code) => `${lead}${codeBlockTextForCompare(code)}`)
+    .replace(/<pre\b[^>]*>\s*<code\b[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/gi, (m, code) => `\n${codeBlockTextForCompare(code)}\n`)
+    .replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (m, code) => `\n${codeBlockTextForCompare(code)}\n`);
+}
+
 function markdownToCompareText(markdown = '') {
   let text = String(markdown || '').replace(/\r\n/g, '\n');
   text = preprocessPastedMarkdown(text);
-  return text
-    .replace(/```[\s\S]*?```/g, ' code block ')
+  return replaceCodeBlocksForCompare(text)
     .replace(/<img\b[^>]*alt=["']([^"']*)["'][^>]*>/gi, '$1')
     .replace(/<img\b[^>]*>/gi, ' image ')
     .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (m, href, label) => String(label || href).replace(/<[^>]+>/g, ' ').trim() || href)
@@ -819,6 +840,7 @@ function renderPastedText(text = '') {
    ───────────────────────────────────────── */
 function enhanceCodeBlocks(bodyEl) {
   if (!bodyEl) return;
+  const readOnly = bodyEl.getAttribute('contenteditable') === 'false' || bodyEl.getAttribute('aria-readonly') === 'true';
   bodyEl.querySelectorAll('pre').forEach(pre => {
     let code = pre.querySelector('code');
     if (!code) {
@@ -828,7 +850,8 @@ function enhanceCodeBlocks(bodyEl) {
       code.textContent = old.replace(/^(Copy|Delete|Bottom)\s*/g, '');
       pre.appendChild(code);
     }
-    code.setAttribute('contenteditable', 'true');
+    code.setAttribute('contenteditable', readOnly ? 'false' : 'true');
+    code.setAttribute('aria-readonly', readOnly ? 'true' : 'false');
 
     // Keep the action buttons outside of the horizontal code scroller.
     // This makes Copy / Bottom / Delete stay visible while code scrolls sideways.

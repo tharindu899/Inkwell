@@ -27,8 +27,36 @@ import { haptic }                            from '../utils/haptics';
 const LONG_PRESS_MS  = 480;
 const MOVE_CANCEL_PX = 9;
 
+function cleanCodePreviewText(code = '') {
+  return String(code || '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/^(Copy|Delete|Bottom)\s*/i, '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(' ');
+}
+
+function replaceCodeBlocksForPreview(source = '') {
+  return String(source || '')
+    // Markdown fenced code blocks should preview their real code, not the words
+    // "code block". This fixes Home / Notebook / Search cards after inserting
+    // a code block in the editor.
+    .replace(/(^|\n)\s*```[^\n`]*\n([\s\S]*?)\n\s*```(?=\n|$)/g, (m, lead, code) => `${lead}${cleanCodePreviewText(code)}`)
+    .replace(/(^|\n)\s*~~~[^\n~]*\n([\s\S]*?)\n\s*~~~(?=\n|$)/g, (m, lead, code) => `${lead}${cleanCodePreviewText(code)}`)
+    // Raw HTML pasted into a note can also contain <pre><code>. Keep that
+    // source readable in the card preview too.
+    .replace(/<pre\b[^>]*>\s*<code\b[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/gi, (m, code) => `\n${cleanCodePreviewText(code)}\n`)
+    .replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (m, code) => `\n${cleanCodePreviewText(code)}\n`);
+}
+
 function stripMarkdownForPreview(source = '') {
-  let text = String(source || '').replace(/\r\n/g, '\n');
+  let text = replaceCodeBlocksForPreview(String(source || '').replace(/\r\n/g, '\n'));
 
   // README/GitHub HTML that was pasted as source should become readable preview text.
   text = text
@@ -37,11 +65,10 @@ function stripMarkdownForPreview(source = '') {
     .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (m, href, label) => String(label || href).replace(/<[^>]+>/g, ' ').trim() || href)
     .replace(/<summary\b[^>]*>([\s\S]*?)<\/summary>/gi, '$1')
     .replace(/<br\s*\/?\s*>/gi, '\n')
-    .replace(/<\/p>|<\/div>|<\/h[1-6]>|<\/li>|<\/tr>/gi, '\n')
+    .replace(/<\/p>|<\/div>|<\/h[1-6]>|<\/li>|<\/tr>|<\/details>/gi, '\n')
     .replace(/<[^>]+>/g, ' ');
 
   text = text
-    .replace(/```[\s\S]*?```/g, ' code block ')
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')
