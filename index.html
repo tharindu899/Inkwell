@@ -45,13 +45,18 @@
           navigator.serviceWorker
             .register('/sw.js', { scope: '/', updateViaCache: 'none' })
             .then((reg) => {
-              console.log('[Inkwell] SW registered, scope:', reg.scope);
+              if (!reg) {
+                console.warn('[Inkwell] SW registration unavailable in this environment');
+                return;
+              }
+
+              console.log('[Inkwell] SW registered, scope:', reg.scope || '/');
 
               /* Force update check on every page load — no stale SW */
-              reg.update();
+              reg.update?.();
 
               /* If a new SW is waiting, activate it immediately */
-              reg.addEventListener('updatefound', () => {
+              reg.addEventListener?.('updatefound', () => {
                 const newSW = reg.installing;
                 if (!newSW) return;
                 newSW.addEventListener('statechange', () => {

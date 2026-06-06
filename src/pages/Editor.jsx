@@ -1399,7 +1399,9 @@ export default function Editor() {
   const [tbState, setTbState] = useState({});
 
   /* ── hidden toolbar tools ── */
-  const [hiddenTools, setHiddenTools] = useState(getHiddenTools);
+  const hiddenToolsRef = useRef(getHiddenTools());
+  const [hiddenTools, setHiddenTools] = useState(() => hiddenToolsRef.current);
+  useEffect(() => { hiddenToolsRef.current = hiddenTools; }, [hiddenTools]);
 
   /* ── word / char counts ── */
   const [wc, setWc] = useState(0);
@@ -3362,11 +3364,9 @@ export default function Editor() {
   }
 
   function toggleMarkdownMode() {
-    setMarkdownEnabled(prev => {
-      const next = !prev;
-      showToast(next ? 'Markdown render mode on' : 'Markdown text mode on', next ? 'fa-markdown' : 'fa-file-lines');
-      return next;
-    });
+    const next = !markdownEnabled;
+    setMarkdownEnabled(next);
+    showToast(next ? 'Markdown render mode on' : 'Markdown text mode on', next ? 'fa-markdown' : 'fa-file-lines');
     requestAnimationFrame(updateTbState);
   }
 
@@ -3501,12 +3501,12 @@ export default function Editor() {
      Pin / Delete / Read mode / Export
      ────────────────────────────────────────────────── */
   function togglePin() {
-    updateNote(n => {
-      const updated = { ...n, pinned: !n.pinned };
-      showToast(updated.pinned ? 'Note pinned' : 'Note unpinned', 'fa-thumbtack');
-      haptic('medium');
-      return updated;
-    });
+    const current = noteRef.current || note;
+    if (!current) return;
+    const updated = { ...current, pinned: !current.pinned };
+    updateNote(updated);
+    showToast(updated.pinned ? 'Note pinned' : 'Note unpinned', 'fa-thumbtack');
+    haptic('medium');
     markDirty();
   }
 
@@ -3530,16 +3530,14 @@ export default function Editor() {
   }
 
   function toggleReadMode() {
-    setIsReadMode(v => {
-      const next = !v;
-      if (next) {
-        renderForReadingMode();
-      } else {
-        restoreAfterReadingMode();
-      }
-      showToast(next ? 'Reading mode on' : 'Editing mode on', 'fa-book-open');
-      return next;
-    });
+    const next = !isReadMode;
+    if (next) {
+      renderForReadingMode();
+    } else {
+      restoreAfterReadingMode();
+    }
+    setIsReadMode(next);
+    showToast(next ? 'Reading mode on' : 'Editing mode on', 'fa-book-open');
   }
 
   async function downloadNote(format) {
@@ -3574,18 +3572,19 @@ export default function Editor() {
      Toolbar manager
      ────────────────────────────────────────────────── */
   function toggleToolVisibility(key, show) {
-    setHiddenTools(prev => {
-      const next = new Set(prev);
-      if (show) next.delete(key); else next.add(key);
-      saveHiddenTools(next);
-      showToast(show ? 'Tool enabled' : 'Tool hidden', show ? 'fa-eye' : 'fa-eye-slash');
-      return next;
-    });
+    const next = new Set(hiddenToolsRef.current);
+    if (show) next.delete(key); else next.add(key);
+    hiddenToolsRef.current = next;
+    setHiddenTools(next);
+    saveHiddenTools(next);
+    showToast(show ? 'Tool enabled' : 'Tool hidden', show ? 'fa-eye' : 'fa-eye-slash');
   }
 
   function resetToolbarTools() {
-    setHiddenTools(new Set());
-    saveHiddenTools(new Set());
+    const next = new Set();
+    hiddenToolsRef.current = next;
+    setHiddenTools(next);
+    saveHiddenTools(next);
     showToast('Toolbar reset', 'fa-rotate-left');
   }
 
