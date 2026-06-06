@@ -1284,6 +1284,12 @@ export default function Editor() {
     setMarkdownSourceClass(!renderedOk);
     if (renderedOk) safeEnhanceEditorBody(body, markDirty);
 
+    // Lock the DOM immediately; React will also apply readOnly/contentEditable on the next render.
+    body.setAttribute('contenteditable', 'false');
+    body.setAttribute('aria-readonly', 'true');
+    titleRef.current?.setAttribute('readonly', 'readonly');
+    try { document.activeElement?.blur?.(); } catch {}
+
     // If a wide table/code block was horizontally scrolled in edit mode, reset it.
     requestAnimationFrame(() => {
       body.querySelectorAll('.md-table-wrap, pre, .ed-code').forEach(el => { el.scrollLeft = 0; });
@@ -1304,6 +1310,9 @@ export default function Editor() {
     } else {
       applyMarkdownView(true);
     }
+    body.setAttribute('contenteditable', 'true');
+    body.setAttribute('aria-readonly', 'false');
+    titleRef.current?.removeAttribute('readonly');
     requestAnimationFrame(updateTbState);
   }
 
@@ -1361,6 +1370,14 @@ export default function Editor() {
 
   /* ── UI state ── */
   const [isReadMode,  setIsReadMode]  = useState(false);
+  const isReadModeRef = useRef(false);
+  useEffect(() => { isReadModeRef.current = isReadMode; }, [isReadMode]);
+
+  function isEditorReadLocked(showMessage = false) {
+    if (!isReadModeRef.current) return false;
+    if (showMessage) showToast('Reading mode is locked — turn it off to edit', 'fa-lock');
+    return true;
+  }
   const [linkPopover, setLinkPopover] = useState(false);
   const [linkUrl,     setLinkUrl]     = useState('');
   const [linkText,    setLinkText]    = useState('');
@@ -1567,13 +1584,21 @@ export default function Editor() {
   /* ─────────────────── Keyboard shortcuts (global) ── */
   useEffect(() => {
     const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      const shortcutKey = String(e.key || '').toLowerCase();
+      if (isReadModeRef.current) {
+        const editShortcuts = new Set(['z', 'y', 'b', 'i', 'u', 'k', 'e', '`']);
+        if ((e.ctrlKey || e.metaKey) && editShortcuts.has(shortcutKey)) {
+          e.preventDefault();
+          return;
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && shortcutKey === 'z') {
         e.preventDefault();
         if (e.shiftKey) redoEditor();
         else undoEditor();
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+      if ((e.ctrlKey || e.metaKey) && shortcutKey === 'y') {
         e.preventDefault();
         redoEditor();
         return;
@@ -1918,7 +1943,7 @@ export default function Editor() {
   saveNowRef.current = saveNow;
 
   function markDirty(recordHistory = true) {
-    if (!noteRef.current) return;
+    if (!noteRef.current || isReadModeRef.current) return;
     dirtyRef.current = true;
     setDirty(true);
     setSaveState('saving');
@@ -1947,6 +1972,7 @@ export default function Editor() {
   }
 
   function titleKeydown(e) {
+    if (isEditorReadLocked()) { e.preventDefault(); return; }
     if (e.key === 'Enter') { e.preventDefault(); bodyRef.current?.focus(); }
   }
 
@@ -1954,6 +1980,7 @@ export default function Editor() {
      Editor focus / selection restore
      ────────────────────────────────────────────────── */
   function focusEditor() {
+    if (isEditorReadLocked()) return;
     const body = bodyRef.current;
     if (!body) return;
     body.focus({ preventScroll: true });
@@ -2009,12 +2036,14 @@ export default function Editor() {
      Toolbar: prevent blur on button tap
      ────────────────────────────────────────────────── */
   function toolbarMouseDown(e) {
+    if (isEditorReadLocked()) return;
     // Keep the editor selection alive when tapping toolbar buttons on mobile/desktop.
     // Without this, Android can blur the contenteditable before the code button runs.
     if (e.target.closest('button')) e.preventDefault();
   }
 
   function toolbarPointerDown(e) {
+    if (isEditorReadLocked()) return;
     // Prevent the editor body from losing focus when a toolbar button is tapped.
     // For touch (pointerType === 'touch'), we skip preventDefault so that the
     // browser still synthesizes the click event — otherwise onClick never fires
@@ -2757,6 +2786,7 @@ export default function Editor() {
   }
 
   function openPhotoPicker() {
+    if (isEditorReadLocked(true)) return;
     const sel = window.getSelection();
     if (sel && sel.rangeCount && rangeBelongsToBody(sel.getRangeAt(0))) {
       savedRangeRef.current = sel.getRangeAt(0).cloneRange();
@@ -2769,6 +2799,7 @@ export default function Editor() {
   }
 
   async function onPickPhoto(e) {
+    if (isEditorReadLocked(true)) { e.target.value = ''; return; }
     const file = e.target.files?.[0];
     if (!file) return;
     try {
@@ -2793,6 +2824,7 @@ export default function Editor() {
   }
 
   function openDrawModal() {
+    if (isEditorReadLocked(true)) return;
     const sel = window.getSelection();
     savedRangeRef.current = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : savedRangeRef.current;
     setDrawModal(true);
@@ -2809,6 +2841,7 @@ export default function Editor() {
   }
 
   function insertDrawing() {
+    if (isEditorReadLocked(true)) return;
     const canvas = drawCanvasRef.current;
     if (!canvas) return;
     insertImageFromDataUrl(canvas.toDataURL('image/png'), 'Drawing', 'drawing');
@@ -2822,6 +2855,7 @@ export default function Editor() {
        2) input when the space has already been inserted
      ────────────────────────────────────────────────── */
   function applyRichMarkdownShortcut(trigger = 'auto', pendingText = '') {
+    if (isEditorReadLocked()) return false;
     if (!markdownEnabled) return false;
 
     const body = bodyRef.current;
@@ -2938,7 +2972,8 @@ export default function Editor() {
     markDirty();
   }
 
-  function onBodyBeforeInput(/* e */) {
+  function onBodyBeforeInput(e) {
+    if (isEditorReadLocked()) { e?.preventDefault?.(); return; }
     // Intentionally empty: markdown shortcuts are applied in onBodyInput after the
     // space is fully inserted, keeping Android keyboards open. No action needed here.
   }
@@ -2947,6 +2982,7 @@ export default function Editor() {
      Editor keydown
      ────────────────────────────────────────────────── */
   function editorKeydown(e) {
+    if (isEditorReadLocked()) { e.preventDefault(); return; }
     const body  = bodyRef.current;
     const sel   = window.getSelection();
     const node  = sel?.anchorNode ? (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement) : null;
@@ -3103,6 +3139,7 @@ export default function Editor() {
   }
 
   function editorKeyup(e) {
+    if (isEditorReadLocked()) return;
     if (markdownEnabled && e.key === '`') convertBacktickInlineCode();
     updateTbState();
   }
@@ -3111,6 +3148,7 @@ export default function Editor() {
      Body input handler
      ────────────────────────────────────────────────── */
   function onBodyInput() {
+    if (isEditorReadLocked()) return;
     const body = bodyRef.current;
     if (sourceViewRef.current) {
       markdownSourceRef.current = body?.textContent || body?.innerText || '';
@@ -3156,6 +3194,7 @@ export default function Editor() {
 
 
   function toggleChecklistBox(box, keepCaret = true) {
+    if (isEditorReadLocked()) return;
     if (!box || !bodyRef.current?.contains(box)) return;
     const checked = box.dataset.checked === 'true';
     const next = checked ? 'false' : 'true';
@@ -3264,7 +3303,7 @@ export default function Editor() {
 
 
   function onBodyPaste(e) {
-    if (isReadMode) return;
+    if (isEditorReadLocked()) { e?.preventDefault?.(); return; }
 
     const items = [...(e.clipboardData?.items || [])];
     const imageItem = items.find(item => item.type?.startsWith('image/'));
@@ -3374,6 +3413,7 @@ export default function Editor() {
      Toolbar custom handler dispatch
      ────────────────────────────────────────────────── */
   function handleToolClick(key) {
+    if (isEditorReadLocked(true)) return;
     switch (key) {
       case 'markdown':  return toggleMarkdownMode();
       case 'undo':      return undoEditor();
@@ -3415,6 +3455,7 @@ export default function Editor() {
      Tags
      ────────────────────────────────────────────────── */
   function commitTag(rawValue = tagInput) {
+    if (isEditorReadLocked(true)) return;
     const v = String(rawValue || '').trim().replace(/^#/, '').replace(/,/g, '').toLowerCase();
     if (!v) { setTagInput(''); return; }
     if (!(note.tags || []).includes(v)) {
@@ -3447,6 +3488,7 @@ export default function Editor() {
   }
 
   function removeTag(t) {
+    if (isEditorReadLocked(true)) return;
     updateNote(n => ({ ...n, tags: (n.tags || []).filter(x => x !== t) }));
     markDirty();
   }
@@ -3455,18 +3497,21 @@ export default function Editor() {
      Notebook picker
      ────────────────────────────────────────────────── */
   function pickNb(id) {
+    if (isEditorReadLocked(true)) return;
     updateNote(n => ({ ...n, notebookId: id }));
     setNbPicker(false);
     markDirty();
   }
 
   function openCreateNotebookFromPicker() {
+    if (isEditorReadLocked(true)) return;
     setNbPicker(false);
     setNbForm(EMPTY_NOTEBOOK_FORM);
     setNbCreateModal(true);
   }
 
   function submitCreateNotebook() {
+    if (isEditorReadLocked(true)) return;
     const name = nbForm.name.trim();
     if (!name) {
       showToast('Notebook name required', 'fa-circle-exclamation');
@@ -3501,6 +3546,7 @@ export default function Editor() {
      Pin / Delete / Read mode / Export
      ────────────────────────────────────────────────── */
   function togglePin() {
+    if (isEditorReadLocked(true)) return;
     const current = noteRef.current || note;
     if (!current) return;
     const updated = { ...current, pinned: !current.pinned };
@@ -3511,6 +3557,7 @@ export default function Editor() {
   }
 
   function doDelete() {
+    if (isEditorReadLocked(true)) { setDelModal(false); return; }
     setDelModal(false);
     haptic('heavy');
     const deleted = noteRef.current ? { ...noteRef.current, title: titleRef.current?.value || noteRef.current.title, content: getCleanHtml(), markdown: getMarkdownSource() } : null;
@@ -3531,13 +3578,22 @@ export default function Editor() {
 
   function toggleReadMode() {
     const next = !isReadMode;
+    isReadModeRef.current = next;
     if (next) {
+      setLinkPopover(false);
+      setImageModal(false);
+      setDrawModal(false);
+      setNbPicker(false);
+      setTbModal(false);
+      setTagManageModal(false);
+      setNbCreateModal(false);
+      try { document.activeElement?.blur?.(); } catch {}
       renderForReadingMode();
     } else {
       restoreAfterReadingMode();
     }
     setIsReadMode(next);
-    showToast(next ? 'Reading mode on' : 'Editing mode on', 'fa-book-open');
+    showToast(next ? 'Reading mode locked' : 'Editing mode on', next ? 'fa-lock' : 'fa-pen');
   }
 
   async function downloadNote(format) {
@@ -3625,8 +3681,8 @@ export default function Editor() {
         .nb-picker-item span{font-size:14px;color:var(--text-1)}
         .nb-picker-item.selected span{color:var(--accent);font-weight:500}
         .format-wrap{position:relative}
-        .read-mode .editor-toolbar,.read-mode .editor-bottom-panel,.read-mode .tags-row,.read-mode .nb-selector,.read-mode .editor-footer,.read-mode .code-actions,.read-mode .media-delete-btn,.read-mode .media-resize-handle,.read-mode .media-drag-chip{display:none!important}
-        .read-mode .editor-title{pointer-events:none}.read-mode .editor-body{pointer-events:auto;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding-bottom:34px!important}
+        .read-mode .editor-toolbar,.read-mode .editor-bottom-panel,.read-mode .tags-row,.read-mode .nb-selector,.read-mode .editor-footer,.read-mode .code-actions,.read-mode .media-delete-btn,.read-mode .media-resize-handle,.read-mode .media-drag-chip,.read-mode .edit-only-action{display:none!important}
+        .read-mode .editor-title{pointer-events:none;caret-color:transparent}.read-mode .editor-body{pointer-events:auto;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding-bottom:34px!important;caret-color:transparent;user-select:text;-webkit-user-select:text}
         .read-mode .editor-body .md-table-wrap{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
         .read-mode .editor-body .md-table-wrap table{min-width:520px;width:max-content;max-width:none}
         .read-mode .editor-body pre,.read-mode .editor-body .ed-code{max-width:100%;overflow-x:auto!important;white-space:pre!important;word-break:normal!important;overflow-wrap:normal!important}
@@ -3710,18 +3766,19 @@ export default function Editor() {
               <i className="fa-solid fa-download" />
             </button>
             <button
-              className={`icon-btn${note.pinned ? ' act' : ''}`}
+              className={`icon-btn edit-only-action${note.pinned ? ' act' : ''}`}
               title={note.pinned ? 'Unpin' : 'Pin note'}
               onClick={togglePin}
             >
               <i className="fa-solid fa-thumbtack" />
             </button>
-            <button className="icon-btn danger" title="Delete" onClick={() => setDelModal(true)}>
+            <button className="icon-btn danger edit-only-action" title="Delete" onClick={() => { if (isEditorReadLocked(true)) return; setDelModal(true); }}>
               <i className="fa-regular fa-trash-can" />
             </button>
             <button
-              className="save-btn"
+              className="save-btn edit-only-action"
               onClick={() => {
+                if (isEditorReadLocked(true)) return;
                 saveNow();
                 navigate('/', { replace: true });
               }}
@@ -3796,7 +3853,10 @@ export default function Editor() {
               className="editor-title"
               placeholder="Note title…"
               rows={1}
-              onInput={e => { autoResize(e.target); markDirty(); }}
+              readOnly={isReadMode}
+              aria-readonly={isReadMode}
+              tabIndex={isReadMode ? -1 : undefined}
+              onInput={e => { if (isEditorReadLocked()) return; autoResize(e.target); markDirty(); }}
               onKeyDown={titleKeydown}
             />
             <div
@@ -3804,6 +3864,8 @@ export default function Editor() {
               className={`editor-body${serifBody ? ' editor-body-serif' : ''}`}
               spellCheck={spellcheckEnabled}
               contentEditable={!isReadMode}
+              aria-readonly={isReadMode}
+              tabIndex={isReadMode ? 0 : undefined}
               suppressContentEditableWarning
               data-placeholder="Start writing…"
               onBeforeInput={onBodyBeforeInput}
