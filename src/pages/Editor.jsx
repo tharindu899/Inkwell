@@ -272,10 +272,12 @@ function normalizeEditorMarkdownSpacing(markdown = '') {
     if (!line.trim()) {
       const prev = out[out.length - 1];
       const next = lines.slice(i + 1).find(v => String(v).trim());
+      // Skip blank lines at the very start or end of the document
       if (!prev || !next) continue;
-      const prevIsFence = /^\s*(```|~~~)/.test(prev);
-      const nextIsFence = /^\s*(```|~~~)/.test(String(next));
-      if ((prevIsFence || nextIsFence) && out[out.length - 1] !== '') out.push('');
+      // Preserve exactly one blank line — both between normal paragraphs AND
+      // adjacent to fences (was previously only adding blanks near fences, which
+      // stripped all paragraph separators and caused content to merge on reload).
+      if (out[out.length - 1] !== '') out.push('');
       continue;
     }
     out.push(line);
@@ -1023,11 +1025,9 @@ function attachCodeBlockHandlers(bodyEl, onDirty) {
         copyBtn.innerHTML = '<i class="fa-solid fa-check"></i><span>Copied</span>';
         setTimeout(() => { copyBtn.innerHTML = old; }, 900);
       };
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(done).catch(() => {
-          fallbackCopy(text); done();
-        });
-      } else { fallbackCopy(text); done(); }
+      // Capacitor WebView always runs in a secure context, so the Clipboard API
+      // is always available. No fallback textarea needed.
+      navigator.clipboard.writeText(text).then(done).catch(done);
     };
 
     if (bottomBtn) bottomBtn.onclick = (e) => {
@@ -1053,17 +1053,6 @@ function attachCodeBlockHandlers(bodyEl, onDirty) {
       onDirty();
     };
   });
-}
-
-function fallbackCopy(text) {
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.cssText = 'position:fixed;left:-9999px';
-  ta.dataset.inkwellCopyOk = '1';
-  document.body.appendChild(ta);
-  ta.focus(); ta.select();
-  try { document.execCommand('copy'); } catch {}
-  ta.remove();
 }
 
 function placeCaretAtEnd(el) {
@@ -1137,18 +1126,6 @@ function insideCodeBlock(bodyEl) {
   return pre && pre.querySelector('code') ? pre : null;
 }
 
-function getAncestorStyle(prop) {
-  const sel = window.getSelection();
-  if (!sel || !sel.anchorNode) return '';
-  let n = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
-  while (n) {
-    const v = n.style && n.style[prop];
-    if (v) return v;
-    n = n.parentElement;
-  }
-  return '';
-}
-
 /* ─────────────────────────────────────────
    Main Component
    ───────────────────────────────────────── */
@@ -1184,6 +1161,10 @@ export default function Editor() {
     const p = getPrefs();
     return p.autosave !== undefined ? !!p.autosave : true;
   });
+  // Ref keeps the current value accessible from long-lived DOM event handlers
+  // (e.g. code-block delete buttons) without stale closure issues.
+  const autoSaveEnabledRef = useRef(autoSaveEnabled);
+  useEffect(() => { autoSaveEnabledRef.current = autoSaveEnabled; }, [autoSaveEnabled]);
   const [markdownEnabled, setMarkdownEnabled] = useState(() => {
     const p = getPrefs();
     return p.markdownMode !== undefined ? !!p.markdownMode : true;
@@ -1640,7 +1621,11 @@ export default function Editor() {
       document.removeEventListener('visibilitychange', onVisibility);
       appPauseHandle?.remove?.();
     };
-  }, [dirty]);
+  // flush only reads dirtyRef (a ref), not dirty state — no need to re-register
+  // listeners on every keystroke. Using [] prevents the Capacitor addListener
+  // from being called and immediately orphaned on every dirty-state change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ─────────────────── Track selection for toolbar state ── */
   useEffect(() => {
@@ -1680,7 +1665,9 @@ export default function Editor() {
     const handler = (e) => {
       const shortcutKey = String(e.key || '').toLowerCase();
       if (isReadModeRef.current) {
-        const editShortcuts = new Set(['z', 'y', 'b', 'i', 'u', 'k', 'e', '`']);
+        // Block all edit-oriented shortcuts while in Reading Mode.
+        // 's' (save) is included so the save path doesn't run on stale rendered HTML.
+        const editShortcuts = new Set(['z', 'y', 'b', 'i', 'u', 'k', 'e', '`', 's']);
         if ((e.ctrlKey || e.metaKey) && editShortcuts.has(shortcutKey)) {
           e.preventDefault();
           return;
@@ -1706,12 +1693,21 @@ export default function Editor() {
         setImageModal(false);
         setDrawModal(false);
         setNbPicker(false);
+        setTagManageModal(false);
+        setTagInput('');
+        setExportModal(false);
+        setTbModal(false);
+        setNbCreateModal(false);
+        // delModal is intentionally excluded — delete confirmation must be explicit
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+  // All functions called inside (undoEditor, redoEditor, saveNow, setters) operate
+  // exclusively through refs or stable setState dispatchers — no stale-closure risk.
+  // [note] was the previous dep but caused the handler to re-register on every auto-save.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note]);
+  }, []);
 
   useEffect(() => () => { clearTimeout(autoSaveTimer.current); clearTimeout(historyTimerRef.current); clearTimeout(collapseTimerRef.current); }, []);
 
@@ -2043,8 +2039,10 @@ export default function Editor() {
     setSaveState('saving');
     if (recordHistory) scheduleEditorHistory();
     clearTimeout(autoSaveTimer.current);
-    if (autoSaveEnabled && !isReadMode) {
-      autoSaveTimer.current = setTimeout(() => saveNowRef.current?.(true), 700);
+    // Use the ref so DOM event handlers (code-block buttons) always read the
+    // current autosave preference, not the stale closure value from mount time.
+    if (autoSaveEnabledRef.current) {
+      autoSaveTimer.current = setTimeout(() => saveNowRef.current?.(true), 2000);
     }
   }
 
@@ -2129,20 +2127,13 @@ export default function Editor() {
   /* ──────────────────────────────────────────────────
      Toolbar: prevent blur on button tap
      ────────────────────────────────────────────────── */
-  function toolbarMouseDown(e) {
-    if (isEditorReadLocked()) return;
-    // Keep the editor selection alive when tapping toolbar buttons on mobile/desktop.
-    // Without this, Android can blur the contenteditable before the code button runs.
-    if (e.target.closest('button')) e.preventDefault();
-  }
-
   function toolbarPointerDown(e) {
     if (isEditorReadLocked()) return;
-    // Prevent the editor body from losing focus when a toolbar button is tapped.
-    // For touch (pointerType === 'touch'), we skip preventDefault so that the
-    // browser still synthesizes the click event — otherwise onClick never fires
-    // on Android/iOS.
-    if (e.target.closest('button') && e.pointerType !== 'touch') e.preventDefault();
+    // On Android the pointerType is always 'touch'. preventDefault() on a touch
+    // pointerdown suppresses the synthesised click, so we must NOT call it —
+    // the browser needs to fire onClick after the finger lifts.
+    // We intentionally do nothing here; focus is kept by the editor body's
+    // onBlur suppression logic in the toolbar button click handlers.
   }
 
   /* ──────────────────────────────────────────────────
@@ -2331,8 +2322,16 @@ export default function Editor() {
 
   function toggleHighlight() {
     focusEditor();
-    const bg = String(document.queryCommandValue('backColor') || '').toLowerCase();
-    if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') {
+    const bg = String(document.queryCommandValue('backColor') || '').toLowerCase().replace(/\s/g, '');
+    // Android WebView can return 'rgb(0,0,0)' for the page background, which is not
+    // a user-applied highlight. Only treat non-black, non-transparent values as highlights.
+    const hasHighlight = bg
+      && bg !== 'transparent'
+      && bg !== 'rgba(0,0,0,0)'
+      && bg !== 'rgb(0,0,0)'
+      && bg !== '#000000'
+      && bg !== '#000';
+    if (hasHighlight) {
       document.execCommand('backColor', false, 'transparent');
       document.execCommand('removeFormat', false, null);
     } else {
@@ -2361,11 +2360,13 @@ export default function Editor() {
     focusEditor();
     const blockEl = currentBlockEl(bodyRef.current);
     let active = blockEl ? (blockEl.style.textAlign || getComputedStyle(blockEl).textAlign) : '';
-    // Normalize logical alignment keywords
+    // Normalize logical alignment keywords (RTL-aware browsers return these)
     if (active === 'start') active = 'left';
     if (active === 'end')   active = 'right';
     const cmdMap = { center: 'justifyCenter', right: 'justifyRight', left: 'justifyLeft' };
-    if ((where === 'center' && active === 'center') || (where === 'right' && active === 'right')) {
+    // Re-tapping the active alignment resets to the browser default (left/start).
+    // Previously only center and right toggled off — left never did, which was inconsistent.
+    if (active === where) {
       document.execCommand('justifyLeft');
     } else {
       document.execCommand(cmdMap[where] || 'justifyLeft');
@@ -2439,10 +2440,15 @@ export default function Editor() {
         `<a href="${escH(url)}" target="_blank" rel="noreferrer">${escH(url)}</a>`
       );
     } else {
+      // Snapshot existing anchors before inserting so we can identify the new one
+      const existingAnchors = new Set(bodyRef.current?.querySelectorAll('a') || []);
       document.execCommand('createLink', false, url);
+      // Only apply target/rel to the anchor(s) that didn't exist before this call
       bodyRef.current?.querySelectorAll('a').forEach(a => {
-        a.target = '_blank';
-        a.rel = 'noreferrer';
+        if (!existingAnchors.has(a)) {
+          a.target = '_blank';
+          a.rel = 'noreferrer';
+        }
       });
     }
     markDirty();
@@ -2555,8 +2561,6 @@ export default function Editor() {
 
   function startMediaDrag(e, fig) {
     if (!fig || !bodyRef.current?.contains(fig)) return;
-    const isMouse = e.pointerType === 'mouse' || (e.type === 'mousedown');
-    if (isMouse && e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     setMediaSelected(fig);
@@ -2569,10 +2573,7 @@ export default function Editor() {
     const maxLeft = Math.max(0, (body?.clientWidth || 360) - figRect.width - 20);
     const baseX = clampNumber(fig.style.marginLeft || fig.dataset.x || '', 0, maxLeft, 0);
     const baseY = clampNumber(fig.style.marginTop || fig.dataset.y || '', 0, 80, 0);
-    const useTouch = start.isTouch;
     let moved = false;
-
-    try { if (!useTouch) fig.setPointerCapture?.(e.pointerId); } catch {}
 
     const onMove = (ev) => {
       const p = getClientPoint(ev);
@@ -2594,10 +2595,8 @@ export default function Editor() {
     };
 
     const onUp = () => {
-      try { if (!useTouch) fig.releasePointerCapture?.(e.pointerId); } catch {}
-      window.removeEventListener(useTouch ? 'touchmove' : 'pointermove', onMove, true);
-      window.removeEventListener(useTouch ? 'touchend' : 'pointerup', onUp, true);
-      if (!useTouch) window.removeEventListener('pointercancel', onUp, true);
+      window.removeEventListener('touchmove', onMove, true);
+      window.removeEventListener('touchend', onUp, true);
       if (moved) {
         normalizeFigurePositions(bodyRef.current);
         markDirty();
@@ -2606,20 +2605,12 @@ export default function Editor() {
       }
     };
 
-    if (useTouch) {
-      window.addEventListener('touchmove', onMove, { capture: true, passive: false });
-      window.addEventListener('touchend', onUp, { capture: true, passive: false });
-    } else {
-      window.addEventListener('pointermove', onMove, true);
-      window.addEventListener('pointerup', onUp, true);
-      window.addEventListener('pointercancel', onUp, true);
-    }
+    window.addEventListener('touchmove', onMove, { capture: true, passive: false });
+    window.addEventListener('touchend', onUp, { capture: true, passive: false });
   }
 
   function startMediaResize(e, fig) {
     if (!fig || !bodyRef.current?.contains(fig)) return;
-    const isMouse = e.pointerType === 'mouse' || (e.type === 'mousedown');
-    if (isMouse && e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     setMediaSelected(fig);
@@ -2628,10 +2619,7 @@ export default function Editor() {
     const startX = start.x;
     const startW = fig.getBoundingClientRect().width;
     const maxW = Math.max(160, (bodyRef.current?.clientWidth || 360) - 24);
-    const useTouch = start.isTouch;
     let moved = false;
-
-    try { if (!useTouch) fig.setPointerCapture?.(e.pointerId); } catch {}
 
     const onMove = (ev) => {
       const p = getClientPoint(ev);
@@ -2649,10 +2637,8 @@ export default function Editor() {
     };
 
     const onUp = () => {
-      try { if (!useTouch) fig.releasePointerCapture?.(e.pointerId); } catch {}
-      window.removeEventListener(useTouch ? 'touchmove' : 'pointermove', onMove, true);
-      window.removeEventListener(useTouch ? 'touchend' : 'pointerup', onUp, true);
-      if (!useTouch) window.removeEventListener('pointercancel', onUp, true);
+      window.removeEventListener('touchmove', onMove, true);
+      window.removeEventListener('touchend', onUp, true);
       if (moved) {
         markDirty();
         updateTbState();
@@ -2660,14 +2646,8 @@ export default function Editor() {
       }
     };
 
-    if (useTouch) {
-      window.addEventListener('touchmove', onMove, { capture: true, passive: false });
-      window.addEventListener('touchend', onUp, { capture: true, passive: false });
-    } else {
-      window.addEventListener('pointermove', onMove, true);
-      window.addEventListener('pointerup', onUp, true);
-      window.addEventListener('pointercancel', onUp, true);
-    }
+    window.addEventListener('touchmove', onMove, { capture: true, passive: false });
+    window.addEventListener('touchend', onUp, { capture: true, passive: false });
   }
 
   function deleteMediaFigure(fig) {
@@ -3093,10 +3073,37 @@ export default function Editor() {
       if (k === '`') { e.preventDefault(); return insertCodeBlock(); }
     }
 
-    // Tab → two spaces
+    // Tab / Shift+Tab
     if (e.key === 'Tab') {
       e.preventDefault();
-      document.execCommand('insertText', false, '  ');
+      const inList = !!closestNode('LI', body);
+      if (inList) {
+        // Inside a list: Tab indents the item, Shift+Tab outdents it.
+        // This matches standard rich-text editor behaviour and keeps list
+        // structure intact (inserting 2 spaces inside a <li> breaks the DOM).
+        if (e.shiftKey) {
+          document.execCommand('outdent');
+          enhanceCollapsibleLists(body);
+        } else {
+          document.execCommand('indent');
+          enhanceCollapsibleLists(body);
+        }
+      } else if (e.shiftKey) {
+        // Outside a list: Shift+Tab removes up to 2 leading spaces from the line.
+        const sel2 = window.getSelection();
+        const r2 = sel2 && sel2.rangeCount ? sel2.getRangeAt(0) : null;
+        const blockEl2 = r2 ? currentBlockEl(body) : null;
+        if (blockEl2 && blockEl2 !== body) {
+          const txt = blockEl2.innerText || '';
+          if (txt.startsWith('  ')) {
+            blockEl2.innerText = txt.slice(2);
+            placeCaretAtEnd(blockEl2);
+          }
+        }
+      } else {
+        // Plain Tab outside a list → two spaces
+        document.execCommand('insertText', false, '  ');
+      }
       markDirty();
       return;
     }
@@ -3466,7 +3473,7 @@ export default function Editor() {
     const block    = (document.queryCommandValue('formatBlock') || '').toLowerCase().replace(/[<>]/g, '');
     const blockEl  = currentBlockEl(body);
     const align    = blockEl ? (blockEl.style.textAlign || getComputedStyle(blockEl).textAlign) : '';
-    const bg       = String(document.queryCommandValue('backColor') || '').toLowerCase();
+    const bg       = String(document.queryCommandValue('backColor') || '').toLowerCase().replace(/\s/g, '');
     const inCB     = !!insideCodeBlock(body);
     const inCode   = !!closestNode('CODE', body) && !inCB;
     const inLink   = !!closestNode('A', body);
@@ -3489,7 +3496,7 @@ export default function Editor() {
       left:   !align || align === 'start' || align === 'left',
       center: align === 'center',
       right:  align === 'right' || align === 'end',
-      highlight: bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)',
+      highlight: !!(bg && bg !== 'transparent' && bg !== 'rgba(0,0,0,0)' && bg !== 'rgb(0,0,0)' && bg !== '#000000' && bg !== '#000'),
       code:      inCode,
       codeblock: inCB,
       link:      inLink,
@@ -3769,8 +3776,7 @@ export default function Editor() {
         .link-popover .lp-actions{display:flex;gap:8px;margin-top:8px;justify-content:flex-end}
         .nb-picker-bottom{position:absolute;bottom:0;left:0;right:0;background:var(--bg-card);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:0 0 20px;transform:translateY(100%);transition:transform .3s cubic-bezier(.16,1,.3,1);z-index:200}
         .nb-picker-bottom.show{transform:translateY(0)}
-        .nb-picker-item{display:flex;align-items:center;gap:12px;padding:12px 20px;cursor:pointer;transition:background .2s}
-        .nb-picker-item:hover{background:var(--bg-elevated)}
+        .nb-picker-item{display:flex;align-items:center;gap:12px;padding:12px 20px;transition:background .2s}
         .nb-picker-item .nb-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
         .nb-picker-item span{font-size:14px;color:var(--text-1)}
         .nb-picker-item.selected span{color:var(--accent);font-weight:500}
@@ -3784,24 +3790,19 @@ export default function Editor() {
         .read-mode .editor-figure{cursor:default;touch-action:auto}.read-mode .editor-figure.media-selected{outline:none}
         .read-btn.on{background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
         .export-options{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
-        .export-option{display:flex;align-items:center;gap:12px;width:100%;padding:13px 14px;border-radius:14px;border:1px solid var(--border-hi);background:var(--bg-input);color:var(--text-1);font-family:var(--font-b);font-size:14px;text-align:left;cursor:pointer}
-        .export-option:hover{border-color:var(--accent);background:var(--accent-dim)}
+        .export-option{display:flex;align-items:center;gap:12px;width:100%;padding:13px 14px;border-radius:14px;border:1px solid var(--border-hi);background:var(--bg-input);color:var(--text-1);font-family:var(--font-b);font-size:14px;text-align:left;}
         .export-option i{width:22px;text-align:center;color:var(--accent);font-size:17px}
         .export-option small{display:block;color:var(--text-3);font-size:12px;margin-top:2px}
         .editor-body pre{position:relative;padding-top:40px;white-space:pre;overflow-x:auto;overflow-y:hidden;word-break:normal;overflow-wrap:normal}
         .editor-body li{position:relative}
-        .li-collapse-toggle{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-right:5px;border:none;background:transparent;color:var(--text-3);cursor:pointer;vertical-align:middle;border-radius:5px;font-size:9px;touch-action:manipulation;user-select:none;-webkit-user-select:none;flex-shrink:0;transition:color .15s,background .15s}
-        .li-collapse-toggle:hover{color:var(--accent);background:var(--accent-dim)}
+        .li-collapse-toggle{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-right:5px;border:none;background:transparent;color:var(--text-3);vertical-align:middle;border-radius:5px;font-size:9px;touch-action:manipulation;user-select:none;-webkit-user-select:none;flex-shrink:0;transition:color .15s,background .15s}
         .li-collapsed > .li-collapse-toggle{color:var(--accent)}
         .li-collapsed > ul,.li-collapsed > ol{display:none!important}
         .editor-body pre code{display:block;min-height:26px;outline:none;white-space:pre;tab-size:2;min-width:max-content;word-break:normal;overflow-wrap:normal}
         .code-actions{position:absolute;top:7px;right:7px;z-index:2;display:flex;align-items:center;gap:5px;user-select:none}
-        .code-action-btn{height:25px;min-width:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border-hi);background:var(--bg-input);color:var(--text-2);font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;line-height:1}
-        .code-action-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-dim)}
-        .code-action-btn.danger:hover{color:#ff6b6b;border-color:#ff6b6b;background:rgba(255,107,107,.12)}
+        .code-action-btn{height:25px;min-width:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border-hi);background:var(--bg-input);color:var(--text-2);font-size:11px;display:flex;align-items:center;gap:5px;line-height:1}
         .code-action-btn i{font-size:11px}
-        .tool-toggle{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-radius:10px;cursor:pointer;gap:10px}
-        .tool-toggle:hover{background:var(--bg-elevated)}
+        .tool-toggle{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-radius:10px;gap:10px}
         .tool-left{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text-1)}
         .tool-left i{width:18px;text-align:center;color:var(--text-2);font-size:14px}
         .toolbar-tool-list{max-height:55vh;overflow-y:auto;padding:4px 0}
@@ -3810,24 +3811,23 @@ export default function Editor() {
         .link-modal .modal-input{margin-bottom:0}
         .link-modal .modal-grid{display:grid;gap:10px}
         .drawing-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
-        .draw-swatch{width:26px;height:26px;border-radius:999px;border:2px solid var(--border-hi);cursor:pointer}
+        .draw-swatch{width:26px;height:26px;border-radius:999px;border:2px solid var(--border-hi);}
         .draw-swatch.on{outline:2px solid var(--accent);outline-offset:2px}
         .draw-canvas-wrap{margin-top:12px;border:1px solid var(--border-hi);border-radius:16px;overflow:hidden;background:#f7f0df}
-        .draw-canvas{display:block;width:100%;height:240px;touch-action:none;cursor:crosshair;background:#f7f0df}
-        .editor-figure{position:relative;display:block;clear:both;margin:8px 0 10px 0;width:180px;max-width:calc(100% - 8px);box-sizing:border-box;touch-action:none;user-select:none;cursor:default;float:none!important;transform:none!important}
+        .draw-canvas{display:block;width:100%;height:240px;touch-action:none;background:#f7f0df}
+        .editor-figure{position:relative;display:block;clear:both;margin:8px 0 10px 0;width:180px;max-width:calc(100% - 8px);box-sizing:border-box;touch-action:none;user-select:none;float:none!important;transform:none!important}
         .editor-body > .editor-figure{margin-right:0}
         .editor-body > .editor-figure + p{margin-top:0!important}
-        .editor-figure:active{cursor:default}
+        .editor-figure:active{}
         .editor-figure.media-selected{outline:2px solid var(--accent);outline-offset:4px;border-radius:16px}
         .editor-inline-image{display:block;width:100%;max-width:100%;height:auto;max-height:none;object-fit:contain;border-radius:14px;border:1px solid var(--border-hi);box-shadow:var(--sh);background:var(--bg-elevated);pointer-events:none}
         .drawing-figure{width:190px}.drawing-figure .editor-inline-image{background:#f7f0df}
         .media-delete-btn,.media-resize-handle,.media-drag-chip{position:absolute;z-index:5;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-hi);box-shadow:0 8px 20px rgba(0,0,0,.28);opacity:0;pointer-events:none;transform:scale(.92);transition:opacity .18s ease,transform .18s ease}
         .editor-figure.media-selected .media-delete-btn,.editor-figure.media-selected .media-resize-handle,.editor-figure.media-selected .media-drag-chip{opacity:1;pointer-events:auto;transform:scale(1)}
-        .media-delete-btn{top:6px;right:6px;width:30px;height:30px;border-radius:999px;background:rgba(20,20,20,.78);color:#fff;font-size:12px;cursor:pointer}
-        .media-delete-btn:hover{background:var(--danger);border-color:var(--danger)}
-        .media-resize-handle{right:-10px;bottom:-10px;width:30px;height:30px;border-radius:10px;background:var(--accent);color:#fff;font-size:12px;cursor:nwse-resize;touch-action:none}
-        .media-drag-chip{left:6px;top:6px;width:28px;height:28px;border-radius:999px;background:rgba(20,20,20,.64);color:#fff;font-size:11px;cursor:grab;touch-action:none}
-        .media-drag-chip:active{cursor:grabbing}
+        .media-delete-btn{top:6px;right:6px;width:30px;height:30px;border-radius:999px;background:rgba(20,20,20,.78);color:#fff;font-size:12px;}
+        .media-resize-handle{right:-10px;bottom:-10px;width:30px;height:30px;border-radius:10px;background:var(--accent);color:#fff;font-size:12px;touch-action:none}
+        .media-drag-chip{left:6px;top:6px;width:28px;height:28px;border-radius:999px;background:rgba(20,20,20,.64);color:#fff;font-size:11px;touch-action:none}
+        .media-drag-chip:active{}
         .image-placeholder{display:flex;align-items:center;justify-content:center;gap:10px;padding:26px 18px;border:1px dashed var(--border-hi);border-radius:16px;color:var(--text-3);background:var(--bg-elevated);margin:14px 0}
         @media(max-width:430px){.editor-figure{width:150px;max-width:calc(100% - 8px)}.drawing-figure{width:160px}.media-delete-btn,.media-resize-handle{width:28px;height:28px;font-size:11px}.media-drag-chip{width:26px;height:26px}}
       `}</style>
@@ -3897,7 +3897,6 @@ export default function Editor() {
           <div
             className="editor-toolbar"
             id="toolbar"
-            onMouseDown={toolbarMouseDown}
             onPointerDown={toolbarPointerDown}
           >
             {TOOLBAR_GROUPS.map((group, groupIndex) => {
@@ -3972,7 +3971,6 @@ export default function Editor() {
               onPaste={onBodyPaste}
               onKeyDown={editorKeydown}
               onKeyUp={editorKeyup}
-              onMouseUp={isReadMode ? undefined : updateTbState}
               onPointerDownCapture={e => { if (isEditorReadLocked()) { blurEditorKeyboard(); return; } editorCheckEvent(e); }}
               onTouchStartCapture={e => { if (isEditorReadLocked()) { blurEditorKeyboard(); return; } editorCheckEvent(e); }}
               onClickCapture={e => { if (isEditorReadLocked()) { blurEditorKeyboard(); return; } editorCheckEvent(e); }}

@@ -270,7 +270,6 @@ export default function NoteCard({
     padding:        '12px 0',
     border:         'none',
     background:     'transparent',
-    cursor:         'pointer',
     fontSize:       13,
     fontWeight:     700,
     letterSpacing:  '0.01em',
