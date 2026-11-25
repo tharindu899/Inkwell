@@ -1,6 +1,7 @@
 package com.inkwell.notes.ui.screens
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -15,12 +16,9 @@ import com.inkwell.notes.data.model.Note
 import com.inkwell.notes.data.model.Notebook
 import com.inkwell.notes.editor.Align
 import com.inkwell.notes.editor.BlockType
-import com.inkwell.notes.editor.Doc
-import com.inkwell.notes.editor.DocOps
-import com.inkwell.notes.editor.EditorHistory
 import com.inkwell.notes.editor.HtmlCodec
-import com.inkwell.notes.editor.NoteText
-import com.inkwell.notes.editor.SpanKind
+import com.inkwell.notes.editor.Mark
+import com.inkwell.notes.editor.RichDoc
 import com.inkwell.notes.ui.Route
 import com.inkwell.notes.ui.components.ToastState
 import com.inkwell.notes.util.Iso
@@ -37,12 +35,11 @@ import com.inkwell.notes.util.normalizeTagInput
  *  - flush on pause / leave → [flush]
  *  - 2 s debounced auto-save → driven by [edits] from the screen (not while Reading mode is on)
  *
- * Part 2: the body is a [Doc] (one string + block / span tables) edited through ONE text field.
- * [body] always holds `doc.text` plus the caret; every text edit goes through [DocOps.applyTextEdit]
- * so formatting follows the typing. A note whose stored HTML holds something Part 2 can't write back
- * (tables, images, code, links, checklists …) stays read-only ([bodyEditable] = false) and its
- * `content` / `markdown` are never rewritten. Notes the editor opened but the user never touched keep
- * their original HTML byte for byte ([contentTouched]).
+ * Part 2: the body is a [RichDoc] (text + inline marks + per-line block attributes). The text field
+ * edits `body.text`; every change is fed through [RichDoc.edit] so formatting follows the text.
+ * A note whose stored HTML uses something [HtmlCodec] can't represent yet (tables, code blocks,
+ * checklists, images, links …) is shown read-only ([bodyEditable] = false) and its `content` /
+ * `markdown` are never rewritten, so opening + pinning + retitling such a note can't flatten it.
  */
 @Stable
 class EditorController(private val context: Context, route: Route.Editor) {
@@ -65,24 +62,41 @@ class EditorController(private val context: Context, route: Route.Editor) {
     var body by mutableStateOf(TextFieldValue(""))
         private set
 
-    /** False for notes with rich formatting — see class doc. */
+    /** The formatted body; `doc.text == body.text` at all times while [bodyEditable]. */
+    var doc by mutableStateOf(RichDoc.EMPTY)
+        private set
+
+    /** False for notes using markup this editor version can't write back yet — see class doc. */
     var bodyEditable by mutableStateOf(true)
         private set
 
-    /** The formatted document behind [body] (text + blocks + spans). */
-    var doc by mutableStateOf(Doc.EMPTY)
-        private set
+    /** Typing formatting chosen with a collapsed caret (e.g. Bold toggled, nothing selected yet). */
+    private var pending by mutableStateOf<Int?>(null)
 
-    /** Toolbar toggles set with a collapsed caret ("bold on" before typing). Cleared when the caret moves. */
-    var pending by mutableStateOf<Map<SpanKind, Boolean>>(emptyMap())
-        private set
+    private class Snap(val doc: RichDoc, val selection: TextRange)
 
-    private val history = EditorHistory()
-    private var historyRev by mutableIntStateOf(0)
-    private var contentTouched = false
+    private val undoStack = ArrayList<Snap>()
+    private val redoStack = ArrayList<Snap>()
+    private var lastEditAt = 0L
+    private var lastKind = 0 // 0 none, 1 typing, 2 formatting
 
-    val canUndo: Boolean get() { historyRev; return history.canUndo }
-    val canRedo: Boolean get() { historyRev; return history.canRedo }
+    /** Bumped whenever the history changes so [toolbarState] recomputes. */
+    private var historyVersion by mutableIntStateOf(0)
+
+    /** What the toolbar highlights for the current caret / selection. */
+    val toolbarState: ToolbarState
+        get() {
+            historyVersion.let { } // read so the toolbar recomposes when the history changes
+            val sel = body.selection
+            val para = doc.paraAt(sel.min)
+            return ToolbarState(
+                marks = pending ?: doc.marksAt(sel.min, sel.max),
+                block = para.type,
+                align = para.align,
+                canUndo = undoStack.isNotEmpty(),
+                canRedo = redoStack.isNotEmpty(),
+            )
+        }
 
     /** Reading mode: fields are locked, auto-save is off. */
     var readMode by mutableStateOf(false)
@@ -145,22 +159,19 @@ class EditorController(private val context: Context, route: Route.Editor) {
         notebook = n.notebookId?.let(store::getNotebook)
         title = TextFieldValue(n.title)
 
-        val parsed = HtmlCodec.parse(n.content)
-        // Editable when Part 2 understands the HTML. (Empty content + non-empty markdown = a source-only
-        // note → keep it read-only rather than overwrite the markdown.)
-        bodyEditable = parsed != null && (n.content.isNotBlank() || n.markdown.isBlank())
-        if (bodyEditable && parsed != null) {
+        // No HTML but a markdown source (imported / odd notes) → keep it read-only rather than guess.
+        val parsed = if (n.content.isBlank() && n.markdown.isNotBlank()) null else HtmlCodec.parse(n.content)
+        if (parsed != null) {
+            bodyEditable = true
             doc = parsed
             body = TextFieldValue(parsed.text)
+            lastHash = fingerprint(n.title, HtmlCodec.toHtml(parsed))
         } else {
-            // Rich notes: read-only preview = the markdown source when there is one, else the HTML as text.
-            val preview = if (n.markdown.isNotBlank()) n.markdown else NoteText.htmlToPlain(n.content)
-            doc = Doc.plain(preview)
-            body = TextFieldValue(preview)
+            // Read-only preview: the markdown source when there is one, else the HTML as text.
+            bodyEditable = false
+            body = TextFieldValue(if (n.markdown.isNotBlank()) n.markdown else HtmlCodec.previewText(n.content))
+            lastHash = fingerprint(n.title, n.content)
         }
-        pending = emptyMap()
-        contentTouched = false
-        lastHash = fingerprint(n.title, n.content)
     }
 
     // ─── edits ───────────────────────────────
@@ -177,113 +188,100 @@ class EditorController(private val context: Context, route: Route.Editor) {
     fun onBodyChange(v: TextFieldValue) {
         if (readMode || !bodyEditable) return
         if (v.text == body.text) {
-            // Caret / selection / IME-composition only.
-            if (v.selection != body.selection && pending.isNotEmpty()) pending = emptyMap()
+            // Caret / selection / IME-composition change only. Moving the caret drops a pending format.
+            if (v.selection != body.selection) pending = null
             body = v
             return
         }
-        val old = doc
-        val next = DocOps.applyTextEdit(
-            old,
-            v.text,
-            if (v.selection.collapsed) v.selection.start else -1,
-            pending,
-        )
-        history.beforeTyping(System.currentTimeMillis(), snap(old))
-        doc = next
-        body = v
-        pending = emptyMap()
-        contentTouched = true
-        historyRev++
+        recordBefore(KIND_TYPING)
+        val result = doc.edit(v.text, pending)
+        doc = result.doc
+        body = if (result.doc.text == v.text) {
+            v
+        } else {
+            // The edit was rewritten (e.g. Enter on an empty bullet) — put the text and caret back.
+            TextFieldValue(result.doc.text, TextRange((result.caret ?: v.selection.start).coerceIn(0, result.doc.text.length)))
+        }
         markDirty()
     }
 
-    // ─── formatting (Part 2 toolbar) ─────────
+    // ─── formatting (toolbar) ────────────────
 
-    private val selStart: Int get() = minOf(body.selection.start, body.selection.end)
-    private val selEnd: Int get() = maxOf(body.selection.start, body.selection.end)
+    private val canFormat: Boolean get() = bodyEditable && !readMode
 
-    private fun snap(d: Doc = doc) = EditorHistory.Snap(d, body.selection.start, body.selection.end)
-
-    val canFormat: Boolean get() = bodyEditable && !readMode
-
-    /** Is [kind] on for the selection (or, with a bare caret, for what you'd type next)? */
-    fun isInlineActive(kind: SpanKind): Boolean {
-        if (selStart == selEnd) return pending[kind] ?: DocOps.coversBefore(doc, kind, selStart)
-        return DocOps.covers(doc, kind, selStart, selEnd)
-    }
-
-    fun toggleInline(kind: SpanKind) {
+    /** Bold / italic / underline / strike / highlight / sup / sub. */
+    fun toggleMark(mark: Int) {
         if (!canFormat) return
-        if (selStart == selEnd) {
-            val now = isInlineActive(kind)
-            var p = pending + (kind to !now)
-            if (!now && kind == SpanKind.SUP) p = p + (SpanKind.SUB to false)
-            if (!now && kind == SpanKind.SUB) p = p + (SpanKind.SUP to false)
-            pending = p
+        val sel = body.selection
+        if (sel.collapsed) {
+            // Nothing selected: the format applies to what you type next.
+            val current = pending ?: doc.marksAt(sel.start, sel.end)
+            val exclusive = when (mark) {
+                Mark.SUP -> Mark.SUB
+                Mark.SUB -> Mark.SUP
+                else -> 0
+            }
+            pending = if (current and mark != 0) current and mark.inv() else (current or mark) and exclusive.inv()
             return
         }
-        applyDocOp { DocOps.toggleSpan(it, kind, selStart, selEnd) }
+        recordBefore(KIND_FORMAT)
+        doc = doc.toggleMark(mark, sel.min, sel.max)
+        markDirty()
     }
 
-    private fun linesInSelection() = doc.lineRange(selStart, selEnd)
+    fun setBlock(type: BlockType) = format { it.setBlock(type, body.selection.min, body.selection.max) }
 
-    fun isBlockActive(type: BlockType): Boolean =
-        linesInSelection().all { doc.blocks[it].type == type }
+    fun setAlign(align: Align) = format { it.setAlign(align, body.selection.min, body.selection.max) }
 
-    fun isAlignActive(align: Align): Boolean =
-        linesInSelection().all { doc.blocks[it].align == align }
-
-    fun setBlock(type: BlockType) {
-        if (!canFormat) return
-        applyDocOp { DocOps.setBlockType(it, selStart, selEnd, type) }
-    }
-
-    fun setAlign(align: Align) {
-        if (!canFormat) return
-        applyDocOp { DocOps.setAlign(it, selStart, selEnd, align) }
-    }
-
-    fun indent(delta: Int) {
-        if (!canFormat) return
-        applyDocOp { DocOps.indent(it, selStart, selEnd, delta) }
-    }
+    fun changeIndent(delta: Int) = format { it.changeIndent(delta, body.selection.min, body.selection.max) }
 
     fun clearFormat() {
         if (!canFormat) return
-        pending = emptyMap()
-        applyDocOp { DocOps.clearFormat(it, selStart, selEnd) }
+        pending = null
+        format { it.clearFormat(body.selection.min, body.selection.max) }
     }
 
-    /** Runs a formatting op; one undo step per action, nothing happens when the op changes nothing. */
-    private fun applyDocOp(op: (Doc) -> Doc) {
-        val old = doc
-        val next = op(old)
-        if (next == old) return
-        history.beforeFormat(snap(old))
-        doc = next
-        contentTouched = true
-        historyRev++
+    private inline fun format(op: (RichDoc) -> RichDoc) {
+        if (!canFormat) return
+        recordBefore(KIND_FORMAT)
+        doc = op(doc)
         markDirty()
     }
 
+    // ─── undo / redo ─────────────────────────
+
+    /** Call BEFORE changing [doc]. Typing bursts (< 0.7 s apart) share one undo step; formatting always gets its own. */
+    private fun recordBefore(kind: Int) {
+        val now = SystemClock.uptimeMillis()
+        if (kind == KIND_FORMAT || lastKind != KIND_TYPING || now - lastEditAt > TYPING_GAP_MS) {
+            undoStack.add(Snap(doc, body.selection))
+            if (undoStack.size > MAX_HISTORY) undoStack.removeAt(0)
+            redoStack.clear()
+            historyVersion++
+        }
+        lastKind = kind
+        lastEditAt = now
+    }
+
     fun undo() {
-        if (!canFormat) return
-        history.undo(snap())?.let { restore(it) }
+        if (!canFormat || undoStack.isEmpty()) return
+        redoStack.add(Snap(doc, body.selection))
+        restore(undoStack.removeAt(undoStack.lastIndex))
     }
 
     fun redo() {
-        if (!canFormat) return
-        history.redo(snap())?.let { restore(it) }
+        if (!canFormat || redoStack.isEmpty()) return
+        undoStack.add(Snap(doc, body.selection))
+        restore(redoStack.removeAt(redoStack.lastIndex))
     }
 
-    private fun restore(s: EditorHistory.Snap) {
+    private fun restore(s: Snap) {
         doc = s.doc
         val len = s.doc.text.length
-        body = TextFieldValue(s.doc.text, TextRange(s.selStart.coerceIn(0, len), s.selEnd.coerceIn(0, len)))
-        pending = emptyMap()
-        contentTouched = true
-        historyRev++
+        body = TextFieldValue(s.doc.text, TextRange(s.selection.start.coerceIn(0, len), s.selection.end.coerceIn(0, len)))
+        pending = null
+        lastKind = 0
+        historyVersion++
         markDirty()
     }
 
@@ -347,6 +345,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
 
         val text = body.text
         val titleText = title.text.trim()
+        val rich = bodyEditable
 
         // Brand-new note that is still completely empty: don't litter the list with "Untitled".
         if (!persisted && titleText.isEmpty() && text.isBlank() && !note.pinned) {
@@ -356,9 +355,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
         }
 
         val finalTitle = titleText.ifEmpty { "Untitled" }
-        // Untouched notes keep their stored HTML exactly (a web note opened + pinned stays byte-identical).
-        val rewrite = bodyEditable && contentTouched
-        val html = if (rewrite) HtmlCodec.toHtml(doc) else note.content
+        val html = if (rich) HtmlCodec.toHtml(doc) else note.content
         val hash = fingerprint(finalTitle, html)
         if (persisted && hash == lastHash) {
             dirty = false
@@ -369,8 +366,8 @@ class EditorController(private val context: Context, route: Route.Editor) {
         val updated = note.copy(
             title = finalTitle,
             content = html,
-            markdown = if (rewrite) HtmlCodec.toMarkdown(doc) else note.markdown,
-            wordCount = if (rewrite) countWords(text) else note.wordCount,
+            markdown = if (rich) HtmlCodec.toMarkdown(doc) else note.markdown,
+            wordCount = if (rich) countWords(text) else note.wordCount,
             updatedAt = Iso.now(),
         )
         try {
@@ -394,6 +391,13 @@ class EditorController(private val context: Context, route: Route.Editor) {
 
     private fun showToast(message: String, icon: Int) {
         toast = ToastState(System.nanoTime(), message, icon)
+    }
+
+    private companion object {
+        const val KIND_TYPING = 1
+        const val KIND_FORMAT = 2
+        const val TYPING_GAP_MS = 700L
+        const val MAX_HISTORY = 100
     }
 
     /** Everything a save would write; equal fingerprint = nothing to save (the web `saveHash`). */
