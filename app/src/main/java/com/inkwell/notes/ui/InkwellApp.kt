@@ -21,6 +21,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.inkwell.notes.auth.AuthViewModel
 import com.inkwell.notes.data.AppPrefs
 import com.inkwell.notes.ui.screens.AllNotesScreen
+import com.inkwell.notes.ui.screens.EditorScreen
 import com.inkwell.notes.ui.screens.HomeScreen
 import com.inkwell.notes.ui.components.NavTab
 import com.inkwell.notes.ui.screens.LoginScreen
@@ -89,12 +90,15 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                         onNavTab = onNavTab,
                         onSearch = { nav.push(Route.Search) },
                         onSettings = { nav.push(Route.Settings) },
+                        onOpenNote = { id -> nav.push(Route.Editor(id = id)) },
+                        onNewNote = { tag -> nav.push(Route.Editor(tag = tag)) },
                     )
                     is Route.AllNotes -> AllNotesScreen(
                         openManageTags = route.manageTags,
                         onBack = { nav.back() },
                         onNavTab = onNavTab,
                         onSearch = { nav.push(Route.Search) },
+                        onOpenNote = { id -> nav.push(Route.Editor(id = id)) },
                     )
                     Route.Notebooks -> NotebooksScreen(
                         onBack = { nav.back() },
@@ -109,6 +113,8 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                         onAllNotebooks = { nav.switchTab(Route.Notebooks) },
                         onSearch = { nav.push(Route.Search) },
                         onMissing = { nav.switchTab(Route.Notebooks) },
+                        onOpenNote = { id -> nav.push(Route.Editor(id = id)) },
+                        onNewNote = { nav.push(Route.Editor(notebookId = route.id)) },
                     )
                     Route.Profile -> ProfileScreen(
                         user = user,
@@ -120,7 +126,11 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                     Route.Search -> SearchScreen(
                         onBack = { nav.back() },
                         onNavTab = onNavTab,
-                        onOpenNote = { /* TODO Editor */ },
+                        onOpenNote = { note -> nav.push(Route.Editor(id = note.id)) },
+                    )
+                    is Route.Editor -> EditorScreen(
+                        route = route,
+                        onBack = { nav.back() },
                     )
                     Route.Settings -> SettingsScreen(
                         user = user,

@@ -38,7 +38,15 @@ val DeleteRed = Color(0xFFE06060)
  * bottom-anchored card over a dim scrim, max 390 wide, 2-column Cancel / Delete.
  */
 @Composable
-fun DeleteConfirmModal(count: Int, onCancel: () -> Unit, onConfirm: () -> Unit) {
+fun DeleteConfirmModal(
+    count: Int,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+    /** Defaults are the Home multi-select copy; the Editor passes its own single-note text. */
+    title: String = "Delete selected notes?",
+    message: String = "$count selected note${if (count != 1) "s" else ""} will be deleted. " +
+        "You can undo for 5 seconds after deleting.",
+) {
     val c = Ink.colors
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val cardShape = RoundedCornerShape(26.dp)
@@ -71,7 +79,7 @@ fun DeleteConfirmModal(count: Int, onCancel: () -> Unit, onConfirm: () -> Unit) 
             }
             Spacer(Modifier.height(12.dp))
             InkText(
-                "Delete selected notes?",
+                title,
                 size = 24.sp,
                 weight = FontWeight.Bold,
                 family = Ink.serif,
@@ -80,8 +88,7 @@ fun DeleteConfirmModal(count: Int, onCancel: () -> Unit, onConfirm: () -> Unit) 
             )
             Spacer(Modifier.height(8.dp))
             InkText(
-                "$count selected note${if (count != 1) "s" else ""} will be deleted. " +
-                    "You can undo for 5 seconds after deleting.",
+                message,
                 size = 13.sp,
                 color = c.text2,
                 lineHeight = 19.5.sp,

@@ -57,7 +57,7 @@ import com.inkwell.notes.ui.theme.Ink
  * ⋮ sheet (All notebooks / Search / Delete) and delete confirm.
  * If the notebook no longer exists (deleted, bad id) it leaves via [onMissing].
  *
- * TODO Editor: note tap + the FAB (`/editor?new=1&notebook=$id`).
+ * Note tap → Editor; the FAB opens a new note pre-assigned to this notebook (`/editor?new=1&notebook=$id`).
  */
 @Composable
 fun NotebookDetailScreen(
@@ -67,6 +67,8 @@ fun NotebookDetailScreen(
     onAllNotebooks: () -> Unit,
     onSearch: () -> Unit,
     onMissing: () -> Unit,
+    onOpenNote: (String) -> Unit = {},
+    onNewNote: () -> Unit = {},
     vm: NotebooksViewModel = viewModel(),
 ) {
     val c = Ink.colors
@@ -123,7 +125,7 @@ fun NotebookDetailScreen(
                     }
                 } else {
                     items(nbNotes, key = { it.id }) { n ->
-                        NoteCard(n, nb, onClick = { /* TODO Editor */ })
+                        NoteCard(n, nb, onClick = { onOpenNote(n.id) })
                     }
                 }
             }
@@ -136,7 +138,7 @@ fun NotebookDetailScreen(
         )
 
         // FAB — new note pre-assigned to this notebook
-        PlainFab(onClick = { /* TODO Editor (?new=1&notebook=$notebookId) */ })
+        PlainFab(onClick = onNewNote)
 
         if (state.detailMenuOpen) {
             ContextSheet(title = nb.name, onDismiss = vm::closeDetailMenu) {

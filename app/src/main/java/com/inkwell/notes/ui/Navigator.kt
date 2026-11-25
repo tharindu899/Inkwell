@@ -28,6 +28,16 @@ sealed interface Route {
 
     /** `/settings` */
     data object Settings : Route
+
+    /**
+     * `/editor/:id` (existing note) or `/editor?new=1&notebook=..&tag=..` ([id] = null).
+     * Data class on purpose: every push is a fresh editor session.
+     */
+    data class Editor(
+        val id: String? = null,
+        val notebookId: String? = null,
+        val tag: String? = null,
+    ) : Route
 }
 
 /**

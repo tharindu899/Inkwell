@@ -80,7 +80,7 @@ import com.inkwell.notes.ui.theme.Ink
  * Reads straight from [NotesStore] like the web page reads storage.js — a fresh screen is
  * created every time Search is opened, so the notes are always current.
  *
- * TODO Editor: tapping a result.
+ * Tapping a result opens it in the Editor.
  */
 @Composable
 fun SearchScreen(

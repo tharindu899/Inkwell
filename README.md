@@ -18,13 +18,14 @@ reference until every screen is ported.
 | Navigation        | `App.jsx` routes + back button | `ui/Navigator.kt`, `InkwellApp.kt` | ✅ simple back-stack (no library) |
 | Tags              | `pages/Tags.jsx`              | `ui/screens/TagsScreen.kt`, `InnerTopBar.kt` | ✅ (bottom-nav Tags tab works) |
 | Notebooks         | `pages/Notebooks.jsx`         | `ui/screens/NotebooksScreen.kt`, `NotebookModals.kt`, `NotebooksViewModel.kt` | ✅ grid, sort, create/edit/delete |
-| NotebookDetail    | `pages/NotebookDetail.jsx`    | `ui/screens/NotebookDetailScreen.kt` | ✅ (note tap / FAB → Editor = TODO) |
-| Search            | `pages/Search.jsx`            | `ui/screens/SearchScreen.kt`, `NotesStore.searchNotes` + recent searches (`iw_searches`) | ✅ modes, notebook filter, highlight, recents (note tap → Editor = TODO) |
+| NotebookDetail    | `pages/NotebookDetail.jsx`    | `ui/screens/NotebookDetailScreen.kt` | ✅ (note tap / FAB → Editor) |
+| Search            | `pages/Search.jsx`            | `ui/screens/SearchScreen.kt`, `NotesStore.searchNotes` + recent searches (`iw_searches`) | ✅ modes, notebook filter, highlight, recents (note tap → Editor) |
 | Profile           | `pages/Profile.jsx`           | `ui/screens/ProfileScreen.kt`       | ✅ hero, stats, streak, activity grid, sign-out confirm |
 | Settings          | `pages/Settings.jsx`          | `ui/screens/SettingsScreen.kt`, `SettingsViewModel.kt` | ✅ theme (live), font size, editor toggles, local export/import, storage, danger zone, about |
 | Drive sync        | `auth/googleDrive.js`         | `drive/DriveApi.kt`, `auth/TokenProvider.kt` | ✅ backup / restore / last-backup (appDataFolder, 401 → token refresh + retry) |
 | Update checker    | `components/UpdateChecker.jsx` | `update/UpdateApi.kt`, `ApkInstaller.kt`, `UpdateViewModel.kt`, `ui/screens/UpdateHost.kt` | ✅ auto check on launch/resume (10 min throttle), manual check in Settings, in-app APK download → system installer. Repo = `VITE_GITHUB_REPO` → `GITHUB_REPOSITORY` → `tharindu899/Inkwell` |
-| Editor            | `pages/Editor.jsx`            |                                     | ⏳ |
+| Editor — part 1   | `pages/Editor.jsx` (shell, load/save) | `ui/screens/EditorScreen.kt`, `EditorController.kt`, `editor/NoteText.kt` | ✅ top bar (back · reading mode · pin · delete · Save), title + plain-text body, tags/notebook rows (display), word/char count, 2 s auto-save, flush on pause/leave, delete confirm. Navigation wired from Home, All Notes, Notebook detail (+ FAB), Search, tag quick-create |
+| Editor — part 2+  | toolbar, formatting, pickers, code/tables/checklist, images/drawing, markdown source, export | | ⏳ |
 
 After sign-in the app shows Home. Tap the avatar for Profile (Sign out lives there).
 
@@ -57,6 +58,7 @@ app/src/main/java/com/inkwell/notes/
 ├── data/        AppPrefs, NotesStore, Seed, model/   (SharedPreferences; keys iw_theme, iw_gauth,
 │                                                     iw_notes, iw_notebooks, iw_sort, iw_seed_version, iw_searches,
 │                                                     iw_prefs, iw_fontSize, iw_profile)
+├── editor/      NoteText            (plain text ⇄ stored HTML; grows into the block model in part 2)
 ├── util/        Helpers             (formatDate, stripHtml, fmtNum, greeting …)
 └── ui/
     ├── InkwellApp.kt                (root: login gate + current screen)

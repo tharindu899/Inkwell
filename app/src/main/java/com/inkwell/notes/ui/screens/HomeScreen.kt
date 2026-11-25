@@ -90,6 +90,10 @@ fun HomeScreen(
     onNavTab: (NavTab) -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit = {},
+    /** Note tap → Editor (`/editor/:id`). */
+    onOpenNote: (String) -> Unit = {},
+    /** FAB / Create-New → Editor (`/editor?new=1[&tag=..]`). */
+    onNewNote: (tag: String?) -> Unit = {},
     vm: HomeViewModel = viewModel(),
 ) {
     val c = Ink.colors
@@ -251,7 +255,7 @@ fun HomeScreen(
                             NoteCard(
                                 n,
                                 n.notebookId?.let(notebooksById::get),
-                                onClick = { /* TODO Editor */ },
+                                onClick = { onOpenNote(n.id) },
                                 onLongClick = { enterSelect(n.id) },
                                 draggablePinned = true,
                                 dragging = dragId == n.id,
@@ -275,7 +279,7 @@ fun HomeScreen(
                             NoteCard(
                                 n,
                                 n.notebookId?.let(notebooksById::get),
-                                onClick = { /* TODO Editor */ },
+                                onClick = { onOpenNote(n.id) },
                                 onLongClick = { enterSelect(n.id) },
                             )
                         }
@@ -301,13 +305,13 @@ fun HomeScreen(
             state = state,
             vm = vm,
             showFab = !state.selectMode, // {!selectMode && <Fab />}
-            onNewNote = { /* TODO Editor (?new=1) */ },
+            onNewNote = { onNewNote(null) },
             onSearch = onSearch,
             onImage = { /* TODO Editor (?new=1&type=image) */ },
             onVoice = { /* TODO Editor (?new=1&type=voice) */ },
             onChecklist = { /* TODO Editor (?new=1&type=checklist) */ },
             onNotebookCreated = { onNavTab(NavTab.Notebooks) },
-            onTagCreated = { /* TODO Editor: open a new note with this tag (?new=1&tag=$it) */ },
+            onTagCreated = { onNewNote(it) },
         )
 
         if (state.deleteConfirmOpen) {

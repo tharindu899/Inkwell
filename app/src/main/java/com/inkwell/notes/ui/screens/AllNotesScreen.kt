@@ -82,6 +82,7 @@ fun AllNotesScreen(
     onBack: () -> Unit,
     onNavTab: (NavTab) -> Unit,
     onSearch: () -> Unit,
+    onOpenNote: (String) -> Unit = {},
     vm: HomeViewModel = viewModel(),
     avm: AllNotesViewModel = viewModel(),
 ) {
@@ -157,7 +158,7 @@ fun AllNotesScreen(
                     }
                 } else {
                     items(filtered, key = { it.id }) { n ->
-                        NoteCard(n, n.notebookId?.let(notebooksById::get), onClick = { /* TODO Editor */ })
+                        NoteCard(n, n.notebookId?.let(notebooksById::get), onClick = { onOpenNote(n.id) })
                     }
                 }
             }
