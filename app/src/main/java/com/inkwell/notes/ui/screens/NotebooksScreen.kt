@@ -71,6 +71,7 @@ fun NotebooksScreen(
     onBack: () -> Unit,
     onNavTab: (NavTab) -> Unit,
     onOpenNotebook: (String) -> Unit,
+    onSearch: () -> Unit = {},
     vm: NotebooksViewModel = viewModel(),
 ) {
     val c = Ink.colors
@@ -93,7 +94,7 @@ fun NotebooksScreen(
             InnerTopBar(
                 title = "Notebooks",
                 onBack = onBack,
-                actions = { IconBtn(R.drawable.ic_fa_plus) { vm.openForm() } },
+                actions = { IconBtn(R.drawable.ic_fa_magnifying_glass, onSearch) },
             )
 
             LazyColumn(

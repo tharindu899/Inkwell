@@ -100,6 +100,7 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                         onBack = { nav.back() },
                         onNavTab = onNavTab,
                         onOpenNotebook = { id -> nav.push(Route.NotebookDetail(id)) },
+                        onSearch = { nav.push(Route.Search) },
                     )
                     is Route.NotebookDetail -> NotebookDetailScreen(
                         notebookId = route.id,
