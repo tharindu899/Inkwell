@@ -28,6 +28,13 @@ android {
         versionName = System.getenv("APP_VERSION_NAME") ?: "2.0.0-dev"
 
         buildConfigField("String", "GOOGLE_CLIENT_ID", "\"${cfg("VITE_GOOGLE_CLIENT_ID")}\"")
+
+        // Repo the update checker reads releases from: VITE_GITHUB_REPO override →
+        // the repo running the GitHub Action → the original Inkwell repo.
+        val githubRepo = cfg("VITE_GITHUB_REPO").ifBlank {
+            System.getenv("GITHUB_REPOSITORY")?.takeIf { it.isNotBlank() } ?: "tharindu899/Inkwell"
+        }
+        buildConfigField("String", "GITHUB_REPO", "\"$githubRepo\"")
     }
 
     val keystorePath = System.getenv("KEYSTORE_PATH")

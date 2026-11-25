@@ -5,11 +5,14 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.inkwell.notes.R
+import com.inkwell.notes.auth.TokenProvider
 import com.inkwell.notes.data.AppPrefs
 import com.inkwell.notes.data.EditorFontSize
 import com.inkwell.notes.data.NotesStore
 import com.inkwell.notes.data.model.Note
 import com.inkwell.notes.data.model.Notebook
+import com.inkwell.notes.drive.DriveApi
+import com.inkwell.notes.drive.DriveHttpException
 import com.inkwell.notes.ui.components.ToastState
 import com.inkwell.notes.util.Iso
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +63,7 @@ data class SettingsState(
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application
     private val store = NotesStore(application)
+    private val tokens = TokenProvider(application)
 
     private val _state = MutableStateFlow(SettingsState())
     val state: StateFlow<SettingsState> = _state.asStateFlow()
@@ -106,19 +110,73 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     // ─── Drive sync + update check (wired in their own steps) ───
 
-    /** TODO Drive sync: `backupToDrive(token, payload)`; set backupBusy / lastBackup / syncError. */
+    /** Runs [block] with a valid token; one forced refresh + retry on HTTP 401. */
+    private suspend fun <T> withToken(block: suspend (String) -> T): T = try {
+        block(tokens.getToken())
+    } catch (e: DriveHttpException) {
+        if (e.code == 401) block(tokens.getToken(forceRefresh = true)) else throw e
+    }
+
+    /** Load "Last backup" when the page opens — failures are silent (web: `catch {}`). */
+    fun loadBackupInfo() {
+        viewModelScope.launch {
+            runCatching { withToken { DriveApi.findSyncFile(it) } }
+                .onSuccess { f -> _state.update { it.copy(lastBackup = f?.let { x -> fmtDate(x.modifiedTime) }) } }
+        }
+    }
+
+    /** `handleBackup` */
     fun backup() {
-        showToast("Drive backup comes in the next step", R.drawable.ic_fa_circle_info)
+        if (_state.value.backupBusy || _state.value.restoreBusy) return
+        _state.update { it.copy(backupBusy = true, syncError = null) }
+        viewModelScope.launch {
+            try {
+                val profile = runCatching { JSONObject(AppPrefs.of(app).getString(AppPrefs.KEY_PROFILE, null) ?: "{}") }
+                    .getOrDefault(JSONObject())
+                val payload = JSONObject()
+                    .put("version", 2)
+                    .put("backedUpAt", Iso.now())
+                    .put("notes", JSONArray(store.getNotes().map { it.toJson() }))
+                    .put("notebooks", JSONArray(store.getNotebooks().map { it.toJson() }))
+                    .put("profile", profile)
+                withToken { DriveApi.backup(it, payload) }
+                showToast("Backed up to Google Drive", R.drawable.ic_fa_cloud_arrow_up)
+                loadBackupInfo()
+            } catch (e: Exception) {
+                _state.update { it.copy(syncError = e.message ?: "Backup failed") }
+                showToast("Backup failed", R.drawable.ic_fa_circle_exclamation)
+            } finally {
+                _state.update { it.copy(backupBusy = false) }
+            }
+        }
     }
 
-    /** TODO Drive sync: `restoreFromDrive(token)` → saveNotes/saveNotebooks → refresh(). */
+    /** Confirmed "Restore from Drive" — replaces local notes / notebooks with the backup. */
     private fun doRestore() {
-        showToast("Drive restore comes in the next step", R.drawable.ic_fa_circle_info)
-    }
-
-    /** TODO update checker: GitHub Releases lookup + APK install sheet. */
-    fun checkForUpdates() {
-        showToast("Update checker comes in the next step", R.drawable.ic_fa_circle_info)
+        _state.update { it.copy(restoreBusy = true, syncError = null) }
+        viewModelScope.launch {
+            try {
+                val data = withToken { DriveApi.restore(it) }
+                if (data == null) {
+                    showToast("No backup found on Drive", R.drawable.ic_fa_circle_info)
+                } else {
+                    data.optJSONArray("notes")?.let { arr ->
+                        store.saveNotes((0 until arr.length()).mapNotNull { Note.fromJson(arr.getJSONObject(it)) })
+                    }
+                    data.optJSONArray("notebooks")?.let { arr ->
+                        store.saveNotebooks((0 until arr.length()).mapNotNull { Notebook.fromJson(arr.getJSONObject(it)) })
+                    }
+                    refresh()
+                    val n = data.optJSONArray("notes")?.length() ?: 0
+                    showToast("Restored $n notes", R.drawable.ic_fa_cloud_arrow_down)
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(syncError = e.message ?: "Restore failed") }
+                showToast("Restore failed", R.drawable.ic_fa_circle_exclamation)
+            } finally {
+                _state.update { it.copy(restoreBusy = false) }
+            }
+        }
     }
 
     // ─── Local export / import ───────────────────
@@ -227,6 +285,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private fun showToast(message: String, icon: Int) {
         _state.update { it.copy(toast = ToastState(System.nanoTime(), message, icon)) }
+    }
+
+    /** `fmtDate()` — "Nov 25, 2026, 12:26 PM" in the device time zone. */
+    private fun fmtDate(iso: String): String {
+        val ms = Iso.millis(iso)
+        return if (ms == 0L) "—" else SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.ENGLISH).format(Date(ms))
     }
 
     private fun calcStorage(): StorageInfo {

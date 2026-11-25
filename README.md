@@ -21,8 +21,10 @@ reference until every screen is ported.
 | NotebookDetail    | `pages/NotebookDetail.jsx`    | `ui/screens/NotebookDetailScreen.kt` | ✅ (note tap / FAB → Editor = TODO) |
 | Search            | `pages/Search.jsx`            | `ui/screens/SearchScreen.kt`, `NotesStore.searchNotes` + recent searches (`iw_searches`) | ✅ modes, notebook filter, highlight, recents (note tap → Editor = TODO) |
 | Profile           | `pages/Profile.jsx`           | `ui/screens/ProfileScreen.kt`       | ✅ hero, stats, streak, activity grid, sign-out confirm |
-| Settings          | `pages/Settings.jsx`          | `ui/screens/SettingsScreen.kt`, `SettingsViewModel.kt` | ✅ theme (live), font size, editor toggles, local export/import, storage, danger zone, about · Drive rows + update row = UI only |
-| Editor, Drive sync, update checker | | | ⏳ |
+| Settings          | `pages/Settings.jsx`          | `ui/screens/SettingsScreen.kt`, `SettingsViewModel.kt` | ✅ theme (live), font size, editor toggles, local export/import, storage, danger zone, about |
+| Drive sync        | `auth/googleDrive.js`         | `drive/DriveApi.kt`, `auth/TokenProvider.kt` | ✅ backup / restore / last-backup (appDataFolder, 401 → token refresh + retry) |
+| Update checker    | `components/UpdateChecker.jsx` | `update/UpdateApi.kt`, `ApkInstaller.kt`, `UpdateViewModel.kt`, `ui/screens/UpdateHost.kt` | ✅ auto check on launch/resume (10 min throttle), manual check in Settings, in-app APK download → system installer. Repo = `VITE_GITHUB_REPO` → `GITHUB_REPOSITORY` → `tharindu899/Inkwell` |
+| Editor            | `pages/Editor.jsx`            |                                     | ⏳ |
 
 After sign-in the app shows Home. Tap the avatar for Profile (Sign out lives there).
 

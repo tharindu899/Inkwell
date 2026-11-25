@@ -74,6 +74,7 @@ import com.inkwell.notes.ui.components.onAccent
 import com.inkwell.notes.ui.components.tap
 import com.inkwell.notes.ui.theme.Ink
 import com.inkwell.notes.ui.theme.ThemeMode
+import com.inkwell.notes.update.UpdateViewModel
 
 /** Tile colour for a row icon (`.si-icon`, `.ac`, `.info`, `.success`, `.danger`). */
 private enum class Tone { Default, Info, Success, Danger }
@@ -82,8 +83,7 @@ private enum class Tone { Default, Info, Success, Danger }
  * Port of `src/pages/Settings.jsx`.
  *
  * Google Drive Sync → App Update → Appearance → Editor → Local Data → Storage →
- * Danger zone → About. Backup / Restore / Check-for-updates rows are in place; their real
- * work lands with the Drive-sync and update-checker steps (see [SettingsViewModel]).
+ * Danger zone → About. Check-for-updates talks to [UpdateViewModel] (sheet is drawn by UpdateHost).
  */
 @Composable
 fun SettingsScreen(
@@ -96,6 +96,7 @@ fun SettingsScreen(
     /** "Reset all data" finished — the app signs out and falls back to the default theme. */
     onResetDone: () -> Unit,
     vm: SettingsViewModel = viewModel(),
+    updateVm: UpdateViewModel = viewModel(),
 ) {
     val c = Ink.colors
     val s by vm.state.collectAsStateWithLifecycle()
@@ -111,7 +112,10 @@ fun SettingsScreen(
     val busy = s.backupBusy || s.restoreBusy
 
     // The ViewModel outlives the screen — re-read counts / storage whenever the page opens.
-    LaunchedEffect(Unit) { vm.refresh() }
+    LaunchedEffect(Unit) {
+        vm.refresh()
+        vm.loadBackupInfo()
+    }
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {
@@ -177,7 +181,7 @@ fun SettingsScreen(
                     label = "Check for updates",
                     sub = "Find the latest APK from GitHub Releases",
                     chevron = true,
-                    onClick = vm::checkForUpdates,
+                    onClick = updateVm::checkManual,
                 )
 
                 // ── Appearance ──

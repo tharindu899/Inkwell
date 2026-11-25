@@ -4,12 +4,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -26,6 +29,7 @@ import com.inkwell.notes.ui.screens.ProfileScreen
 import com.inkwell.notes.ui.screens.SearchScreen
 import com.inkwell.notes.ui.screens.SettingsScreen
 import com.inkwell.notes.ui.screens.TagsScreen
+import com.inkwell.notes.ui.screens.UpdateHost
 import com.inkwell.notes.ui.theme.Ink
 import com.inkwell.notes.ui.theme.InkwellTheme
 import com.inkwell.notes.ui.theme.ThemeMode
@@ -56,81 +60,84 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
             controller.isAppearanceLightNavigationBars = !colors.isDark
         }
 
-        val user = state.user
-        if (user == null) {
-            LoginScreen(
-                signingIn = state.signingIn,
-                error = state.error,
-                hasClientId = vm.hasClientId,
-                onSignIn = { vm.startSignIn { intent -> signInLauncher.launch(intent) } },
-            )
-        } else {
-            // New navigator per sign-in, so a fresh login always starts on Home.
-            val nav = remember { Navigator() }
-            BackHandler(enabled = nav.canGoBack) { nav.back() }
+        Box(Modifier.fillMaxSize()) {
+            val user = state.user
+            if (user == null) {
+                LoginScreen(
+                    signingIn = state.signingIn,
+                    error = state.error,
+                    hasClientId = vm.hasClientId,
+                    onSignIn = { vm.startSignIn { intent -> signInLauncher.launch(intent) } },
+                )
+            } else {
+                // New navigator per sign-in, so a fresh login always starts on Home.
+                val nav = remember { Navigator() }
+                BackHandler(enabled = nav.canGoBack) { nav.back() }
 
-            val onNavTab: (NavTab) -> Unit = { tab ->
-                when (tab) {
-                    NavTab.Home -> nav.switchTab(Route.Home)
-                    NavTab.Tags -> nav.switchTab(Route.Tags())
-                    NavTab.Notebooks -> nav.switchTab(Route.Notebooks)
+                val onNavTab: (NavTab) -> Unit = { tab ->
+                    when (tab) {
+                        NavTab.Home -> nav.switchTab(Route.Home)
+                        NavTab.Tags -> nav.switchTab(Route.Tags())
+                        NavTab.Notebooks -> nav.switchTab(Route.Notebooks)
+                    }
+                }
+
+                when (val route = nav.current) {
+                    Route.Home -> HomeScreen(
+                        user = user,
+                        onOpenProfile = { nav.push(Route.Profile) },
+                        onNavTab = onNavTab,
+                        onSearch = { nav.push(Route.Search) },
+                    )
+                    is Route.Tags -> TagsScreen(
+                        initialTag = route.tag,
+                        onBack = { nav.back() },
+                        onNavTab = onNavTab,
+                        onSearch = { nav.push(Route.Search) },
+                    )
+                    Route.Notebooks -> NotebooksScreen(
+                        onBack = { nav.back() },
+                        onNavTab = onNavTab,
+                        onOpenNotebook = { id -> nav.push(Route.NotebookDetail(id)) },
+                    )
+                    is Route.NotebookDetail -> NotebookDetailScreen(
+                        notebookId = route.id,
+                        onBack = { nav.back() },
+                        onNavTab = onNavTab,
+                        onAllNotebooks = { nav.switchTab(Route.Notebooks) },
+                        onSearch = { nav.push(Route.Search) },
+                        onMissing = { nav.switchTab(Route.Notebooks) },
+                    )
+                    Route.Profile -> ProfileScreen(
+                        user = user,
+                        onBack = { nav.back() },
+                        onNavTab = onNavTab,
+                        onSignOut = vm::signOut,
+                        onSettings = { nav.push(Route.Settings) },
+                    )
+                    Route.Search -> SearchScreen(
+                        onBack = { nav.back() },
+                        onNavTab = onNavTab,
+                        onOpenNote = { /* TODO Editor */ },
+                    )
+                    Route.Settings -> SettingsScreen(
+                        user = user,
+                        themeMode = themeMode,
+                        onThemeChange = { mode ->
+                            themeMode = mode
+                            AppPrefs.setTheme(context, mode.key)
+                        },
+                        onBack = { nav.back() },
+                        onNavTab = onNavTab,
+                        onOpenProfile = { nav.back() }, // Settings is always opened from Profile
+                        onResetDone = {
+                            themeMode = ThemeMode.Dark
+                            vm.signOut()
+                        },
+                    )
                 }
             }
-
-            when (val route = nav.current) {
-                Route.Home -> HomeScreen(
-                    user = user,
-                    onOpenProfile = { nav.push(Route.Profile) },
-                    onNavTab = onNavTab,
-                    onSearch = { nav.push(Route.Search) },
-                )
-                is Route.Tags -> TagsScreen(
-                    initialTag = route.tag,
-                    onBack = { nav.back() },
-                    onNavTab = onNavTab,
-                    onSearch = { nav.push(Route.Search) },
-                )
-                Route.Notebooks -> NotebooksScreen(
-                    onBack = { nav.back() },
-                    onNavTab = onNavTab,
-                    onOpenNotebook = { id -> nav.push(Route.NotebookDetail(id)) },
-                )
-                is Route.NotebookDetail -> NotebookDetailScreen(
-                    notebookId = route.id,
-                    onBack = { nav.back() },
-                    onNavTab = onNavTab,
-                    onAllNotebooks = { nav.switchTab(Route.Notebooks) },
-                    onSearch = { nav.push(Route.Search) },
-                    onMissing = { nav.switchTab(Route.Notebooks) },
-                )
-                Route.Profile -> ProfileScreen(
-                    user = user,
-                    onBack = { nav.back() },
-                    onNavTab = onNavTab,
-                    onSignOut = vm::signOut,
-                    onSettings = { nav.push(Route.Settings) },
-                )
-                Route.Search -> SearchScreen(
-                    onBack = { nav.back() },
-                    onNavTab = onNavTab,
-                    onOpenNote = { /* TODO Editor */ },
-                )
-                Route.Settings -> SettingsScreen(
-                    user = user,
-                    themeMode = themeMode,
-                    onThemeChange = { mode ->
-                        themeMode = mode
-                        AppPrefs.setTheme(context, mode.key)
-                    },
-                    onBack = { nav.back() },
-                    onNavTab = onNavTab,
-                    onOpenProfile = { nav.back() }, // Settings is always opened from Profile
-                    onResetDone = {
-                        themeMode = ThemeMode.Dark
-                        vm.signOut()
-                    },
-                )
-            }
+            UpdateHost() // GitHub update sheet + toast, over every screen
         }
     }
 }
