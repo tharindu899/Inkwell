@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,6 +50,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.inkwell.notes.R
 import com.inkwell.notes.data.AppPrefs
+import com.inkwell.notes.editor.RichStyle
+import com.inkwell.notes.editor.RichTransformation
 import com.inkwell.notes.ui.Route
 import com.inkwell.notes.ui.components.DeleteConfirmModal
 import com.inkwell.notes.ui.components.DeleteRed
@@ -64,11 +67,12 @@ import kotlinx.coroutines.delay
 /**
  * Port of `pages/Editor.jsx` — built part by part.
  *
- * Part 1 (this file): shell + load/save.
+ * Part 1: shell + load/save.
  *   top bar (back · title · reading mode · pin · delete · Save), title field, body field,
  *   tags / notebook rows (display only), word / char count + saved indicator,
  *   2 s auto-save, flush on pause / leave, delete confirm.
- * Coming next: toolbar + formatting, tags & notebook pickers, code blocks / tables /
+ * Part 2: rich body (RichDoc) + formatting toolbar (marks, headings, lists, quote, align, indent, undo/redo).
+ * Coming next: checklists + markdown shortcuts, tags & notebook pickers, code blocks / tables /
  * checklists, images + drawing, markdown source mode, export.
  */
 @Composable
@@ -113,6 +117,18 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     val fontSp = remember { AppPrefs.getFontSize(context).sp }
     val serifBody = remember { AppPrefs.getPref(context, "serifBody", false) }
 
+    val richStyle = remember(c, fontSp, serifBody) {
+        RichStyle(
+            fontSizeSp = fontSp.toFloat(),
+            lineHeightFactor = 1.72f,
+            textColor = c.text1,
+            quoteColor = c.text2,
+            accent = c.accent,
+            highlightBg = Color(0xFFFFE49A).copy(alpha = 0.45f),
+            serif = Ink.serif,
+        )
+    }
+
     // Keep the bottom panel above the keyboard / navigation bar.
     val bottomInsets = WindowInsets.navigationBars.union(WindowInsets.ime)
 
@@ -128,6 +144,20 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 onDelete = ctl::requestDelete,
                 onSave = { ctl.save(); onBack() },
             )
+
+            // ── formatting toolbar (hidden while reading, and for notes that are still read-only) ──
+            if (ctl.bodyEditable && !ctl.readMode) {
+                EditorToolbar(
+                    state = ctl.toolbarState,
+                    onUndo = ctl::undo,
+                    onRedo = ctl::redo,
+                    onMark = ctl::toggleMark,
+                    onBlock = ctl::setBlock,
+                    onAlign = ctl::setAlign,
+                    onIndent = ctl::changeIndent,
+                    onClear = ctl::clearFormat,
+                )
+            }
 
             // ── title ──
             BasicTextField(
@@ -192,6 +222,11 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                         fontFamily = if (serifBody) Ink.serif else Ink.sans,
                     ),
                     cursorBrush = SolidColor(c.accent),
+                    visualTransformation = if (ctl.bodyEditable) {
+                        remember(ctl.doc, richStyle) { RichTransformation(ctl.doc, richStyle) }
+                    } else {
+                        VisualTransformation.None
+                    },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     decorationBox = { inner ->
                         Box {
@@ -341,8 +376,8 @@ private fun RichNoteBanner() {
     ) {
         FaIcon(R.drawable.ic_fa_circle_info, tint = c.accent, size = 14.dp)
         InkText(
-            "This note uses rich formatting. Body editing unlocks with the formatting toolbar — " +
-                "title, pin and delete work now, and the body stays untouched.",
+            "This note has tables, code, links, images or a checklist. Those blocks arrive in the next " +
+                "editor parts — until then the body stays read-only and untouched (title, pin and delete work).",
             size = 12.sp,
             color = c.text2,
             lineHeight = 17.sp,
