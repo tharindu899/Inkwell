@@ -307,9 +307,6 @@ fun HomeScreen(
             showFab = !state.selectMode, // {!selectMode && <Fab />}
             onNewNote = { onNewNote(null) },
             onSearch = onSearch,
-            onImage = { /* TODO Editor (?new=1&type=image) */ },
-            onVoice = { /* TODO Editor (?new=1&type=voice) */ },
-            onChecklist = { /* TODO Editor (?new=1&type=checklist) */ },
             onNotebookCreated = { onNavTab(NavTab.Notebooks) },
             onTagCreated = { onNewNote(it) },
         )

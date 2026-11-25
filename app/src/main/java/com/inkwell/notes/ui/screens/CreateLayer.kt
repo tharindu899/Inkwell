@@ -34,9 +34,8 @@ fun BoxScope.CreateLayer(
     fabCreatesTag: Boolean = false,
     onNewNote: () -> Unit = {},
     onSearch: () -> Unit = {},
-    onImage: () -> Unit = {},
-    onVoice: () -> Unit = {},
-    onChecklist: () -> Unit = {},
+    /** Notes page: adds a "tags" button to the dial that opens the tag manager. */
+    onManageTags: (() -> Unit)? = null,
     /** Called after a notebook was created from the quick-create modal (web: `navigate('/notebooks')`). */
     onNotebookCreated: () -> Unit = {},
     /** Called with the cleaned tag after the "Create tag" modal is saved. */
@@ -57,9 +56,7 @@ fun BoxScope.CreateLayer(
         onNewNotebook = { vm.openQuickCreate(QuickCreateKind.Notebook) },
         onNewTag = { vm.openQuickCreate(QuickCreateKind.Tag) },
         onSearch = { vm.closeCreateMenu(); onSearch() },
-        onImage = { vm.closeCreateMenu(); onImage() },
-        onVoice = { vm.closeCreateMenu(); onVoice() },
-        onChecklist = { vm.closeCreateMenu(); onChecklist() },
+        onManageTags = onManageTags?.let { f -> { vm.closeCreateMenu(); f() } },
     )
 
     if (showFab) {

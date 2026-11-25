@@ -29,7 +29,7 @@ import com.inkwell.notes.ui.theme.Ink
 
 enum class NavTab(val label: String, @DrawableRes val icon: Int) {
     Home("Home", R.drawable.ic_fa_house),
-    AllNotes("All Notes", R.drawable.ic_fa_note_sticky),
+    AllNotes("Notes", R.drawable.ic_fa_note_sticky),
     Notebooks("Notebook", R.drawable.ic_fa_book_open),
 }
 

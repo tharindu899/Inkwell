@@ -55,11 +55,9 @@ import com.inkwell.notes.ui.components.BottomNav
 import com.inkwell.notes.ui.components.ContextSheet
 import com.inkwell.notes.ui.components.DeleteRed
 import com.inkwell.notes.ui.components.EmptyState
-import com.inkwell.notes.ui.components.Fab
 import com.inkwell.notes.ui.components.FaIcon
 import com.inkwell.notes.ui.components.IconBtn
 import com.inkwell.notes.ui.components.InkText
-import com.inkwell.notes.ui.components.InkToast
 import com.inkwell.notes.ui.components.InnerTopBar
 import com.inkwell.notes.ui.components.NavTab
 import com.inkwell.notes.ui.components.NoteCard
@@ -72,7 +70,7 @@ import java.text.Collator
  * All Notes page (replaces the old Tags page).
  *
  * Every note in one list. The filter icon (next to search) opens a sheet to pick tags and to
- * sort / narrow by date and time of day. The FAB opens the tag manager (rename / delete tags);
+ * sort / narrow by date and time of day. The FAB opens a speed dial (new note / notebook / tag, search, manage tags);
  * Settings → "Manage tags" lands here with that manager already open ([openManageTags]).
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -83,6 +81,7 @@ fun AllNotesScreen(
     onNavTab: (NavTab) -> Unit,
     onSearch: () -> Unit,
     onOpenNote: (String) -> Unit = {},
+    onNewNote: (String?) -> Unit = {},
     vm: HomeViewModel = viewModel(),
     avm: AllNotesViewModel = viewModel(),
 ) {
@@ -113,12 +112,12 @@ fun AllNotesScreen(
     val notebooksById = remember(hs.notebooks) { hs.notebooks.associateBy { it.id } }
 
     val layerOpen = st.filterOpen || st.manageOpen || st.renaming != null || st.deleting != null
-    BackHandler(enabled = layerOpen) { avm.closeTopLayer() }
+    BackHandler(enabled = layerOpen && !hs.createMenuOpen) { avm.closeTopLayer() }
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {
             InnerTopBar(
-                title = "All Notes",
+                title = "Notes",
                 onBack = onBack,
                 actions = {
                     FilterButton(count = filter.activeCount, onClick = avm::openFilter)
@@ -131,7 +130,7 @@ fun AllNotesScreen(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 62.dp + navInset + 80.dp),
             ) {
                 item(key = "h") {
-                    SectionHeader(null, if (filter.isActive) "Filtered notes" else "All notes", filtered.size, topPadding = 0.dp)
+                    SectionHeader(null, if (filter.isActive) "Filtered notes" else "Notes", filtered.size, topPadding = 0.dp)
                 }
 
                 if (filter.isActive) {
@@ -170,23 +169,15 @@ fun AllNotesScreen(
             modifier = Modifier.align(Alignment.BottomCenter),
         )
 
-        // FAB → tag manager (edit / delete tags)
-        Fab(
-            onClick = avm::openManage,
-            icon = R.drawable.ic_fa_tags,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(end = 18.dp, bottom = 62.dp + 12.dp),
-        )
-
-        InkToast(
-            toast = hs.toast,
-            onAction = vm::onToastAction,
-            onDismiss = vm::dismissToast,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(start = 17.dp, end = 17.dp, bottom = 62.dp + navInset + 12.dp),
+        // FAB speed dial (same as Home) + tag manager shortcut
+        CreateLayer(
+            state = hs,
+            vm = vm,
+            onNewNote = { onNewNote(null) },
+            onSearch = onSearch,
+            onManageTags = avm::openManage,
+            onNotebookCreated = { onNavTab(NavTab.Notebooks) },
+            onTagCreated = { onNewNote(it) },
         )
 
         if (st.filterOpen) {

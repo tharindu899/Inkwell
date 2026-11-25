@@ -99,6 +99,7 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                         onNavTab = onNavTab,
                         onSearch = { nav.push(Route.Search) },
                         onOpenNote = { id -> nav.push(Route.Editor(id = id)) },
+                        onNewNote = { tag -> nav.push(Route.Editor(tag = tag)) },
                     )
                     Route.Notebooks -> NotebooksScreen(
                         onBack = { nav.back() },
