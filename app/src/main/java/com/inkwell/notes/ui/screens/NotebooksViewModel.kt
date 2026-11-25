@@ -3,7 +3,6 @@ package com.inkwell.notes.ui.screens
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.inkwell.notes.R
-import com.inkwell.notes.data.AppPrefs
 import com.inkwell.notes.data.NotesStore
 import com.inkwell.notes.data.model.Note
 import com.inkwell.notes.data.model.Notebook
@@ -17,33 +16,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.text.Collator
 
-/** Notebooks page sort — the dropdown on the right of the toolbar. */
-enum class NbSort(val key: String, val label: String) {
-    Newest("newest", "Newest"),
-    Oldest("oldest", "Oldest"),
-    Name("name", "Name A–Z"),
-    Count("count", "Most notes");
-
-    companion object {
-        fun fromKey(key: String?): NbSort = entries.firstOrNull { it.key == key } ?: Newest
-    }
-}
-
-/** Notebooks page layout — the three-way toggle on the left of the toolbar. */
-enum class NbView(val key: String) {
-    Cards("cards"), Compact("list"), Grid("grid");
-
-    companion object {
-        fun fromKey(key: String?): NbView = entries.firstOrNull { it.key == key } ?: Cards
-    }
-}
+/** `NB_SORTS` in Notebooks.jsx */
+enum class NbSort(val label: String) { Name("Name"), Count("Notes"), Created("Created") }
 
 data class NotebooksState(
     /** Already ordered by [sort]. */
     val notebooks: List<Notebook> = emptyList(),
     val counts: Map<String, Int> = emptyMap(),
-    val sort: NbSort = NbSort.Newest,
-    val view: NbView = NbView.Cards,
+    val sort: NbSort = NbSort.Name,
     /** All notes, already `sortNotes`-ed (NotebookDetail filters this by notebook). */
     val notes: List<Note> = emptyList(),
     val sortOrder: SortOrder = SortOrder.Modified,
@@ -63,14 +43,7 @@ data class NotebooksState(
 class NotebooksViewModel(application: Application) : AndroidViewModel(application) {
     private val store = NotesStore(application)
 
-    private val prefs = AppPrefs.of(application)
-
-    private val _state = MutableStateFlow(
-        NotebooksState(
-            sort = NbSort.fromKey(prefs.getString(KEY_NB_SORT, null)),
-            view = NbView.fromKey(prefs.getString(KEY_NB_VIEW, null)),
-        ),
-    )
+    private val _state = MutableStateFlow(NotebooksState())
     val state: StateFlow<NotebooksState> = _state.asStateFlow()
 
     init {
@@ -98,13 +71,7 @@ class NotebooksViewModel(application: Application) : AndroidViewModel(applicatio
     // ─── Notebooks page ──────────────────────────
 
     fun setNbSort(sort: NbSort) {
-        prefs.edit().putString(KEY_NB_SORT, sort.key).apply()
         _state.update { it.copy(sort = sort).withFreshData() }
-    }
-
-    fun setNbView(view: NbView) {
-        prefs.edit().putString(KEY_NB_VIEW, view.key).apply()
-        _state.update { it.copy(view = view) }
     }
 
     /** `openModal(id)` — null id = new notebook. */
@@ -196,17 +163,13 @@ class NotebooksViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private companion object {
-        const val KEY_NB_SORT = "iw_nb_sort"
-        const val KEY_NB_VIEW = "iw_nb_view"
-
-        /** Newest / oldest first by creation time, name A→Z, or most notes first. */
+        /** `sortedNotebooks()` — name A→Z, most notes first, or newest first. */
         fun sortNotebooks(list: List<Notebook>, counts: Map<String, Int>, sort: NbSort): List<Notebook> {
             val collator = Collator.getInstance()
             return when (sort) {
                 NbSort.Name -> list.sortedWith(Comparator { a, b -> collator.compare(a.name, b.name) })
                 NbSort.Count -> list.sortedByDescending { counts[it.id] ?: 0 }
-                NbSort.Newest -> list.sortedByDescending { Iso.millis(it.createdAt) }
-                NbSort.Oldest -> list.sortedBy { Iso.millis(it.createdAt) }
+                NbSort.Created -> list.sortedByDescending { Iso.millis(it.createdAt) }
             }
         }
     }
