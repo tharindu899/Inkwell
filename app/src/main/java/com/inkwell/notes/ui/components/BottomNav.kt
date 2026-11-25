@@ -68,7 +68,7 @@ fun BottomNav(active: NavTab?, onSelect: (NavTab) -> Unit, modifier: Modifier = 
                         color = color,
                     )
                     Spacer(
-                        Modifier.size(4.dp).clip(CircleShape).background(c.accent).alpha(if (on) 1f else 0f),
+                        Modifier.size(4.dp).alpha(if (on) 1f else 0f).clip(CircleShape).background(c.accent),
                     )
                 }
             }

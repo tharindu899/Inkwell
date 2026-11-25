@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -48,7 +50,8 @@ fun DeleteConfirmModal(
         "You can undo for 5 seconds after deleting.",
 ) {
     val c = Ink.colors
-    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // Sit above the keyboard too (Editor opens this with the keyboard up).
+    val bottomInsets = WindowInsets.navigationBars.union(WindowInsets.ime)
     val cardShape = RoundedCornerShape(26.dp)
 
     Box(
@@ -56,7 +59,8 @@ fun DeleteConfirmModal(
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.44f))
             .tap(onCancel) // tap outside = cancel
-            .padding(start = 12.dp, end = 12.dp, bottom = 14.dp + navInset),
+            .windowInsetsPadding(bottomInsets)
+            .padding(start = 12.dp, end = 12.dp, bottom = 14.dp),
         contentAlignment = Alignment.BottomCenter,
     ) {
         Column(
