@@ -75,8 +75,6 @@ import java.util.TimeZone
  * Google account hero → Notes / Books / Words → writing streak → 14-week activity grid →
  * quick actions (Settings, My notebooks) → Sign out (with confirm modal).
  * This replaces the temporary "long-press the avatar to sign out" on Home.
- *
- * TODO Settings: the Settings row.
  */
 @Composable
 fun ProfileScreen(

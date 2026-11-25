@@ -25,6 +25,9 @@ sealed interface Route {
 
     /** `/profile` */
     data object Profile : Route
+
+    /** `/settings` */
+    data object Settings : Route
 }
 
 /**

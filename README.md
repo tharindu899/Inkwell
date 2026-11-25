@@ -20,8 +20,9 @@ reference until every screen is ported.
 | Notebooks         | `pages/Notebooks.jsx`         | `ui/screens/NotebooksScreen.kt`, `NotebookModals.kt`, `NotebooksViewModel.kt` | ✅ grid, sort, create/edit/delete |
 | NotebookDetail    | `pages/NotebookDetail.jsx`    | `ui/screens/NotebookDetailScreen.kt` | ✅ (note tap / FAB → Editor = TODO) |
 | Search            | `pages/Search.jsx`            | `ui/screens/SearchScreen.kt`, `NotesStore.searchNotes` + recent searches (`iw_searches`) | ✅ modes, notebook filter, highlight, recents (note tap → Editor = TODO) |
-| Profile           | `pages/Profile.jsx`           | `ui/screens/ProfileScreen.kt`       | ✅ hero, stats, streak, activity grid, sign-out confirm (Settings row = TODO) |
-| Settings, Editor, Drive sync, update checker | | | ⏳ |
+| Profile           | `pages/Profile.jsx`           | `ui/screens/ProfileScreen.kt`       | ✅ hero, stats, streak, activity grid, sign-out confirm |
+| Settings          | `pages/Settings.jsx`          | `ui/screens/SettingsScreen.kt`, `SettingsViewModel.kt` | ✅ theme (live), font size, editor toggles, local export/import, storage, danger zone, about · Drive rows + update row = UI only |
+| Editor, Drive sync, update checker | | | ⏳ |
 
 After sign-in the app shows Home. Tap the avatar for Profile (Sign out lives there).
 
@@ -52,7 +53,8 @@ app/src/main/java/com/inkwell/notes/
 ├── MainActivity.kt
 ├── auth/        AuthViewModel, AuthStore
 ├── data/        AppPrefs, NotesStore, Seed, model/   (SharedPreferences; keys iw_theme, iw_gauth,
-│                                                     iw_notes, iw_notebooks, iw_sort, iw_seed_version, iw_searches)
+│                                                     iw_notes, iw_notebooks, iw_sort, iw_seed_version, iw_searches,
+│                                                     iw_prefs, iw_fontSize, iw_profile)
 ├── util/        Helpers             (formatDate, stripHtml, fmtNum, greeting …)
 └── ui/
     ├── InkwellApp.kt                (root: login gate + current screen)

@@ -7,7 +7,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -22,6 +24,7 @@ import com.inkwell.notes.ui.screens.NotebookDetailScreen
 import com.inkwell.notes.ui.screens.NotebooksScreen
 import com.inkwell.notes.ui.screens.ProfileScreen
 import com.inkwell.notes.ui.screens.SearchScreen
+import com.inkwell.notes.ui.screens.SettingsScreen
 import com.inkwell.notes.ui.screens.TagsScreen
 import com.inkwell.notes.ui.theme.Ink
 import com.inkwell.notes.ui.theme.InkwellTheme
@@ -36,7 +39,7 @@ import com.inkwell.notes.ui.theme.ThemeMode
 fun InkwellApp(vm: AuthViewModel = viewModel()) {
     val context = LocalContext.current
     // Saved theme is applied before the first frame (like main.jsx does for the web build).
-    val themeMode = remember { ThemeMode.fromKey(AppPrefs.getTheme(context)) }
+    var themeMode by remember { mutableStateOf(ThemeMode.fromKey(AppPrefs.getTheme(context))) }
     val state by vm.state.collectAsStateWithLifecycle()
 
     val signInLauncher = rememberLauncherForActivityResult(
@@ -105,12 +108,27 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                     onBack = { nav.back() },
                     onNavTab = onNavTab,
                     onSignOut = vm::signOut,
-                    onSettings = { /* TODO Settings screen */ },
+                    onSettings = { nav.push(Route.Settings) },
                 )
                 Route.Search -> SearchScreen(
                     onBack = { nav.back() },
                     onNavTab = onNavTab,
                     onOpenNote = { /* TODO Editor */ },
+                )
+                Route.Settings -> SettingsScreen(
+                    user = user,
+                    themeMode = themeMode,
+                    onThemeChange = { mode ->
+                        themeMode = mode
+                        AppPrefs.setTheme(context, mode.key)
+                    },
+                    onBack = { nav.back() },
+                    onNavTab = onNavTab,
+                    onOpenProfile = { nav.back() }, // Settings is always opened from Profile
+                    onResetDone = {
+                        themeMode = ThemeMode.Dark
+                        vm.signOut()
+                    },
                 )
             }
         }
