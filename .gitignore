@@ -1,27 +1,17 @@
-# ── Build outputs ──────────────────────────
-dist/
-dist-ssr/
+# Gradle / Android
+.gradle/
+build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
 
-# ── Capacitor generated Android project ────
-# Generated fresh by CI (npx cap add android + cap sync)
-# Do NOT commit — it's ~50MB and rebuilds automatically.
-android/
-
-# ── Dependencies ───────────────────────────
-node_modules/
-
-# ── Local env files ────────────────────────
-.env
-.env.local
-.env.*.local
-
-# ── Keystore — NEVER commit this! ──────────
+# Keystore — NEVER commit this!
 *.jks
 *.keystore
 
-# ── Editor / OS files ──────────────────────
-.vscode/
+# IDE / OS
 .idea/
+*.iml
 .DS_Store
 Thumbs.db
-.vite/
