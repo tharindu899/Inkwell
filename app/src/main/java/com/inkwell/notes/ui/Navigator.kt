@@ -46,6 +46,16 @@ class Navigator(start: Route = Route.Home) {
         stack.add(route)
     }
 
+    /** Swap the top screen for [route] (no extra back-stack entry). */
+    fun replaceTop(route: Route) {
+        if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex)
+        stack.add(route)
+    }
+
+    /** True when [route]'s type is already somewhere below the top of the stack. */
+    fun hasBelow(route: Route): Boolean =
+        stack.dropLast(1).any { it::class == route::class }
+
     /** Pops the top screen. Returns false when already at the root (Home). */
     fun back(): Boolean {
         if (stack.size <= 1) return false

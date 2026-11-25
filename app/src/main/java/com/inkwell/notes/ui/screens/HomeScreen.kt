@@ -89,6 +89,7 @@ fun HomeScreen(
     onOpenProfile: () -> Unit,
     onNavTab: (NavTab) -> Unit,
     onSearch: () -> Unit,
+    onSettings: () -> Unit = {},
     vm: HomeViewModel = viewModel(),
 ) {
     val c = Ink.colors
@@ -169,7 +170,7 @@ fun HomeScreen(
                 picture = user.picture,
                 onAvatarClick = onOpenProfile,
                 onSearch = onSearch,
-                onSettings = { /* TODO Settings screen */ },
+                onSettings = onSettings,
             )
 
             // .page-content.home-page  (padding: 10 16 62+inset+14)

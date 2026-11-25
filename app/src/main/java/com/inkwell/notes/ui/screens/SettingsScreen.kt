@@ -93,6 +93,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavTab: (NavTab) -> Unit,
     onOpenProfile: () -> Unit,
+    /** "Manage tags" row — opens the Tags page on top of Settings (web: navigate('/tags')). */
+    onManageTags: () -> Unit = { onNavTab(NavTab.Tags) },
     /** "Reset all data" finished — the app signs out and falls back to the default theme. */
     onResetDone: () -> Unit,
     vm: SettingsViewModel = viewModel(),
@@ -238,7 +240,7 @@ fun SettingsScreen(
                     label = "Manage tags",
                     sub = "${s.tagCount} unique tag${if (s.tagCount != 1) "s" else ""} across all notes",
                     chevron = true,
-                    onClick = { onNavTab(NavTab.Tags) },
+                    onClick = onManageTags,
                 )
 
                 // ── Storage ──

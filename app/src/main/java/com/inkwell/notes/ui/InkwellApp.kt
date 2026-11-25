@@ -88,6 +88,7 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                         onOpenProfile = { nav.push(Route.Profile) },
                         onNavTab = onNavTab,
                         onSearch = { nav.push(Route.Search) },
+                        onSettings = { nav.push(Route.Settings) },
                     )
                     is Route.Tags -> TagsScreen(
                         initialTag = route.tag,
@@ -129,7 +130,12 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                         },
                         onBack = { nav.back() },
                         onNavTab = onNavTab,
-                        onOpenProfile = { nav.back() }, // Settings is always opened from Profile
+                        onManageTags = { nav.push(Route.Tags()) },
+                        // Settings can be opened from Home or Profile: go back to Profile if it is
+                        // already below us, otherwise swap Settings for Profile.
+                        onOpenProfile = {
+                            if (nav.hasBelow(Route.Profile)) nav.back() else nav.replaceTop(Route.Profile)
+                        },
                         onResetDone = {
                             themeMode = ThemeMode.Dark
                             vm.signOut()
