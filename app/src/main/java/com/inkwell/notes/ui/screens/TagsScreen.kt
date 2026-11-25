@@ -191,6 +191,7 @@ fun TagsScreen(
         CreateLayer(
             state = state,
             vm = vm,
+            fabCreatesTag = true,
             onNewNote = { /* TODO Editor (?new=1) */ },
             onSearch = onSearch,
             onImage = { /* TODO Editor (?new=1&type=image) */ },

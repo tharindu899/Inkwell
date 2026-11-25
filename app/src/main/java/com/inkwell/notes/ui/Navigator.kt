@@ -22,6 +22,9 @@ sealed interface Route {
 
     /** `/search` */
     data object Search : Route
+
+    /** `/profile` */
+    data object Profile : Route
 }
 
 /**

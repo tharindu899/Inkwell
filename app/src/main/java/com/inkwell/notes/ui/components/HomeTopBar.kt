@@ -37,14 +37,12 @@ import com.inkwell.notes.R
 import com.inkwell.notes.ui.theme.Ink
 
 /** Port of `TopBar.jsx` → HomeTopBar (.top-bar.app-nav.home-nav). Sync dot comes with Drive sync. */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeTopBar(
     greeting: String,
     firstName: String,
     picture: String,
     onAvatarClick: () -> Unit,
-    onAvatarLongClick: () -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
 ) {
@@ -63,12 +61,7 @@ fun HomeTopBar(
                 .size(42.dp)
                 .clip(CircleShape)
                 .background(Brush.linearGradient(listOf(c.accent, lerp(c.accent, Color.White, 0.25f))))
-                .combinedClickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onAvatarClick,
-                    onLongClick = onAvatarLongClick,
-                ),
+                .tap(onAvatarClick),
             contentAlignment = Alignment.Center,
         ) {
             if (picture.isNotBlank()) {

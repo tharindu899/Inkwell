@@ -81,12 +81,12 @@ import kotlinx.coroutines.delay
  * Step 4: Create-New menu on the FAB + notebook / tag quick-create modal
  * (now shared with the other screens through [CreateLayer]).
  * Step 5: bottom-nav navigation (Tags + Notebooks tabs).
- * Next steps: navigation to Editor / Settings / Profile.
+ * Next steps: navigation to Editor / Settings.
  */
 @Composable
 fun HomeScreen(
     user: AuthUser,
-    onSignOut: () -> Unit,
+    onOpenProfile: () -> Unit,
     onNavTab: (NavTab) -> Unit,
     onSearch: () -> Unit,
     vm: HomeViewModel = viewModel(),
@@ -167,9 +167,7 @@ fun HomeScreen(
                 greeting = greeting,
                 firstName = user.name.trim().split(" ").firstOrNull().orEmpty().ifEmpty { "User" },
                 picture = user.picture,
-                onAvatarClick = { /* TODO Profile screen */ },
-                // TEMPORARY until Profile is ported: long-press the avatar to sign out.
-                onAvatarLongClick = onSignOut,
+                onAvatarClick = onOpenProfile,
                 onSearch = onSearch,
                 onSettings = { /* TODO Settings screen */ },
             )

@@ -158,20 +158,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Notebook branch of `submitQuickModal` (blank → just closes).
-     * Returns true when a notebook was created — the caller then opens the Notebooks page.
+     * Saves a notebook from the full form (name + colour + icon, same modal as the Notebooks page).
+     * A blank name does nothing (the modal stays open). Returns true when a notebook was created —
+     * the caller then opens the Notebooks page.
      */
-    fun createNotebook(rawName: String): Boolean {
+    fun createNotebook(rawName: String, color: String, icon: String): Boolean {
         val name = rawName.trim()
-        closeQuickCreate()
         if (name.isEmpty()) return false
+        closeQuickCreate()
         val now = Iso.now()
         store.saveNotebook(
             Notebook(
                 id = genId(),
                 name = name.take(32),
-                color = NOTEBOOK_COLORS.random(),
-                icon = "fa-book-open",
+                color = color,
+                icon = icon,
                 createdAt = now,
                 updatedAt = now,
             ),

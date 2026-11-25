@@ -30,6 +30,8 @@ fun BoxScope.CreateLayer(
     state: HomeState,
     vm: HomeViewModel,
     showFab: Boolean = true,
+    /** Tags page: the FAB opens the "Create tag" modal directly instead of the Create-New menu. */
+    fabCreatesTag: Boolean = false,
     onNewNote: () -> Unit = {},
     onSearch: () -> Unit = {},
     onImage: () -> Unit = {},
@@ -62,8 +64,10 @@ fun BoxScope.CreateLayer(
 
     if (showFab) {
         Fab(
-            onClick = vm::toggleCreateMenu,
-            open = state.createMenuOpen,
+            onClick = {
+                if (fabCreatesTag) vm.openQuickCreate(QuickCreateKind.Tag) else vm.toggleCreateMenu()
+            },
+            open = !fabCreatesTag && state.createMenuOpen,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .windowInsetsPadding(WindowInsets.navigationBars)
@@ -82,17 +86,20 @@ fun BoxScope.CreateLayer(
     )
 
     state.quickCreate?.let { kind ->
-        QuickCreateModal(
-            kind = kind,
-            onDismiss = vm::closeQuickCreate,
-            onSave = { text ->
-                when (kind) {
-                    QuickCreateKind.Notebook -> {
-                        if (vm.createNotebook(text)) onNotebookCreated()
-                    }
-                    QuickCreateKind.Tag -> vm.createTag(text)?.let(onTagCreated)
-                }
-            },
-        )
+        when (kind) {
+            // Same form as the Notebooks page: name, colour, icon.
+            QuickCreateKind.Notebook -> NotebookFormModal(
+                editing = null,
+                onDismiss = vm::closeQuickCreate,
+                onSave = { name, color, icon ->
+                    if (vm.createNotebook(name, color, icon)) onNotebookCreated()
+                },
+            )
+            QuickCreateKind.Tag -> QuickCreateModal(
+                kind = kind,
+                onDismiss = vm::closeQuickCreate,
+                onSave = { text -> vm.createTag(text)?.let(onTagCreated) },
+            )
+        }
     }
 }

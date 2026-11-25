@@ -20,10 +20,10 @@ reference until every screen is ported.
 | Notebooks         | `pages/Notebooks.jsx`         | `ui/screens/NotebooksScreen.kt`, `NotebookModals.kt`, `NotebooksViewModel.kt` | ✅ grid, sort, create/edit/delete |
 | NotebookDetail    | `pages/NotebookDetail.jsx`    | `ui/screens/NotebookDetailScreen.kt` | ✅ (note tap / FAB → Editor = TODO) |
 | Search            | `pages/Search.jsx`            | `ui/screens/SearchScreen.kt`, `NotesStore.searchNotes` + recent searches (`iw_searches`) | ✅ modes, notebook filter, highlight, recents (note tap → Editor = TODO) |
-| Profile, Settings, Editor, Drive sync, update checker | | | ⏳ |
+| Profile           | `pages/Profile.jsx`           | `ui/screens/ProfileScreen.kt`       | ✅ hero, stats, streak, activity grid, sign-out confirm (Settings row = TODO) |
+| Settings, Editor, Drive sync, update checker | | | ⏳ |
 
-After sign-in the app shows Home. **Temporary:** long-press the avatar to sign out
-(until the Profile screen is ported).
+After sign-in the app shows Home. Tap the avatar for Profile (Sign out lives there).
 
 ## Build the APK on GitHub
 
