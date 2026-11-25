@@ -17,13 +17,13 @@ import kotlinx.coroutines.flow.update
 import java.text.Collator
 
 /** `NB_SORTS` in Notebooks.jsx */
-enum class NbSort(val label: String) { Name("Name"), Count("Notes"), Created("Created") }
+enum class NbSort(val label: String) { Newest("Newest"), Oldest("Oldest"), Name("A–Z"), Count("Most notes") }
 
 data class NotebooksState(
     /** Already ordered by [sort]. */
     val notebooks: List<Notebook> = emptyList(),
     val counts: Map<String, Int> = emptyMap(),
-    val sort: NbSort = NbSort.Name,
+    val sort: NbSort = NbSort.Newest,
     /** All notes, already `sortNotes`-ed (NotebookDetail filters this by notebook). */
     val notes: List<Note> = emptyList(),
     val sortOrder: SortOrder = SortOrder.Modified,
@@ -163,13 +163,14 @@ class NotebooksViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private companion object {
-        /** `sortedNotebooks()` — name A→Z, most notes first, or newest first. */
+        /** newest / oldest first, name A→Z, or most notes first. */
         fun sortNotebooks(list: List<Notebook>, counts: Map<String, Int>, sort: NbSort): List<Notebook> {
             val collator = Collator.getInstance()
             return when (sort) {
                 NbSort.Name -> list.sortedWith(Comparator { a, b -> collator.compare(a.name, b.name) })
                 NbSort.Count -> list.sortedByDescending { counts[it.id] ?: 0 }
-                NbSort.Created -> list.sortedByDescending { Iso.millis(it.createdAt) }
+                NbSort.Newest -> list.sortedByDescending { Iso.millis(it.createdAt) }
+                NbSort.Oldest -> list.sortedBy { Iso.millis(it.createdAt) }
             }
         }
     }
