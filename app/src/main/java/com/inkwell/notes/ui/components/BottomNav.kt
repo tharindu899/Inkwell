@@ -35,7 +35,7 @@ enum class NavTab(val label: String, @DrawableRes val icon: Int) {
 
 /** Port of `BottomNav.jsx` (.bottom-nav / .nav-item, final overrides: 62px + nav-bar inset). */
 @Composable
-fun BottomNav(active: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Modifier) {
+fun BottomNav(active: NavTab?, onSelect: (NavTab) -> Unit, modifier: Modifier = Modifier) {
     val c = Ink.colors
     Box(
         modifier

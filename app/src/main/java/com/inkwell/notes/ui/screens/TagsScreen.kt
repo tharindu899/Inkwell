@@ -62,7 +62,7 @@ import java.text.Collator
  * lists every note. Notes, sort order, FAB, Create menu and toast all come from the
  * shared [HomeViewModel] (the web's `useAppStore()`).
  *
- * TODO Editor: note tap, "new note" actions.   TODO Search: top-bar search button.
+ * TODO Editor: note tap, "new note" actions.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

@@ -19,7 +19,8 @@ reference until every screen is ported.
 | Tags              | `pages/Tags.jsx`              | `ui/screens/TagsScreen.kt`, `InnerTopBar.kt` | ✅ (bottom-nav Tags tab works) |
 | Notebooks         | `pages/Notebooks.jsx`         | `ui/screens/NotebooksScreen.kt`, `NotebookModals.kt`, `NotebooksViewModel.kt` | ✅ grid, sort, create/edit/delete |
 | NotebookDetail    | `pages/NotebookDetail.jsx`    | `ui/screens/NotebookDetailScreen.kt` | ✅ (note tap / FAB → Editor = TODO) |
-| Search, Profile, Settings, Editor, Drive sync, update checker | | | ⏳ |
+| Search            | `pages/Search.jsx`            | `ui/screens/SearchScreen.kt`, `NotesStore.searchNotes` + recent searches (`iw_searches`) | ✅ modes, notebook filter, highlight, recents (note tap → Editor = TODO) |
+| Profile, Settings, Editor, Drive sync, update checker | | | ⏳ |
 
 After sign-in the app shows Home. **Temporary:** long-press the avatar to sign out
 (until the Profile screen is ported).
@@ -51,7 +52,7 @@ app/src/main/java/com/inkwell/notes/
 ├── MainActivity.kt
 ├── auth/        AuthViewModel, AuthStore
 ├── data/        AppPrefs, NotesStore, Seed, model/   (SharedPreferences; keys iw_theme, iw_gauth,
-│                                                     iw_notes, iw_notebooks, iw_sort, iw_seed_version)
+│                                                     iw_notes, iw_notebooks, iw_sort, iw_seed_version, iw_searches)
 ├── util/        Helpers             (formatDate, stripHtml, fmtNum, greeting …)
 └── ui/
     ├── InkwellApp.kt                (root: login gate + current screen)

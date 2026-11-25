@@ -57,7 +57,7 @@ import com.inkwell.notes.ui.theme.Ink
  * ⋮ sheet (All notebooks / Search / Delete) and delete confirm.
  * If the notebook no longer exists (deleted, bad id) it leaves via [onMissing].
  *
- * TODO Editor: note tap + the FAB (`/editor?new=1&notebook=$id`).   TODO Search: sheet item.
+ * TODO Editor: note tap + the FAB (`/editor?new=1&notebook=$id`).
  */
 @Composable
 fun NotebookDetailScreen(

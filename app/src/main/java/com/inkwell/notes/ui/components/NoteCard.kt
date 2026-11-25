@@ -33,7 +33,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,6 +72,8 @@ fun NoteCard(
     onDragStart: (Offset) -> Unit = {},
     onDrag: (Float) -> Unit = {},
     onDragEnd: () -> Unit = {},
+    /** Search page: matches of this text are marked in the title, preview and tags (`.highlight-match`). */
+    highlight: String = "",
 ) {
     val c = Ink.colors
     val shape = RoundedCornerShape(15.dp)
@@ -156,7 +162,7 @@ fun NoteCard(
         androidx.compose.foundation.layout.Column {
             // .n-title
             InkText(
-                text = note.title.ifEmpty { "Untitled" },
+                text = highlighted(note.title.ifEmpty { "Untitled" }, highlight),
                 size = 13.5.sp,
                 weight = FontWeight.ExtraBold,
                 lineHeight = 17.5.sp,
@@ -165,7 +171,7 @@ fun NoteCard(
             Spacer(Modifier.height(3.dp))
             // .n-preview — 2-line clamp
             InkText(
-                text = preview,
+                text = highlighted(if (highlight.isBlank()) preview else preview.take(120), highlight),
                 size = 11.5.sp,
                 color = c.text2,
                 lineHeight = 16.3.sp,
@@ -192,14 +198,14 @@ fun NoteCard(
                 if (notebook != null) {
                     val nbColor = parseColor(notebook.color, c.accent)
                     Tag(
-                        text = notebook.name,
+                        text = AnnotatedString(notebook.name),
                         color = nbColor,
                         background = nbColor.copy(alpha = 0.133f),
                         icon = R.drawable.ic_fa_book_open,
                     )
                 }
                 note.tags.take(2).forEach { t ->
-                    Tag(text = t, color = c.accent, background = c.accentDim)
+                    Tag(text = highlighted(t, highlight), color = c.accent, background = c.accentDim)
                 }
             }
         }
@@ -208,7 +214,7 @@ fun NoteCard(
 
 /** .n-tag */
 @Composable
-private fun Tag(text: String, color: Color, background: Color, icon: Int? = null) {
+private fun Tag(text: AnnotatedString, color: Color, background: Color, icon: Int? = null) {
     Row(
         Modifier
             .clip(RoundedCornerShape(20.dp))
@@ -228,4 +234,23 @@ internal fun parseColor(hex: String, fallback: Color): Color = try {
     Color(android.graphics.Color.parseColor(hex))
 } catch (_: Exception) {
     fallback
+}
+
+/**
+ * Web `highlight(str, q)` — every case-insensitive occurrence of [query] gets the
+ * `.highlight-match` look (#FFE49A background, dark text in every theme).
+ */
+internal fun highlighted(text: String, query: String): AnnotatedString {
+    val q = query.trim()
+    if (q.isEmpty() || text.isEmpty()) return AnnotatedString(text)
+    val style = SpanStyle(background = Color(0xFFFFE49A), color = Color(0xFF1C1A17))
+    return buildAnnotatedString {
+        var last = 0
+        for (m in Regex(Regex.escape(q), RegexOption.IGNORE_CASE).findAll(text)) {
+            append(text.substring(last, m.range.first))
+            withStyle(style) { append(m.value) }
+            last = m.range.last + 1
+        }
+        append(text.substring(last))
+    }
 }

@@ -112,3 +112,11 @@ enum class SortOrder(val key: String, val label: String) {
         fun fromKey(key: String?): SortOrder = entries.firstOrNull { it.key == key } ?: Modified
     }
 }
+
+/** Search page filter chips (`MODES` in `pages/Search.jsx`). */
+enum class SearchMode(val label: String) {
+    All("All"),
+    Title("Title"),
+    Content("Content"),
+    Tags("Tags"),
+}

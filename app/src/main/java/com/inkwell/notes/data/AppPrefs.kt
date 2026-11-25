@@ -17,6 +17,7 @@ object AppPrefs {
     const val KEY_NOTEBOOKS = "iw_notebooks"
     const val KEY_SORT = "iw_sort"
     const val KEY_SEED_VERSION = "iw_seed_version"
+    const val KEY_SEARCHES = "iw_searches"
 
     fun of(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)

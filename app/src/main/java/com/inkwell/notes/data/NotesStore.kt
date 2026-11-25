@@ -3,9 +3,11 @@ package com.inkwell.notes.data
 import android.content.Context
 import com.inkwell.notes.data.model.Note
 import com.inkwell.notes.data.model.Notebook
+import com.inkwell.notes.data.model.SearchMode
 import com.inkwell.notes.data.model.SortOrder
 import com.inkwell.notes.data.model.Stats
 import com.inkwell.notes.util.Iso
+import com.inkwell.notes.util.stripHtml
 import org.json.JSONArray
 import java.text.Collator
 
@@ -119,6 +121,47 @@ class NotesStore(context: Context) {
 
     fun setSortOrder(order: SortOrder) {
         prefs.edit().putString(AppPrefs.KEY_SORT, order.key).apply()
+    }
+
+    // ─── Recent searches ──────────────────────
+    /** `getSearches()` — newest first, max 8. */
+    fun getSearches(): List<String> = try {
+        val raw = prefs.getString(AppPrefs.KEY_SEARCHES, null)
+        if (raw.isNullOrEmpty()) emptyList()
+        else JSONArray(raw).let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    /** `addSearch()` — de-duplicates, puts [q] first, keeps the latest 8. */
+    fun addSearch(q: String) {
+        val t = q.trim()
+        if (t.isEmpty()) return
+        val next = (listOf(t) + getSearches().filter { it != t }).take(8)
+        prefs.edit().putString(AppPrefs.KEY_SEARCHES, JSONArray(next).toString()).apply()
+    }
+
+    /** `clearSearches()` */
+    fun clearSearches() {
+        prefs.edit().remove(AppPrefs.KEY_SEARCHES).apply()
+    }
+
+    // ─── Search ───────────────────────────────
+    /** `searchNotes(query, mode)` — case-insensitive "contains" on title / content / tags. */
+    fun searchNotes(query: String, mode: SearchMode = SearchMode.All): List<Note> {
+        val q = query.trim().lowercase()
+        if (q.isEmpty()) return emptyList()
+        return getNotes().filter { n ->
+            val inTitle = { n.title.lowercase().contains(q) }
+            val inContent = { stripHtml(n.content).lowercase().contains(q) }
+            val inTags = { n.tags.any { it.lowercase().contains(q) } }
+            when (mode) {
+                SearchMode.Title -> inTitle()
+                SearchMode.Content -> inContent()
+                SearchMode.Tags -> inTags()
+                SearchMode.All -> inTitle() || inContent() || inTags()
+            }
+        }
     }
 
     // ─── Stats ────────────────────────────────

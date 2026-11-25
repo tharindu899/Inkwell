@@ -19,6 +19,9 @@ sealed interface Route {
 
     /** `/notebooks/:id` */
     data class NotebookDetail(val id: String) : Route
+
+    /** `/search` */
+    data object Search : Route
 }
 
 /**

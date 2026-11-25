@@ -20,6 +20,7 @@ import com.inkwell.notes.ui.components.NavTab
 import com.inkwell.notes.ui.screens.LoginScreen
 import com.inkwell.notes.ui.screens.NotebookDetailScreen
 import com.inkwell.notes.ui.screens.NotebooksScreen
+import com.inkwell.notes.ui.screens.SearchScreen
 import com.inkwell.notes.ui.screens.TagsScreen
 import com.inkwell.notes.ui.theme.Ink
 import com.inkwell.notes.ui.theme.InkwellTheme
@@ -77,12 +78,13 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                     user = user,
                     onSignOut = vm::signOut,
                     onNavTab = onNavTab,
+                    onSearch = { nav.push(Route.Search) },
                 )
                 is Route.Tags -> TagsScreen(
                     initialTag = route.tag,
                     onBack = { nav.back() },
                     onNavTab = onNavTab,
-                    onSearch = { /* TODO Search screen */ },
+                    onSearch = { nav.push(Route.Search) },
                 )
                 Route.Notebooks -> NotebooksScreen(
                     onBack = { nav.back() },
@@ -94,8 +96,13 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                     onBack = { nav.back() },
                     onNavTab = onNavTab,
                     onAllNotebooks = { nav.switchTab(Route.Notebooks) },
-                    onSearch = { /* TODO Search screen */ },
+                    onSearch = { nav.push(Route.Search) },
                     onMissing = { nav.switchTab(Route.Notebooks) },
+                )
+                Route.Search -> SearchScreen(
+                    onBack = { nav.back() },
+                    onNavTab = onNavTab,
+                    onOpenNote = { /* TODO Editor */ },
                 )
             }
         }
