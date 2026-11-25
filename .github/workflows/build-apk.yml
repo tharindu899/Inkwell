@@ -55,12 +55,15 @@ jobs:
           distribution: 'temurin'
 
       # ── 4. Android SDK ───────────────────────────────────────────────────────
+      # ubuntu-latest already ships the Android SDK ($ANDROID_HOME). We do NOT use
+      # android-actions/setup-android: v3 crashes on the runner's newer
+      # cmdline-tools ("Failed to find package 'tools'").
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK components
         run: |
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          # `yes` gets SIGPIPE when sdkmanager exits → ignore that exit code
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       # ── 5. Gradle (no wrapper jar needed in the repo) ────────────────────────
       - name: Set up Gradle
