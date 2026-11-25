@@ -89,6 +89,9 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
 
+    // Google profile picture in the Home top bar
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
     // Native Google Sign-In (same SDK the Capacitor plugin used)
     implementation("com.google.android.gms:play-services-auth:21.2.0")
 }

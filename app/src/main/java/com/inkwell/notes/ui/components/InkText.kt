@@ -9,6 +9,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.inkwell.notes.ui.theme.Ink
@@ -28,10 +29,14 @@ fun InkText(
     align: TextAlign = TextAlign.Start,
     letterSpacing: TextUnit = TextUnit.Unspecified,
     lineHeight: TextUnit = TextUnit.Unspecified,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
 ) {
     BasicText(
         text = text,
         modifier = modifier,
+        maxLines = maxLines,
+        overflow = overflow,
         style = TextStyle(
             color = color,
             fontSize = size,
@@ -54,10 +59,14 @@ fun InkText(
     family: FontFamily = Ink.sans,
     align: TextAlign = TextAlign.Start,
     lineHeight: TextUnit = TextUnit.Unspecified,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
 ) {
     BasicText(
         text = text,
         modifier = modifier,
+        maxLines = maxLines,
+        overflow = overflow,
         style = TextStyle(
             color = color,
             fontSize = size,

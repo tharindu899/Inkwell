@@ -13,6 +13,10 @@ object AppPrefs {
 
     const val KEY_THEME = "iw_theme"
     const val KEY_AUTH = "iw_gauth"
+    const val KEY_NOTES = "iw_notes"
+    const val KEY_NOTEBOOKS = "iw_notebooks"
+    const val KEY_SORT = "iw_sort"
+    const val KEY_SEED_VERSION = "iw_seed_version"
 
     fun of(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)

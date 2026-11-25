@@ -11,11 +11,12 @@ reference until every screen is ported.
 | Login             | `pages/Login.jsx`             | `ui/screens/LoginScreen.kt`         | ✅    |
 | Theme (3 modes)   | `:root` / `data-theme` CSS    | `ui/theme/Theme.kt`                 | ✅    |
 | Google auth       | `auth/AuthContext.jsx`        | `auth/AuthViewModel.kt`             | ✅    |
-| Home              | `pages/Home.jsx`              | —                                   | ⏳ next |
+| Home — step 1     | `pages/Home.jsx`              | `ui/screens/HomeScreen.kt`          | ✅ UI + data API |
+| Home — step 2+    | multi-select, long-press, pin drag, Create menu | — | ⏳ next |
 | Editor, Notebooks, Search, Tags, Profile, Settings, Drive sync, update checker | | | ⏳ |
 
-After sign-in the app currently shows a **temporary** placeholder (`HomePlaceholder.kt`)
-so the login flow can be tested end to end.
+After sign-in the app shows Home. **Temporary:** long-press the avatar to sign out
+(until the Profile screen is ported).
 
 ## Build the APK on GitHub
 
@@ -43,7 +44,9 @@ cp local.properties.example local.properties   # set VITE_GOOGLE_CLIENT_ID
 app/src/main/java/com/inkwell/notes/
 ├── MainActivity.kt
 ├── auth/        AuthViewModel, AuthStore
-├── data/        AppPrefs            (SharedPreferences; keys iw_theme, iw_gauth)
+├── data/        AppPrefs, NotesStore, Seed, model/   (SharedPreferences; keys iw_theme, iw_gauth,
+│                                                     iw_notes, iw_notebooks, iw_sort, iw_seed_version)
+├── util/        Helpers             (formatDate, stripHtml, fmtNum, greeting …)
 └── ui/
     ├── InkwellApp.kt                (root / routing)
     ├── theme/Theme.kt               (colours, fonts, radii)
