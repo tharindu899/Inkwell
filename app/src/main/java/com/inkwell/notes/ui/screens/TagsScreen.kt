@@ -196,6 +196,7 @@ fun TagsScreen(
             onImage = { /* TODO Editor (?new=1&type=image) */ },
             onVoice = { /* TODO Editor (?new=1&type=voice) */ },
             onChecklist = { /* TODO Editor (?new=1&type=checklist) */ },
+            onNotebookCreated = { onNavTab(NavTab.Notebooks) },
             onTagCreated = { /* TODO Editor: new note with this tag (?new=1&tag=$it) */ },
         )
     }

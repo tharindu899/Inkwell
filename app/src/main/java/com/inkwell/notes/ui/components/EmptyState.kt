@@ -17,7 +17,12 @@ import com.inkwell.notes.ui.theme.Ink
 
 /** Port of `components/EmptyState.jsx` (.empty-state). */
 @Composable
-fun EmptyState(@DrawableRes icon: Int, title: String, sub: String = "") {
+fun EmptyState(
+    @DrawableRes icon: Int,
+    title: String,
+    sub: String = "",
+    action: (@Composable () -> Unit)? = null,
+) {
     val c = Ink.colors
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 52.dp),
@@ -30,6 +35,10 @@ fun EmptyState(@DrawableRes icon: Int, title: String, sub: String = "") {
         if (sub.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
             InkText(sub, size = 13.sp, color = c.text3, align = TextAlign.Center, lineHeight = 20.sp)
+        }
+        if (action != null) {
+            Spacer(Modifier.height(16.dp))
+            action()
         }
     }
 }

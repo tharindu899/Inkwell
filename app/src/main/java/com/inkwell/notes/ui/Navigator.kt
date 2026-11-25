@@ -13,6 +13,12 @@ sealed interface Route {
 
     /** `/tags` — [tag] is the optional `?tag=` filter. */
     data class Tags(val tag: String? = null) : Route
+
+    /** `/notebooks` */
+    data object Notebooks : Route
+
+    /** `/notebooks/:id` */
+    data class NotebookDetail(val id: String) : Route
 }
 
 /**

@@ -224,7 +224,7 @@ private fun Tag(text: String, color: Color, background: Color, icon: Int? = null
     }
 }
 
-private fun parseColor(hex: String, fallback: Color): Color = try {
+internal fun parseColor(hex: String, fallback: Color): Color = try {
     Color(android.graphics.Color.parseColor(hex))
 } catch (_: Exception) {
     fallback

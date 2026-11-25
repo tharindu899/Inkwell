@@ -80,8 +80,8 @@ import kotlinx.coroutines.delay
  * Step 3: pinned drag-reorder via the grip handle.
  * Step 4: Create-New menu on the FAB + notebook / tag quick-create modal
  * (now shared with the other screens through [CreateLayer]).
- * Step 5 (this version): bottom-nav navigation (Tags tab works).
- * Next steps: navigation to Editor / Search / Settings / Notebooks.
+ * Step 5: bottom-nav navigation (Tags + Notebooks tabs).
+ * Next steps: navigation to Editor / Search / Settings / Profile.
  */
 @Composable
 fun HomeScreen(
@@ -306,6 +306,7 @@ fun HomeScreen(
             onImage = { /* TODO Editor (?new=1&type=image) */ },
             onVoice = { /* TODO Editor (?new=1&type=voice) */ },
             onChecklist = { /* TODO Editor (?new=1&type=checklist) */ },
+            onNotebookCreated = { onNavTab(NavTab.Notebooks) },
             onTagCreated = { /* TODO Editor: open a new note with this tag (?new=1&tag=$it) */ },
         )
 

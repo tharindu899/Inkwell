@@ -17,7 +17,9 @@ reference until every screen is ported.
 | Home — step 4     | Create-New menu (FAB) + notebook/tag quick-create modal | `CreateMenu.kt`, `QuickCreateModal.kt`, `Fab.kt` | ✅ UI (navigation = TODO) |
 | Navigation        | `App.jsx` routes + back button | `ui/Navigator.kt`, `InkwellApp.kt` | ✅ simple back-stack (no library) |
 | Tags              | `pages/Tags.jsx`              | `ui/screens/TagsScreen.kt`, `InnerTopBar.kt` | ✅ (bottom-nav Tags tab works) |
-| Notebooks, NotebookDetail, Search, Profile, Settings, Editor, Drive sync, update checker | | | ⏳ |
+| Notebooks         | `pages/Notebooks.jsx`         | `ui/screens/NotebooksScreen.kt`, `NotebookModals.kt`, `NotebooksViewModel.kt` | ✅ grid, sort, create/edit/delete |
+| NotebookDetail    | `pages/NotebookDetail.jsx`    | `ui/screens/NotebookDetailScreen.kt` | ✅ (note tap / FAB → Editor = TODO) |
+| Search, Profile, Settings, Editor, Drive sync, update checker | | | ⏳ |
 
 After sign-in the app shows Home. **Temporary:** long-press the avatar to sign out
 (until the Profile screen is ported).

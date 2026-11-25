@@ -157,11 +157,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(quickCreate = null) }
     }
 
-    /** Notebook branch of `submitQuickModal` (blank → just closes). */
-    fun createNotebook(rawName: String) {
+    /**
+     * Notebook branch of `submitQuickModal` (blank → just closes).
+     * Returns true when a notebook was created — the caller then opens the Notebooks page.
+     */
+    fun createNotebook(rawName: String): Boolean {
         val name = rawName.trim()
         closeQuickCreate()
-        if (name.isEmpty()) return
+        if (name.isEmpty()) return false
         val now = Iso.now()
         store.saveNotebook(
             Notebook(
@@ -174,8 +177,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             ),
         )
         reload()
-        // Web navigates to /notebooks here; until that screen exists, confirm with a toast.
-        showToast("Notebook \"${name.take(32)}\" created", R.drawable.ic_fa_book_open)
+        return true
     }
 
     /**

@@ -18,6 +18,8 @@ import com.inkwell.notes.data.AppPrefs
 import com.inkwell.notes.ui.screens.HomeScreen
 import com.inkwell.notes.ui.components.NavTab
 import com.inkwell.notes.ui.screens.LoginScreen
+import com.inkwell.notes.ui.screens.NotebookDetailScreen
+import com.inkwell.notes.ui.screens.NotebooksScreen
 import com.inkwell.notes.ui.screens.TagsScreen
 import com.inkwell.notes.ui.theme.Ink
 import com.inkwell.notes.ui.theme.InkwellTheme
@@ -66,7 +68,7 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                 when (tab) {
                     NavTab.Home -> nav.switchTab(Route.Home)
                     NavTab.Tags -> nav.switchTab(Route.Tags())
-                    NavTab.Notebooks -> Unit // TODO Notebooks screen (step 3)
+                    NavTab.Notebooks -> nav.switchTab(Route.Notebooks)
                 }
             }
 
@@ -81,6 +83,19 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                     onBack = { nav.back() },
                     onNavTab = onNavTab,
                     onSearch = { /* TODO Search screen */ },
+                )
+                Route.Notebooks -> NotebooksScreen(
+                    onBack = { nav.back() },
+                    onNavTab = onNavTab,
+                    onOpenNotebook = { id -> nav.push(Route.NotebookDetail(id)) },
+                )
+                is Route.NotebookDetail -> NotebookDetailScreen(
+                    notebookId = route.id,
+                    onBack = { nav.back() },
+                    onNavTab = onNavTab,
+                    onAllNotebooks = { nav.switchTab(Route.Notebooks) },
+                    onSearch = { /* TODO Search screen */ },
+                    onMissing = { nav.switchTab(Route.Notebooks) },
                 )
             }
         }

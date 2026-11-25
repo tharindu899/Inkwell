@@ -35,6 +35,8 @@ fun BoxScope.CreateLayer(
     onImage: () -> Unit = {},
     onVoice: () -> Unit = {},
     onChecklist: () -> Unit = {},
+    /** Called after a notebook was created from the quick-create modal (web: `navigate('/notebooks')`). */
+    onNotebookCreated: () -> Unit = {},
     /** Called with the cleaned tag after the "Create tag" modal is saved. */
     onTagCreated: (String) -> Unit = {},
 ) {
@@ -85,7 +87,9 @@ fun BoxScope.CreateLayer(
             onDismiss = vm::closeQuickCreate,
             onSave = { text ->
                 when (kind) {
-                    QuickCreateKind.Notebook -> vm.createNotebook(text)
+                    QuickCreateKind.Notebook -> {
+                        if (vm.createNotebook(text)) onNotebookCreated()
+                    }
                     QuickCreateKind.Tag -> vm.createTag(text)?.let(onTagCreated)
                 }
             },
