@@ -190,6 +190,25 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         return normalizeTagInput(rawTag).ifEmpty { null }
     }
 
+    // ─── tag management (All Notes → Manage tags) ─
+
+    /** Renames a tag on every note. Returns the cleaned new name, or null if nothing changed. */
+    fun renameTag(old: String, rawNew: String): String? {
+        val new = normalizeTagInput(rawNew)
+        if (new.isEmpty() || new == old) return null
+        store.renameTag(old, new)
+        reload()
+        showToast("Tag renamed to \"$new\"", R.drawable.ic_fa_tag)
+        return new
+    }
+
+    /** Removes a tag from every note (the notes themselves stay). */
+    fun deleteTag(tag: String) {
+        val n = store.deleteTag(tag)
+        reload()
+        showToast("Tag \"$tag\" removed from $n ${noteWord(n)}", R.drawable.ic_fa_trash_can)
+    }
+
     // ─── pinned drag-reorder ─────────────────────
 
     /** Live swap while dragging; returns true if the order actually changed. */

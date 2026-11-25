@@ -11,8 +11,8 @@ import androidx.compose.runtime.mutableStateListOf
 sealed interface Route {
     data object Home : Route
 
-    /** `/tags` — [tag] is the optional `?tag=` filter. */
-    data class Tags(val tag: String? = null) : Route
+    /** All Notes page. [manageTags] opens the tag manager (edit / delete tags) straight away. */
+    data class AllNotes(val manageTags: Boolean = false) : Route
 
     /** `/notebooks` */
     data object Notebooks : Route

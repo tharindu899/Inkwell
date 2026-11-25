@@ -94,7 +94,7 @@ fun SettingsScreen(
     onNavTab: (NavTab) -> Unit,
     onOpenProfile: () -> Unit,
     /** "Manage tags" row — opens the Tags page on top of Settings (web: navigate('/tags')). */
-    onManageTags: () -> Unit = { onNavTab(NavTab.Tags) },
+    onManageTags: () -> Unit = { onNavTab(NavTab.AllNotes) },
     /** "Reset all data" finished — the app signs out and falls back to the default theme. */
     onResetDone: () -> Unit,
     vm: SettingsViewModel = viewModel(),

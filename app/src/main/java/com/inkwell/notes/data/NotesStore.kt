@@ -92,6 +92,36 @@ class NotesStore(context: Context) {
         saveNotes(all)
     }
 
+    // ─── Tags ─────────────────────────────────
+    /**
+     * Renames [old] to [new] on every note (merging if the note already has [new]).
+     * Returns how many notes changed. updatedAt is left alone so a bulk rename doesn't reshuffle lists.
+     */
+    fun renameTag(old: String, new: String): Int {
+        var changed = 0
+        saveNotes(getNotes().map { n ->
+            if (old !in n.tags) n
+            else {
+                changed++
+                n.copy(tags = n.tags.map { if (it == old) new else it }.distinct())
+            }
+        })
+        return changed
+    }
+
+    /** Removes [tag] from every note. Returns how many notes changed. */
+    fun deleteTag(tag: String): Int {
+        var changed = 0
+        saveNotes(getNotes().map { n ->
+            if (tag !in n.tags) n
+            else {
+                changed++
+                n.copy(tags = n.tags.filter { it != tag })
+            }
+        })
+        return changed
+    }
+
     // ─── Notebooks CRUD ───────────────────────
     fun getNotebooks(): List<Notebook> = readArray(AppPrefs.KEY_NOTEBOOKS) { Notebook.fromJson(it) }
 

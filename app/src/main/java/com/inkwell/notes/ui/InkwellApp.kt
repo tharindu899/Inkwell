@@ -20,6 +20,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.inkwell.notes.auth.AuthViewModel
 import com.inkwell.notes.data.AppPrefs
+import com.inkwell.notes.ui.screens.AllNotesScreen
 import com.inkwell.notes.ui.screens.HomeScreen
 import com.inkwell.notes.ui.components.NavTab
 import com.inkwell.notes.ui.screens.LoginScreen
@@ -28,7 +29,6 @@ import com.inkwell.notes.ui.screens.NotebooksScreen
 import com.inkwell.notes.ui.screens.ProfileScreen
 import com.inkwell.notes.ui.screens.SearchScreen
 import com.inkwell.notes.ui.screens.SettingsScreen
-import com.inkwell.notes.ui.screens.TagsScreen
 import com.inkwell.notes.ui.screens.UpdateHost
 import com.inkwell.notes.ui.theme.Ink
 import com.inkwell.notes.ui.theme.InkwellTheme
@@ -77,7 +77,7 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                 val onNavTab: (NavTab) -> Unit = { tab ->
                     when (tab) {
                         NavTab.Home -> nav.switchTab(Route.Home)
-                        NavTab.Tags -> nav.switchTab(Route.Tags())
+                        NavTab.AllNotes -> nav.switchTab(Route.AllNotes())
                         NavTab.Notebooks -> nav.switchTab(Route.Notebooks)
                     }
                 }
@@ -90,8 +90,8 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                         onSearch = { nav.push(Route.Search) },
                         onSettings = { nav.push(Route.Settings) },
                     )
-                    is Route.Tags -> TagsScreen(
-                        initialTag = route.tag,
+                    is Route.AllNotes -> AllNotesScreen(
+                        openManageTags = route.manageTags,
                         onBack = { nav.back() },
                         onNavTab = onNavTab,
                         onSearch = { nav.push(Route.Search) },
@@ -131,7 +131,7 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                         },
                         onBack = { nav.back() },
                         onNavTab = onNavTab,
-                        onManageTags = { nav.push(Route.Tags()) },
+                        onManageTags = { nav.push(Route.AllNotes(manageTags = true)) },
                         // Settings can be opened from Home or Profile: go back to Profile if it is
                         // already below us, otherwise swap Settings for Profile.
                         onOpenProfile = {

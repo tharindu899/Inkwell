@@ -22,7 +22,12 @@ import com.inkwell.notes.ui.theme.Ink
  * 90°, swaps + for ✕ and uses the ink colours (.fab.open).
  */
 @Composable
-fun Fab(onClick: () -> Unit, modifier: Modifier = Modifier, open: Boolean = false) {
+fun Fab(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    open: Boolean = false,
+    @androidx.annotation.DrawableRes icon: Int = R.drawable.ic_fa_plus,
+) {
     val c = Ink.colors
     val rotation by animateFloatAsState(if (open) 90f else 0f, tween(200), label = "fabRotation")
     Box(
@@ -35,7 +40,7 @@ fun Fab(onClick: () -> Unit, modifier: Modifier = Modifier, open: Boolean = fals
         contentAlignment = Alignment.Center,
     ) {
         FaIcon(
-            if (open) R.drawable.ic_fa_xmark else R.drawable.ic_fa_plus,
+            if (open) R.drawable.ic_fa_xmark else icon,
             tint = if (open) c.bg else onAccent(),
             size = 20.dp,
             modifier = Modifier.rotate(rotation),
