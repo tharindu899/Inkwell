@@ -1,6 +1,7 @@
 package com.inkwell.notes.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -88,13 +89,16 @@ fun EditorToolbar(
     onAlign: (Align) -> Unit,
     onIndent: (Int) -> Unit,
     onClear: () -> Unit,
+    scroll: ScrollState = rememberScrollState(),
 ) {
     val c = Ink.colors
     Column(Modifier.fillMaxWidth().background(c.bgCard)) {
+        // Docked at the bottom (above the keyboard): the divider goes on top.
+        Box(Modifier.fillMaxWidth().height(1.dp).background(c.border))
         Row(
             Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
+                .horizontalScroll(scroll)
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -128,7 +132,6 @@ fun EditorToolbar(
             Sep()
             ToolButton(Glyph.Clear, onClick = onClear)
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(c.border))
     }
 }
 

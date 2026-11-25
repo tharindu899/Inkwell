@@ -152,6 +152,9 @@ class RichTransformation(
         )
     }
 
+    /** Caret mapping (real text ⇄ text with list / indent prefixes), used to keep the caret on screen. */
+    val offsetMapping: OffsetMapping get() = mapping
+
     private val mapping = object : OffsetMapping {
         override fun originalToTransformed(offset: Int): Int {
             val o = offset.coerceIn(0, doc.text.length)
