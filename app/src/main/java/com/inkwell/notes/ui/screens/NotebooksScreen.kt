@@ -125,7 +125,7 @@ fun NotebooksScreen(
                 Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(bottom = 62.dp + navInset + 84.dp),
             ) {
-                item(key = "head") { NotebooksHeader(state.notebooks.size) }
+                item(key = "head") { NotebooksHeader(state.notebooks.size, onBack) }
                 item(key = "search") { SearchField("Search notebooks…", onSearch) }
                 item(key = "toolbar") {
                     NotebooksToolbar(state.view, vm::setNbView, state.sort, vm::setNbSort)
@@ -355,16 +355,21 @@ internal fun BoxScope.PlainFab(onClick: () -> Unit) {
 // ─── header / search / toolbar ──────────────────────────
 
 @Composable
-private fun NotebooksHeader(total: Int) {
+private fun NotebooksHeader(total: Int, onBack: () -> Unit) {
     val c = Ink.colors
     Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 4.dp),
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 20.dp, top = 10.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        InkText("Notebooks", size = 32.sp, weight = FontWeight.Black, color = c.text1, modifier = Modifier.weight(1f))
-        InkText("$total notebook${if (total != 1) "s" else ""}", size = 14.sp, color = c.text2)
+        Box(
+            Modifier.size(36.dp).clip(CircleShape).background(c.bgCard).tap(onBack),
+            contentAlignment = Alignment.Center,
+        ) {
+            FaIcon(R.drawable.ic_fa_arrow_left, tint = c.text1, size = 13.dp)
+        }
+        Spacer(Modifier.size(12.dp))
+        InkText("Notebooks", size = 24.sp, weight = FontWeight.Black, color = c.text1, modifier = Modifier.weight(1f))
+        InkText("$total notebook${if (total != 1) "s" else ""}", size = 13.sp, color = c.text2)
     }
 }
 
@@ -376,25 +381,25 @@ private fun SearchField(hint: String, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .height(52.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .height(42.dp)
             .clip(pill)
             .background(c.bgCard)
             .border(1.dp, c.borderHi, pill)
             .tap(onClick)
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FaIcon(R.drawable.ic_fa_magnifying_glass, tint = c.text2, size = 18.dp)
-        Spacer(Modifier.size(14.dp))
-        InkText(hint, size = 16.sp, color = c.text2)
+        FaIcon(R.drawable.ic_fa_magnifying_glass, tint = c.text2, size = 14.dp)
+        Spacer(Modifier.size(10.dp))
+        InkText(hint, size = 14.sp, color = c.text2)
     }
 }
 
 @Composable
 private fun NotebooksToolbar(view: NbView, onView: (NbView) -> Unit, sort: NbSort, onSort: (NbSort) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 12.dp),
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ViewToggle(view, onView)
@@ -407,17 +412,17 @@ private fun NotebooksToolbar(view: NbView, onView: (NbView) -> Unit, sort: NbSor
 @Composable
 private fun ViewToggle(view: NbView, onView: (NbView) -> Unit) {
     val c = Ink.colors
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(16.dp)
     Row(
-        Modifier.clip(shape).background(c.bgElevated.copy(alpha = 0.7f)).padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        Modifier.clip(shape).background(c.bgElevated.copy(alpha = 0.7f)).padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
     ) {
         NbView.entries.forEach { v ->
             val on = v == view
             Box(
                 Modifier
-                    .size(width = 50.dp, height = 40.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .size(width = 42.dp, height = 32.dp)
+                    .clip(RoundedCornerShape(13.dp))
                     .background(if (on) c.accent else Color.Transparent)
                     .tap { onView(v) },
                 contentAlignment = Alignment.Center,
@@ -430,7 +435,7 @@ private fun ViewToggle(view: NbView, onView: (NbView) -> Unit) {
 
 @Composable
 private fun ViewIcon(view: NbView, tint: Color) {
-    Canvas(Modifier.size(20.dp)) {
+    Canvas(Modifier.size(16.dp)) {
         val w = size.width
         val u = w / 20f
         when (view) {
@@ -463,20 +468,20 @@ private fun ViewIcon(view: NbView, tint: Color) {
 private fun SortDropdown(sort: NbSort, onSort: (NbSort) -> Unit) {
     val c = Ink.colors
     var open by remember { mutableStateOf(false) }
-    val gap = with(LocalDensity.current) { 46.dp.roundToPx() }
+    val gap = with(LocalDensity.current) { 40.dp.roundToPx() }
     Box {
         Row(
             Modifier
-                .height(44.dp)
+                .height(36.dp)
                 .clip(RoundedCornerShape(percent = 50))
                 .background(c.bgElevated.copy(alpha = 0.7f))
                 .tap { open = true }
-                .padding(horizontal = 18.dp),
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FaIcon(R.drawable.ic_fa_arrow_left, tint = c.text2, size = 14.dp, modifier = Modifier.rotate(-90f))
-            Spacer(Modifier.size(10.dp))
-            InkText(sort.label, size = 15.sp, color = c.text2, weight = FontWeight.Medium)
+            FaIcon(R.drawable.ic_fa_arrow_left, tint = c.text2, size = 11.dp, modifier = Modifier.rotate(-90f))
+            Spacer(Modifier.size(8.dp))
+            InkText(sort.label, size = 13.sp, color = c.text2, weight = FontWeight.Medium)
         }
         if (open) {
             Popup(alignment = Alignment.TopEnd, offset = IntOffset(0, gap), onDismissRequest = { open = false }) {
@@ -525,9 +530,9 @@ private fun DateHeader(label: String) {
         Modifier
             .fillMaxWidth()
             .background(lerp(c.bg, c.bgElevated, 0.6f))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        InkText(label, size = 16.sp, weight = FontWeight.ExtraBold, color = c.text1)
+        InkText(label, size = 13.sp, weight = FontWeight.ExtraBold, color = c.text1)
     }
 }
 
@@ -539,13 +544,13 @@ private fun DateHeader(label: String) {
 private fun NotebookRow(nb: Notebook, count: Int, compact: Boolean, onClick: () -> Unit, onMenu: () -> Unit) {
     val c = Ink.colors
     val base = notebookColor(nb.color, c.accent)
-    val shape = RoundedCornerShape(if (compact) 18.dp else 28.dp)
-    val tile = if (compact) 40.dp else 60.dp
+    val shape = RoundedCornerShape(if (compact) 14.dp else 20.dp)
+    val tile = if (compact) 34.dp else 46.dp
     val countText = "$count note${if (count != 1) "s" else ""}"
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = if (compact) 4.dp else 6.dp)
+            .padding(horizontal = 16.dp, vertical = if (compact) 3.dp else 5.dp)
             .shadow(if (compact) 2.dp else 8.dp, shape, ambientColor = Color.Black.copy(alpha = 0.07f), spotColor = Color.Black.copy(alpha = 0.07f))
             .clip(shape)
             .background(c.bgCard)
@@ -556,35 +561,35 @@ private fun NotebookRow(nb: Notebook, count: Int, compact: Boolean, onClick: () 
                 onClick = onClick,
                 onLongClick = onMenu,
             )
-            .heightIn(min = if (compact) 58.dp else 104.dp)
-            .padding(horizontal = if (compact) 12.dp else 18.dp, vertical = if (compact) 8.dp else 14.dp),
+            .heightIn(min = if (compact) 48.dp else 72.dp)
+            .padding(horizontal = if (compact) 10.dp else 14.dp, vertical = if (compact) 7.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
                 .size(tile)
-                .clip(RoundedCornerShape(if (compact) 13.dp else 20.dp))
+                .clip(RoundedCornerShape(if (compact) 11.dp else 15.dp))
                 .background(base.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center,
         ) {
-            FaIcon(notebookIconRes(nb.icon), tint = base, size = if (compact) 17.dp else 25.dp)
+            FaIcon(notebookIconRes(nb.icon), tint = base, size = if (compact) 14.dp else 19.dp)
         }
-        Spacer(Modifier.size(if (compact) 12.dp else 18.dp))
+        Spacer(Modifier.size(if (compact) 10.dp else 14.dp))
         if (compact) {
             InkText(
-                nb.name, size = 15.sp, weight = FontWeight.ExtraBold, color = c.text1,
+                nb.name, size = 14.sp, weight = FontWeight.ExtraBold, color = c.text1,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
-            InkText(countText, size = 13.sp, color = c.text2)
+            InkText(countText, size = 12.sp, color = c.text2)
             Spacer(Modifier.size(10.dp))
         } else {
             Column(Modifier.weight(1f)) {
-                InkText(nb.name, size = 19.sp, weight = FontWeight.ExtraBold, color = c.text1, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(4.dp))
-                InkText(countText, size = 15.sp, color = c.text2)
+                InkText(nb.name, size = 16.sp, weight = FontWeight.ExtraBold, color = c.text1, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(2.dp))
+                InkText(countText, size = 12.sp, color = c.text2)
             }
         }
-        FaIcon(R.drawable.ic_fa_chevron_right, tint = c.text2, size = if (compact) 12.dp else 16.dp)
+        FaIcon(R.drawable.ic_fa_chevron_right, tint = c.text2, size = if (compact) 10.dp else 13.dp)
     }
 }
 

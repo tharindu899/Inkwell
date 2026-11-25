@@ -42,7 +42,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.layout.ime
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -115,6 +120,26 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
 
     BackHandler(enabled = ctl.deleteConfirmOpen) { ctl.dismissDelete() }
 
+    // Delete: close the keyboard first, then show the confirm dialog once it has gone.
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime
+    val deleteWithKeyboardClosed: () -> Unit = {
+        val keyboardUp = imeInsets.getBottom(density) > 0
+        focusManager.clearFocus(force = true)
+        keyboard?.hide()
+        if (keyboardUp) {
+            scope.launch {
+                delay(180L)
+                ctl.requestDelete()
+            }
+        } else {
+            ctl.requestDelete()
+        }
+    }
+
     val titleFocus = remember { FocusRequester() }
     val bodyFocus = remember { FocusRequester() }
     // New note → cursor starts in the title (web: `if (!paramId) titleRef.current?.focus()`).
@@ -177,7 +202,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 onBack = { ctl.flush(); onBack() },
                 onReadMode = ctl::toggleReadMode,
                 onPin = ctl::togglePin,
-                onDelete = ctl::requestDelete,
+                onDelete = deleteWithKeyboardClosed,
                 onSave = { ctl.save(); onBack() },
             )
 
