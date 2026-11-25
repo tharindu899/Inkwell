@@ -35,6 +35,43 @@ class NotesStore(context: Context) {
 
     fun deleteNote(id: String) = saveNotes(getNotes().filter { it.id != id })
 
+    /**
+     * Home multi-select "Pin / Unpin" (web `handleBulkPin`).
+     * Pinning keeps an existing pinOrder or appends after the highest one; unpinning clears it.
+     */
+    fun setPinned(ids: Set<String>, pinned: Boolean) {
+        val all = getNotes()
+        var nextOrder = (all.filter { it.pinned }.mapNotNull { it.pinOrder }.maxOrNull() ?: -1) + 1
+        val now = Iso.now()
+        saveNotes(all.map { n ->
+            if (n.id !in ids) n
+            else n.copy(
+                pinned = pinned,
+                pinOrder = if (pinned) (n.pinOrder ?: nextOrder++) else null,
+                updatedAt = now,
+            )
+        })
+    }
+
+    /** Deletes several notes at once and returns what was removed (for Undo). */
+    fun deleteNotes(ids: Set<String>): List<Note> {
+        val all = getNotes()
+        val removed = all.filter { it.id in ids }
+        if (removed.isNotEmpty()) saveNotes(all.filter { it.id !in ids })
+        return removed
+    }
+
+    /** Undo of [deleteNotes] — same as calling `saveNote` for each (re-added at the end if missing). */
+    fun restoreNotes(notes: List<Note>) {
+        if (notes.isEmpty()) return
+        val all = getNotes().toMutableList()
+        notes.forEach { n ->
+            val i = all.indexOfFirst { it.id == n.id }
+            if (i >= 0) all[i] = n else all.add(n)
+        }
+        saveNotes(all)
+    }
+
     // ─── Notebooks CRUD ───────────────────────
     fun getNotebooks(): List<Notebook> = readArray(AppPrefs.KEY_NOTEBOOKS) { Notebook.fromJson(it) }
 

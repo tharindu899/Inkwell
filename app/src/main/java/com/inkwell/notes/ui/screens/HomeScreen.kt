@@ -1,5 +1,8 @@
 package com.inkwell.notes.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -30,11 +33,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -45,11 +53,14 @@ import com.inkwell.notes.R
 import com.inkwell.notes.auth.AuthUser
 import com.inkwell.notes.data.model.SortOrder
 import com.inkwell.notes.ui.components.BottomNav
+import com.inkwell.notes.ui.components.DeleteConfirmModal
+import com.inkwell.notes.ui.components.DeleteRed
 import com.inkwell.notes.ui.components.EmptyState
 import com.inkwell.notes.ui.components.Fab
 import com.inkwell.notes.ui.components.FaIcon
 import com.inkwell.notes.ui.components.HomeTopBar
 import com.inkwell.notes.ui.components.InkText
+import com.inkwell.notes.ui.components.InkToast
 import com.inkwell.notes.ui.components.NavTab
 import com.inkwell.notes.ui.components.NoteCard
 import com.inkwell.notes.ui.components.onAccent
@@ -62,9 +73,11 @@ import kotlinx.coroutines.delay
 /**
  * Port of `src/pages/Home.jsx`.
  *
- * Step 1 (this file): top bar, stats, sort chips, pinned / recent sections, empty state,
- * bottom nav, FAB.  Next steps: multi-select + bulk pin/delete, long-press, pinned drag,
- * Create-New menu, navigation to Editor / Search / Settings / Tags / Notebooks.
+ * Step 1: top bar, stats, sort chips, pinned / recent sections, empty state, bottom nav, FAB.
+ * Step 2 (this version): multi-select (Select chip or long-press), bulk Pin/Unpin, bulk Delete
+ * with confirm modal + Undo toast.
+ * Next steps: pinned drag-reorder, Create-New menu, navigation to Editor / Search / Settings /
+ * Tags / Notebooks.
  */
 @Composable
 fun HomeScreen(
@@ -74,6 +87,7 @@ fun HomeScreen(
 ) {
     val c = Ink.colors
     val state by vm.state.collectAsStateWithLifecycle()
+    val haptic = LocalHapticFeedback.current
 
     // useGreeting — re-evaluated every minute
     var greeting by remember { mutableStateOf(greetingForNow()) }
@@ -82,6 +96,11 @@ fun HomeScreen(
             delay(60_000)
             greeting = greetingForNow()
         }
+    }
+
+    // Back closes the delete modal first, then leaves select mode.
+    BackHandler(enabled = state.selectMode) {
+        if (state.deleteConfirmOpen) vm.dismissDelete() else vm.cancelSelectMode()
     }
 
     val notebooksById = remember(state.notebooks) { state.notebooks.associateBy { it.id } }
@@ -108,8 +127,34 @@ fun HomeScreen(
                 item(key = "stats") {
                     StatsRow(state.stats.notes, state.stats.notebooks, fmtNum(state.stats.words))
                 }
-                item(key = "sort") {
-                    SortRow(state.sortOrder, vm::setSortOrder)
+
+                if (state.selectMode) {
+                    item(key = "select-bar") {
+                        SelectToolbar(
+                            count = state.selected.size,
+                            anyPinned = state.anySelectedPinned,
+                            onCancel = vm::cancelSelectMode,
+                            onPin = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                vm.bulkPin()
+                            },
+                            onDelete = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                vm.requestDelete()
+                            },
+                        )
+                    }
+                } else {
+                    item(key = "sort") {
+                        SortRow(
+                            current = state.sortOrder,
+                            onSelect = vm::setSortOrder,
+                            onStartSelect = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                vm.startSelectMode()
+                            },
+                        )
+                    }
                 }
 
                 if (state.notes.isEmpty()) {
@@ -120,16 +165,40 @@ fun HomeScreen(
                             sub = "Tap the + button to write your first note.",
                         )
                     }
+                } else if (state.selectMode) {
+                    // select mode: one flat list (no Pinned / Recent headers), like the web page
+                    items(state.notes, key = { it.id }) { n ->
+                        NoteCard(
+                            n,
+                            n.notebookId?.let(notebooksById::get),
+                            onClick = { vm.toggleSelect(n.id) },
+                            selectMode = true,
+                            selected = n.id in state.selected,
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                vm.toggleSelect(n.id)
+                            },
+                        )
+                    }
                 } else {
                     val pinned = state.pinned
                     val recent = state.recent
+                    val enterSelect: (String) -> Unit = { id ->
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        vm.enterSelectMode(id)
+                    }
 
                     if (pinned.isNotEmpty()) {
                         item(key = "pinned-h") {
                             SectionHeader(R.drawable.ic_fa_thumbtack, "Pinned notes", pinned.size)
                         }
                         items(pinned, key = { it.id }) { n ->
-                            NoteCard(n, n.notebookId?.let(notebooksById::get), onClick = { /* TODO Editor */ })
+                            NoteCard(
+                                n,
+                                n.notebookId?.let(notebooksById::get),
+                                onClick = { /* TODO Editor */ },
+                                onLongClick = { enterSelect(n.id) },
+                            )
                         }
                     }
 
@@ -143,7 +212,12 @@ fun HomeScreen(
                     }
                     if (recent.isNotEmpty()) {
                         items(recent, key = { it.id }) { n ->
-                            NoteCard(n, n.notebookId?.let(notebooksById::get), onClick = { /* TODO Editor */ })
+                            NoteCard(
+                                n,
+                                n.notebookId?.let(notebooksById::get),
+                                onClick = { /* TODO Editor */ },
+                                onLongClick = { enterSelect(n.id) },
+                            )
                         }
                     } else {
                         item(key = "recent-empty") { EmptyMini("No recent notes. Unpin a note or create a new one.") }
@@ -158,13 +232,37 @@ fun HomeScreen(
             modifier = Modifier.align(Alignment.BottomCenter),
         )
 
-        Fab(
-            onClick = { /* TODO Create-New menu */ },
+        // {!selectMode && <Fab />}
+        if (!state.selectMode) {
+            Fab(
+                onClick = { /* TODO Create-New menu */ },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(end = 18.dp, bottom = 62.dp + 12.dp),
+            )
+        }
+
+        // .toast — sits 12dp above the bottom nav
+        InkToast(
+            toast = state.toast,
+            onAction = vm::onToastAction,
+            onDismiss = vm::dismissToast,
             modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(end = 18.dp, bottom = 62.dp + 12.dp),
+                .align(Alignment.BottomCenter)
+                .padding(start = 17.dp, end = 17.dp, bottom = 62.dp + navInset + 12.dp),
         )
+
+        if (state.deleteConfirmOpen) {
+            DeleteConfirmModal(
+                count = state.selected.size,
+                onCancel = vm::dismissDelete,
+                onConfirm = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    vm.confirmDelete()
+                },
+            )
+        }
     }
 }
 
@@ -206,19 +304,36 @@ private fun StatCard(num: String, label: String, modifier: Modifier = Modifier) 
     }
 }
 
-/** .sort-row / .sort-btn */
+/** .sort-row / .sort-btn (+ .select-now-btn) */
 @Composable
-private fun SortRow(current: SortOrder, onSelect: (SortOrder) -> Unit) {
+private fun SortRow(current: SortOrder, onSelect: (SortOrder) -> Unit, onStartSelect: () -> Unit) {
     val c = Ink.colors
+    val shape = RoundedCornerShape(10.dp)
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         InkText("SORT BY", size = 10.sp, weight = FontWeight.ExtraBold, color = c.text3, letterSpacing = 0.45.sp)
+
+        // Select — enters multi-select with nothing picked yet
+        Row(
+            Modifier
+                .height(28.dp)
+                .clip(shape)
+                .background(c.bgCard)
+                .border(1.5.dp, c.border, shape)
+                .tap(onStartSelect)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FaIcon(R.drawable.ic_fa_circle_check, tint = c.text2, size = 11.dp)
+            Spacer(Modifier.size(6.dp))
+            InkText("Select", size = 10.sp, weight = FontWeight.Bold, color = c.text2)
+        }
+
         SortOrder.entries.forEach { s ->
             val on = s == current
-            val shape = RoundedCornerShape(10.dp)
             Box(
                 Modifier
                     .height(28.dp)
@@ -237,6 +352,91 @@ private fun SortRow(current: SortOrder, onSelect: (SortOrder) -> Unit) {
                 )
             }
         }
+    }
+}
+
+/** Multi-select toolbar: Cancel · "N selected" · Pin/Unpin · Delete. */
+@Composable
+private fun SelectToolbar(
+    count: Int,
+    anyPinned: Boolean,
+    onCancel: () -> Unit,
+    onPin: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val c = Ink.colors
+    val enabled = count > 0
+    // the thumbtack turns 45° when the button says "Unpin"
+    val pinRotation by animateFloatAsState(if (anyPinned) 45f else 0f, tween(200), label = "pinRotation")
+
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ToolbarButton(
+            label = "Cancel",
+            icon = R.drawable.ic_fa_xmark,
+            textColor = c.text1,
+            background = null,
+            border = c.border,
+            weight = FontWeight.SemiBold,
+            enabled = true,
+            onClick = onCancel,
+        )
+        InkText(
+            if (count == 0) "Tap notes to select" else "$count selected",
+            size = 13.sp,
+            weight = FontWeight.SemiBold,
+            color = c.accent,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        ToolbarButton(
+            label = if (anyPinned) "Unpin" else "Pin",
+            icon = R.drawable.ic_fa_thumbtack,
+            iconRotation = pinRotation,
+            textColor = onAccent(),
+            background = c.accent,
+            border = null,
+            weight = FontWeight.Bold,
+            enabled = enabled,
+            onClick = onPin,
+        )
+        ToolbarButton(
+            label = "Delete",
+            icon = R.drawable.ic_fa_trash_can,
+            textColor = Color.White,
+            background = DeleteRed,
+            border = null,
+            weight = FontWeight.Bold,
+            enabled = enabled,
+            onClick = onDelete,
+        )
+    }
+}
+
+@Composable
+private fun ToolbarButton(
+    label: String,
+    icon: Int,
+    textColor: Color,
+    background: Color?,
+    border: Color?,
+    weight: FontWeight,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    iconRotation: Float = 0f,
+) {
+    val shape = RoundedCornerShape(Ink.radius)
+    var m: Modifier = Modifier.alpha(if (enabled) 1f else 0.4f).clip(shape)
+    if (background != null) m = m.background(background)
+    if (border != null) m = m.border(1.dp, border, shape)
+    if (enabled) m = m.tap(onClick)
+    Row(m.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        FaIcon(icon, tint = textColor, size = 13.dp, modifier = Modifier.rotate(iconRotation))
+        Spacer(Modifier.size(5.dp))
+        InkText(label, size = 13.sp, weight = weight, color = textColor)
     }
 }
 

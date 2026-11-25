@@ -12,7 +12,8 @@ reference until every screen is ported.
 | Theme (3 modes)   | `:root` / `data-theme` CSS    | `ui/theme/Theme.kt`                 | ✅    |
 | Google auth       | `auth/AuthContext.jsx`        | `auth/AuthViewModel.kt`             | ✅    |
 | Home — step 1     | `pages/Home.jsx`              | `ui/screens/HomeScreen.kt`          | ✅ UI + data API |
-| Home — step 2+    | multi-select, long-press, pin drag, Create menu | — | ⏳ next |
+| Home — step 2     | multi-select, long-press, bulk pin/delete, confirm modal, Undo toast | `HomeScreen.kt`, `NoteCard.kt`, `Toast.kt`, `DeleteConfirmModal.kt` | ✅ |
+| Home — step 3+    | pinned drag-reorder, Create-New menu (FAB), navigation | — | ⏳ next |
 | Editor, Notebooks, Search, Tags, Profile, Settings, Drive sync, update checker | | | ⏳ |
 
 After sign-in the app shows Home. **Temporary:** long-press the avatar to sign out
@@ -50,6 +51,6 @@ app/src/main/java/com/inkwell/notes/
 └── ui/
     ├── InkwellApp.kt                (root / routing)
     ├── theme/Theme.kt               (colours, fonts, radii)
-    ├── components/InkText.kt
+    ├── components/                  (InkText, NoteCard, Toast, DeleteConfirmModal …)
     └── screens/                     (one file per page)
 ```
