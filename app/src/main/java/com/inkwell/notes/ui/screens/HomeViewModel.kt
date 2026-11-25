@@ -131,6 +131,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    // ─── pinned drag-reorder ─────────────────────
+
+    /** Live swap while dragging; returns true if the order actually changed. */
+    fun movePinned(activeId: String, overId: String): Boolean {
+        if (!store.movePinned(activeId, overId)) return false
+        reload()
+        return true
+    }
+
     // ─── toast ───────────────────────────────────
 
     /** The toast's action button (only "Undo" exists for now). */

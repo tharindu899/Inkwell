@@ -53,6 +53,24 @@ class NotesStore(context: Context) {
         })
     }
 
+    /**
+     * Pinned drag-reorder (web `movePinnedNote`): moves [activeId] to where [overId] is
+     * and re-numbers every pinned note's pinOrder 0..n-1. updatedAt is left alone.
+     * Returns false when nothing changed.
+     */
+    fun movePinned(activeId: String, overId: String): Boolean {
+        if (activeId == overId) return false
+        val all = getNotes()
+        val pinned = sortNotes(all.filter { it.pinned }, getSortOrder()).toMutableList()
+        val from = pinned.indexOfFirst { it.id == activeId }
+        val to = pinned.indexOfFirst { it.id == overId }
+        if (from < 0 || to < 0 || from == to) return false
+        pinned.add(to, pinned.removeAt(from))
+        val orderById = pinned.mapIndexed { i, n -> n.id to i }.toMap()
+        saveNotes(all.map { n -> orderById[n.id]?.let { n.copy(pinOrder = it) } ?: n })
+        return true
+    }
+
     /** Deletes several notes at once and returns what was removed (for Undo). */
     fun deleteNotes(ids: Set<String>): List<Note> {
         val all = getNotes()

@@ -8,6 +8,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -27,7 +28,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
@@ -47,7 +50,8 @@ import com.inkwell.notes.util.notePreview
  * Multi-select: long-press calls [onLongClick] (the screen decides whether that enters
  * select mode or toggles this card); while [selectMode] is on, a round check chip is shown
  * and the card gets the soft accent tint when [selected].
- * Still to come: pinned drag handle.
+ * Pinned cards ([draggablePinned]) show a grip handle; dragging it reports to [onDragStart] /
+ * [onDrag] / [onDragEnd] and the screen reorders (web `startPinnedDrag`).
  */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -59,6 +63,11 @@ fun NoteCard(
     selectMode: Boolean = false,
     selected: Boolean = false,
     onLongClick: () -> Unit = {},
+    draggablePinned: Boolean = false,
+    dragging: Boolean = false,
+    onDragStart: (Offset) -> Unit = {},
+    onDrag: (Float) -> Unit = {},
+    onDragEnd: () -> Unit = {},
 ) {
     val c = Ink.colors
     val shape = RoundedCornerShape(15.dp)
@@ -67,11 +76,11 @@ fun NoteCard(
     // press feedback: transform: scale(.985) while the finger is down
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.985f else 1f, tween(150), label = "cardScale")
+    val scale by animateFloatAsState(if (dragging) 1.02f else if (pressed) 0.985f else 1f, tween(150), label = "cardScale")
 
     // selected: color-mix(accent 7% into bg-card) fill, accent 42% into border
     val fill = if (selected) lerp(c.bgCard, c.accent, 0.07f) else c.bgCard
-    val stroke = if (selected) lerp(c.border, c.accent, 0.42f) else c.border
+    val stroke = if (selected || dragging) lerp(c.border, c.accent, 0.42f) else c.border
 
     Box(
         modifier
@@ -108,8 +117,34 @@ fun NoteCard(
             }
         }
 
-        // .pin-icon (hidden in select mode)
-        if (note.pinned && !selectMode) {
+        // .pin-drag-handle — 28dp circle, top 9 / right 10
+        if (draggablePinned && !selectMode) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 1.dp, y = (-1).dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(if (dragging) c.accent else lerp(c.bgCard, c.accent, 0.14f))
+                    .pointerInput(note.id) {
+                        detectDragGestures(
+                            onDragStart = { onDragStart(it) },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                onDrag(amount.y)
+                            },
+                            onDragEnd = { onDragEnd() },
+                            onDragCancel = { onDragEnd() },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                FaIcon(R.drawable.ic_fa_grip_lines, tint = if (dragging) onAccent() else c.accent, size = 12.dp)
+            }
+        }
+
+        // .pin-icon (hidden in select mode and when the drag handle is shown)
+        if (note.pinned && !selectMode && !draggablePinned) {
             FaIcon(
                 R.drawable.ic_fa_thumbtack,
                 tint = c.accent,
@@ -125,7 +160,7 @@ fun NoteCard(
                 size = 13.5.sp,
                 weight = FontWeight.ExtraBold,
                 lineHeight = 17.5.sp,
-                modifier = Modifier.padding(end = if (selectMode) 30.dp else 18.dp),
+                modifier = Modifier.padding(end = if (selectMode) 30.dp else if (draggablePinned) 38.dp else 18.dp),
             )
             Spacer(Modifier.height(3.dp))
             // .n-preview — 2-line clamp

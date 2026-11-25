@@ -23,12 +23,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -74,9 +78,10 @@ import kotlinx.coroutines.delay
  * Port of `src/pages/Home.jsx`.
  *
  * Step 1: top bar, stats, sort chips, pinned / recent sections, empty state, bottom nav, FAB.
- * Step 2 (this version): multi-select (Select chip or long-press), bulk Pin/Unpin, bulk Delete
+ * Step 2: multi-select (Select chip or long-press), bulk Pin/Unpin, bulk Delete
  * with confirm modal + Undo toast.
- * Next steps: pinned drag-reorder, Create-New menu, navigation to Editor / Search / Settings /
+ * Step 3 (this version): pinned drag-reorder via the grip handle.
+ * Next steps: Create-New menu, navigation to Editor / Search / Settings /
  * Tags / Notebooks.
  */
 @Composable
@@ -103,6 +108,51 @@ fun HomeScreen(
         if (state.deleteConfirmOpen) vm.dismissDelete() else vm.cancelSelectMode()
     }
 
+    // ── pinned drag-reorder (web `startPinnedDrag`) ──
+    // The pointer is tracked in list coordinates; whichever other pinned card is under it
+    // swaps places with the dragged one, live.
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current.density
+    val pinnedIds by rememberUpdatedState(state.pinned.map { it.id }.toSet())
+    var dragId by remember { mutableStateOf<String?>(null) }
+    var pointerY by remember { mutableFloatStateOf(0f) }
+    // After a swap the list needs one layout pass before the next hit-test is valid.
+    var swapFromOffset by remember { mutableStateOf<Int?>(null) }
+
+    fun itemInfo(id: String) = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == id }
+
+    fun onPinDragStart(id: String, touch: androidx.compose.ui.geometry.Offset) {
+        val info = itemInfo(id) ?: return
+        dragId = id
+        swapFromOffset = null
+        pointerY = info.offset + 9f * density + touch.y // handle sits 9dp below the card top
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+    }
+
+    fun onPinDrag(dy: Float) {
+        val active = dragId ?: return
+        pointerY += dy
+        val me = itemInfo(active) ?: return
+        val waiting = swapFromOffset
+        if (waiting != null) {
+            if (me.offset == waiting) return // layout hasn't caught up with the last swap yet
+            swapFromOffset = null
+        }
+        val over = listState.layoutInfo.visibleItemsInfo.firstOrNull {
+            val k = it.key
+            k is String && k != active && k in pinnedIds && pointerY >= it.offset && pointerY < it.offset + it.size
+        }?.key as? String ?: return
+        if (vm.movePinned(active, over)) {
+            swapFromOffset = me.offset
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+
+    fun onPinDragEnd() {
+        dragId = null
+        swapFromOffset = null
+    }
+
     val notebooksById = remember(state.notebooks) { state.notebooks.associateBy { it.id } }
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
@@ -122,6 +172,7 @@ fun HomeScreen(
             // .page-content.home-page  (padding: 10 16 62+inset+14)
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
+                state = listState,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 62.dp + navInset + 14.dp),
             ) {
                 item(key = "stats") {
@@ -198,6 +249,11 @@ fun HomeScreen(
                                 n.notebookId?.let(notebooksById::get),
                                 onClick = { /* TODO Editor */ },
                                 onLongClick = { enterSelect(n.id) },
+                                draggablePinned = true,
+                                dragging = dragId == n.id,
+                                onDragStart = { onPinDragStart(n.id, it) },
+                                onDrag = ::onPinDrag,
+                                onDragEnd = ::onPinDragEnd,
                             )
                         }
                     }

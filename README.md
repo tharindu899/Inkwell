@@ -13,7 +13,8 @@ reference until every screen is ported.
 | Google auth       | `auth/AuthContext.jsx`        | `auth/AuthViewModel.kt`             | ✅    |
 | Home — step 1     | `pages/Home.jsx`              | `ui/screens/HomeScreen.kt`          | ✅ UI + data API |
 | Home — step 2     | multi-select, long-press, bulk pin/delete, confirm modal, Undo toast | `HomeScreen.kt`, `NoteCard.kt`, `Toast.kt`, `DeleteConfirmModal.kt` | ✅ |
-| Home — step 3+    | pinned drag-reorder, Create-New menu (FAB), navigation | — | ⏳ next |
+| Home — step 3     | pinned drag-reorder (grip handle) | `HomeScreen.kt`, `NoteCard.kt`, `NotesStore.movePinned` | ✅ |
+| Home — step 4+    | Create-New menu (FAB), navigation | — | ⏳ next |
 | Editor, Notebooks, Search, Tags, Profile, Settings, Drive sync, update checker | | | ⏳ |
 
 After sign-in the app shows Home. **Temporary:** long-press the avatar to sign out
