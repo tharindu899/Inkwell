@@ -102,3 +102,7 @@ fun notePreview(content: String, markdown: String): String {
     }
     return stripHtml(content).ifEmpty { "No content yet." }
 }
+
+/** Tag text from the Create-tag box: `raw.replace(/^#/,'').replace(/,/g,'').toLowerCase().slice(0,24)`. */
+fun normalizeTagInput(raw: String): String =
+    raw.trim().removePrefix("#").replace(",", "").lowercase().take(24)

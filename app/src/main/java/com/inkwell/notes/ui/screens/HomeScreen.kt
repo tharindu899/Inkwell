@@ -57,6 +57,7 @@ import com.inkwell.notes.R
 import com.inkwell.notes.auth.AuthUser
 import com.inkwell.notes.data.model.SortOrder
 import com.inkwell.notes.ui.components.BottomNav
+import com.inkwell.notes.ui.components.CreateMenu
 import com.inkwell.notes.ui.components.DeleteConfirmModal
 import com.inkwell.notes.ui.components.DeleteRed
 import com.inkwell.notes.ui.components.EmptyState
@@ -67,6 +68,8 @@ import com.inkwell.notes.ui.components.InkText
 import com.inkwell.notes.ui.components.InkToast
 import com.inkwell.notes.ui.components.NavTab
 import com.inkwell.notes.ui.components.NoteCard
+import com.inkwell.notes.ui.components.QuickCreateKind
+import com.inkwell.notes.ui.components.QuickCreateModal
 import com.inkwell.notes.ui.components.onAccent
 import com.inkwell.notes.ui.components.tap
 import com.inkwell.notes.ui.theme.Ink
@@ -80,8 +83,9 @@ import kotlinx.coroutines.delay
  * Step 1: top bar, stats, sort chips, pinned / recent sections, empty state, bottom nav, FAB.
  * Step 2: multi-select (Select chip or long-press), bulk Pin/Unpin, bulk Delete
  * with confirm modal + Undo toast.
- * Step 3 (this version): pinned drag-reorder via the grip handle.
- * Next steps: Create-New menu, navigation to Editor / Search / Settings /
+ * Step 3: pinned drag-reorder via the grip handle.
+ * Step 4 (this version): Create-New menu on the FAB + notebook / tag quick-create modal.
+ * Next steps: navigation to Editor / Search / Settings /
  * Tags / Notebooks.
  */
 @Composable
@@ -104,8 +108,13 @@ fun HomeScreen(
     }
 
     // Back closes the delete modal first, then leaves select mode.
-    BackHandler(enabled = state.selectMode) {
-        if (state.deleteConfirmOpen) vm.dismissDelete() else vm.cancelSelectMode()
+    BackHandler(enabled = state.selectMode || state.createMenuOpen || state.quickCreate != null) {
+        when {
+            state.quickCreate != null -> vm.closeQuickCreate()
+            state.createMenuOpen -> vm.closeCreateMenu()
+            state.deleteConfirmOpen -> vm.dismissDelete()
+            else -> vm.cancelSelectMode()
+        }
     }
 
     // ── pinned drag-reorder (web `startPinnedDrag`) ──
@@ -288,10 +297,24 @@ fun HomeScreen(
             modifier = Modifier.align(Alignment.BottomCenter),
         )
 
+        // Create-New menu: backdrop + sheet sit under the FAB
+        CreateMenu(
+            open = state.createMenuOpen,
+            onClose = vm::closeCreateMenu,
+            onNewNote = { vm.closeCreateMenu() /* TODO Editor (?new=1) */ },
+            onNewNotebook = { vm.openQuickCreate(QuickCreateKind.Notebook) },
+            onNewTag = { vm.openQuickCreate(QuickCreateKind.Tag) },
+            onSearch = { vm.closeCreateMenu() /* TODO Search screen */ },
+            onImage = { vm.closeCreateMenu() /* TODO Editor (?new=1&type=image) */ },
+            onVoice = { vm.closeCreateMenu() /* TODO Editor (?new=1&type=voice) */ },
+            onChecklist = { vm.closeCreateMenu() /* TODO Editor (?new=1&type=checklist) */ },
+        )
+
         // {!selectMode && <Fab />}
         if (!state.selectMode) {
             Fab(
-                onClick = { /* TODO Create-New menu */ },
+                onClick = vm::toggleCreateMenu,
+                open = state.createMenuOpen,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .windowInsetsPadding(WindowInsets.navigationBars)
@@ -308,6 +331,22 @@ fun HomeScreen(
                 .align(Alignment.BottomCenter)
                 .padding(start = 17.dp, end = 17.dp, bottom = 62.dp + navInset + 12.dp),
         )
+
+        state.quickCreate?.let { kind ->
+            QuickCreateModal(
+                kind = kind,
+                onDismiss = vm::closeQuickCreate,
+                onSave = { text ->
+                    when (kind) {
+                        QuickCreateKind.Notebook -> vm.createNotebook(text)
+                        QuickCreateKind.Tag -> {
+                            val tag = vm.createTag(text)
+                            // TODO Editor: open a new note with this tag (?new=1&tag=$tag)
+                        }
+                    }
+                },
+            )
+        }
 
         if (state.deleteConfirmOpen) {
             DeleteConfirmModal(

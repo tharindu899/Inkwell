@@ -8,7 +8,11 @@ import com.inkwell.notes.data.model.Note
 import com.inkwell.notes.data.model.Notebook
 import com.inkwell.notes.data.model.SortOrder
 import com.inkwell.notes.data.model.Stats
+import com.inkwell.notes.ui.components.QuickCreateKind
 import com.inkwell.notes.ui.components.ToastState
+import com.inkwell.notes.util.Iso
+import com.inkwell.notes.util.genId
+import com.inkwell.notes.util.normalizeTagInput
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,6 +30,9 @@ data class HomeState(
     val deleteConfirmOpen: Boolean = false,
     /** Current toast (Toast.jsx). */
     val toast: ToastState? = null,
+    // ── Create-New menu (Fab.jsx: open / quickModal) ──
+    val createMenuOpen: Boolean = false,
+    val quickCreate: QuickCreateKind? = null,
 ) {
     val pinned: List<Note> get() = notes.filter { it.pinned }
     val recent: List<Note> get() = notes.filter { !it.pinned }
@@ -131,6 +138,55 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    // ─── Create-New menu (Fab.jsx) ───────────────
+
+    fun toggleCreateMenu() {
+        _state.update { it.copy(createMenuOpen = !it.createMenuOpen) }
+    }
+
+    fun closeCreateMenu() {
+        _state.update { it.copy(createMenuOpen = false) }
+    }
+
+    /** "Create notebook" / "Create tag" rows: close the menu, open the small input modal. */
+    fun openQuickCreate(kind: QuickCreateKind) {
+        _state.update { it.copy(createMenuOpen = false, quickCreate = kind) }
+    }
+
+    fun closeQuickCreate() {
+        _state.update { it.copy(quickCreate = null) }
+    }
+
+    /** Notebook branch of `submitQuickModal` (blank → just closes). */
+    fun createNotebook(rawName: String) {
+        val name = rawName.trim()
+        closeQuickCreate()
+        if (name.isEmpty()) return
+        val now = Iso.now()
+        store.saveNotebook(
+            Notebook(
+                id = genId(),
+                name = name.take(32),
+                color = NOTEBOOK_COLORS.random(),
+                icon = "fa-book-open",
+                createdAt = now,
+                updatedAt = now,
+            ),
+        )
+        reload()
+        // Web navigates to /notebooks here; until that screen exists, confirm with a toast.
+        showToast("Notebook \"${name.take(32)}\" created", R.drawable.ic_fa_book_open)
+    }
+
+    /**
+     * Tag branch of `submitQuickModal`: closes the modal and returns the cleaned tag
+     * (null when blank). The caller opens the Editor with it once that screen exists.
+     */
+    fun createTag(rawTag: String): String? {
+        closeQuickCreate()
+        return normalizeTagInput(rawTag).ifEmpty { null }
+    }
+
     // ─── pinned drag-reorder ─────────────────────
 
     /** Live swap while dragging; returns true if the order actually changed. */
@@ -160,6 +216,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun showToast(message: String, icon: Int, actionLabel: String? = null) {
         _state.update { it.copy(toast = ToastState(System.nanoTime(), message, icon, actionLabel)) }
+    }
+
+    private companion object {
+        val NOTEBOOK_COLORS = listOf("#E07B39", "#5B6AF0", "#2E9E6B", "#7C4FD4", "#D64040", "#E8A820")
     }
 
     private fun noteWord(n: Int) = if (n == 1) "note" else "notes"
