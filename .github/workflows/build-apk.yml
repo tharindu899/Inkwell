@@ -29,11 +29,14 @@ jobs:
             value="${!key}"
             if [ -z "$value" ]; then
               echo "❌ Missing GitHub Secret: $key"
+              echo "- ❌ Missing secret: \`$key\`" >> $GITHUB_STEP_SUMMARY
               missing=1
             fi
           done
           if [ "$missing" -eq 1 ]; then
             echo "Add missing secrets in: Repository Settings → Secrets and variables → Actions"
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Secrets are **per repository** — a new repo needs its own copy of all 5." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
           echo "✅ Required secrets are present"
@@ -172,6 +175,10 @@ jobs:
           GRADLE_LOG=""
           if [ -f /tmp/gradle-build.log ]; then
             GRADLE_LOG=$(tail -100 /tmp/gradle-build.log)
+          else
+            echo "## ⚠️ Gradle never started" >> $GITHUB_STEP_SUMMARY
+            echo "A step *before* the Gradle build failed. Open this run, find the step marked with a red ✗ and copy its last lines." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
           fi
           cat >> $GITHUB_STEP_SUMMARY << SUMMARY
           ## ❌ Build Failed
