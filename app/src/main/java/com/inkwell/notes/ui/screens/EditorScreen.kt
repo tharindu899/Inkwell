@@ -29,11 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,13 +37,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,7 +49,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.inkwell.notes.R
 import com.inkwell.notes.data.AppPrefs
-import com.inkwell.notes.editor.RichStyle
 import com.inkwell.notes.editor.RichTransformation
 import com.inkwell.notes.ui.Route
 import com.inkwell.notes.ui.components.DeleteConfirmModal
@@ -74,13 +65,13 @@ import kotlinx.coroutines.delay
 /**
  * Port of `pages/Editor.jsx` — built part by part.
  *
- * Part 1: shell + load/save.
+ * Part 1 (this file): shell + load/save.
  *   top bar (back · title · reading mode · pin · delete · Save), title field, body field,
  *   tags / notebook rows (display only), word / char count + saved indicator,
  *   2 s auto-save, flush on pause / leave, delete confirm.
- * Part 2: rich body (RichDoc) + formatting toolbar (marks, headings, lists, quote, align, indent, undo/redo).
- * Coming next: checklists + markdown shortcuts, tags & notebook pickers, code blocks / tables /
- * checklists, images + drawing, markdown source mode, export.
+ * Part 2: one rich text field ([RichTransformation] draws the document model) + [FormatToolbar].
+ * Coming next: checklists / markdown shortcuts, tags & notebook pickers, code blocks / tables,
+ * images + drawing, markdown source mode, export.
  */
 @Composable
 fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
@@ -124,49 +115,24 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     val fontSp = remember { AppPrefs.getFontSize(context).sp }
     val serifBody = remember { AppPrefs.getPref(context, "serifBody", false) }
 
-    val richStyle = remember(c, fontSp, serifBody) {
-        RichStyle(
-            fontSizeSp = fontSp.toFloat(),
-            lineHeightFactor = 1.72f,
+    // Draws ctl.doc (spans, headings, lists, quote, align, indent) inside the single body field.
+    val richTransformation = remember(
+        ctl.doc, fontSp, serifBody, c.text1, c.text2, c.text3, c.accent,
+    ) {
+        RichTransformation(
+            doc = ctl.doc,
+            baseSp = fontSp.toFloat(),
+            bodyFamily = if (serifBody) Ink.serif else Ink.sans,
+            headingFamily = Ink.serif,
             textColor = c.text1,
             quoteColor = c.text2,
+            mutedColor = c.text3,
             accent = c.accent,
-            highlightBg = Color(0xFFFFE49A).copy(alpha = 0.45f),
-            serif = Ink.serif,
         )
     }
 
     // Keep the bottom panel above the keyboard / navigation bar.
     val bottomInsets = WindowInsets.navigationBars.union(WindowInsets.ime)
-    val density = LocalDensity.current
-    val imeVisible = WindowInsets.ime.getBottom(density) > 0
-
-    val toolbarScroll = rememberScrollState()
-    val bodyScroll = rememberScrollState()
-    var viewportH by remember { mutableIntStateOf(0) }
-    var layoutRes by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val transformation = if (ctl.bodyEditable) {
-        remember(ctl.doc, richStyle) { RichTransformation(ctl.doc, richStyle) }
-    } else null
-
-    // Keep the caret (plus a margin, so sub/superscript lines are never cut) inside the visible body.
-    LaunchedEffect(ctl.body.selection, ctl.body.text, layoutRes, viewportH) {
-        val lay = layoutRes ?: return@LaunchedEffect
-        if (viewportH == 0 || !ctl.bodyEditable) return@LaunchedEffect
-        val len = lay.layoutInput.text.length
-        val orig = ctl.body.selection.end.coerceIn(0, ctl.body.text.length)
-        val t = (transformation?.offsetMapping?.originalToTransformed(orig) ?: orig).coerceIn(0, len)
-        val r = lay.getCursorRect(t)
-        val pad = with(density) { 8.dp.toPx() }
-        val margin = with(density) { 32.dp.toPx() }
-        val top = pad + r.top
-        val bottom = pad + r.bottom
-        val cur = bodyScroll.value
-        when {
-            bottom + margin > cur + viewportH -> bodyScroll.animateScrollTo((bottom + margin - viewportH).toInt().coerceAtLeast(0))
-            top - margin < cur -> bodyScroll.animateScrollTo((top - margin).toInt().coerceAtLeast(0))
-        }
-    }
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(bottomInsets)) {
@@ -223,8 +189,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .onSizeChanged { viewportH = it.height }
-                    .verticalScroll(bodyScroll)
+                    .verticalScroll(rememberScrollState())
                     .tap { if (ctl.bodyEditable && !ctl.readMode) runCatching { bodyFocus.requestFocus() } },
             ) {
                 if (!ctl.bodyEditable) RichNoteBanner()
@@ -241,15 +206,14 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     textStyle = TextStyle(
                         color = c.text1,
                         fontSize = fontSp.sp,
-                        lineHeight = (fontSp * 1.72f).sp, // .editor-body line-height 1.72
+                        // line-height 1.72 + per-block sizes live in RichTransformation's paragraph styles
                         fontFamily = if (serifBody) Ink.serif else Ink.sans,
                     ),
+                    visualTransformation = richTransformation,
                     cursorBrush = SolidColor(c.accent),
-                    visualTransformation = transformation ?: VisualTransformation.None,
-                    onTextLayout = { layoutRes = it },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     decorationBox = { inner ->
-                        Box(Modifier.fillMaxWidth()) {
+                        Box {
                             if (ctl.body.text.isEmpty() && ctl.bodyEditable) {
                                 InkText(
                                     "Start writing…",
@@ -265,28 +229,13 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 )
             }
 
-            // ── bottom panel: tags, notebook, counts ──
-            // While the keyboard is up the writing area is small, so tags / notebook step aside.
-            if (!imeVisible) {
-                TagsRow(tags = ctl.note.tags)
-                NotebookRow(name = ctl.notebook?.name, colorHex = ctl.notebook?.color)
-            }
-            EditorFooter(words = ctl.wordCount, chars = ctl.charCount, saved = ctl.saved)
+            // ── formatting toolbar (hidden in Reading mode and for notes the editor can't write back) ──
+            if (ctl.canFormat) FormatToolbar(ctl)
 
-            // ── formatting toolbar: docked at the bottom, right above the keyboard ──
-            if (ctl.bodyEditable && !ctl.readMode) {
-                EditorToolbar(
-                    state = ctl.toolbarState,
-                    onUndo = ctl::undo,
-                    onRedo = ctl::redo,
-                    onMark = ctl::toggleMark,
-                    onBlock = ctl::setBlock,
-                    onAlign = ctl::setAlign,
-                    onIndent = ctl::changeIndent,
-                    onClear = ctl::clearFormat,
-                    scroll = toolbarScroll,
-                )
-            }
+            // ── bottom panel: tags, notebook, counts ──
+            TagsRow(tags = ctl.note.tags)
+            NotebookRow(name = ctl.notebook?.name, colorHex = ctl.notebook?.color)
+            EditorFooter(words = ctl.wordCount, chars = ctl.charCount, saved = ctl.saved)
         }
 
         InkToast(
@@ -397,7 +346,7 @@ private fun TopIconButton(
 // Body helpers
 // ─────────────────────────────────────────────
 
-/** Shown above the body of notes that use rich formatting the Part 1 editor can't write back yet. */
+/** Shown above the body of notes that use content the editor can't write back yet. */
 @Composable
 private fun RichNoteBanner() {
     val c = Ink.colors
@@ -414,8 +363,8 @@ private fun RichNoteBanner() {
     ) {
         FaIcon(R.drawable.ic_fa_circle_info, tint = c.accent, size = 14.dp)
         InkText(
-            "This note has tables, code, links, images or a checklist. Those blocks arrive in the next " +
-                "editor parts — until then the body stays read-only and untouched (title, pin and delete work).",
+            "This note has content the editor can't write back yet (tables, images, code, links or " +
+                "checklists). Title, pin and delete work, and the body stays untouched.",
             size = 12.sp,
             color = c.text2,
             lineHeight = 17.sp,
