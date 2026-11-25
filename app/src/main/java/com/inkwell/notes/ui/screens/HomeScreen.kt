@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -57,19 +56,14 @@ import com.inkwell.notes.R
 import com.inkwell.notes.auth.AuthUser
 import com.inkwell.notes.data.model.SortOrder
 import com.inkwell.notes.ui.components.BottomNav
-import com.inkwell.notes.ui.components.CreateMenu
 import com.inkwell.notes.ui.components.DeleteConfirmModal
 import com.inkwell.notes.ui.components.DeleteRed
 import com.inkwell.notes.ui.components.EmptyState
-import com.inkwell.notes.ui.components.Fab
 import com.inkwell.notes.ui.components.FaIcon
 import com.inkwell.notes.ui.components.HomeTopBar
 import com.inkwell.notes.ui.components.InkText
-import com.inkwell.notes.ui.components.InkToast
 import com.inkwell.notes.ui.components.NavTab
 import com.inkwell.notes.ui.components.NoteCard
-import com.inkwell.notes.ui.components.QuickCreateKind
-import com.inkwell.notes.ui.components.QuickCreateModal
 import com.inkwell.notes.ui.components.onAccent
 import com.inkwell.notes.ui.components.tap
 import com.inkwell.notes.ui.theme.Ink
@@ -84,14 +78,16 @@ import kotlinx.coroutines.delay
  * Step 2: multi-select (Select chip or long-press), bulk Pin/Unpin, bulk Delete
  * with confirm modal + Undo toast.
  * Step 3: pinned drag-reorder via the grip handle.
- * Step 4 (this version): Create-New menu on the FAB + notebook / tag quick-create modal.
- * Next steps: navigation to Editor / Search / Settings /
- * Tags / Notebooks.
+ * Step 4: Create-New menu on the FAB + notebook / tag quick-create modal
+ * (now shared with the other screens through [CreateLayer]).
+ * Step 5 (this version): bottom-nav navigation (Tags tab works).
+ * Next steps: navigation to Editor / Search / Settings / Notebooks.
  */
 @Composable
 fun HomeScreen(
     user: AuthUser,
     onSignOut: () -> Unit,
+    onNavTab: (NavTab) -> Unit,
     vm: HomeViewModel = viewModel(),
 ) {
     val c = Ink.colors
@@ -107,14 +103,13 @@ fun HomeScreen(
         }
     }
 
+    // Notes may have changed on another screen (Tags, later Editor…) since the last load.
+    LaunchedEffect(Unit) { vm.reload() }
+
     // Back closes the delete modal first, then leaves select mode.
-    BackHandler(enabled = state.selectMode || state.createMenuOpen || state.quickCreate != null) {
-        when {
-            state.quickCreate != null -> vm.closeQuickCreate()
-            state.createMenuOpen -> vm.closeCreateMenu()
-            state.deleteConfirmOpen -> vm.dismissDelete()
-            else -> vm.cancelSelectMode()
-        }
+    // (The Create menu / quick-create modal handle their own back press in CreateLayer.)
+    BackHandler(enabled = state.selectMode) {
+        if (state.deleteConfirmOpen) vm.dismissDelete() else vm.cancelSelectMode()
     }
 
     // ── pinned drag-reorder (web `startPinnedDrag`) ──
@@ -293,60 +288,26 @@ fun HomeScreen(
 
         BottomNav(
             active = NavTab.Home,
-            onSelect = { /* TODO Tags / Notebooks screens */ },
+            onSelect = { tab ->
+                vm.closeCreateMenu()
+                vm.cancelSelectMode()
+                onNavTab(tab)
+            },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
 
-        // Create-New menu: backdrop + sheet sit under the FAB
-        CreateMenu(
-            open = state.createMenuOpen,
-            onClose = vm::closeCreateMenu,
-            onNewNote = { vm.closeCreateMenu() /* TODO Editor (?new=1) */ },
-            onNewNotebook = { vm.openQuickCreate(QuickCreateKind.Notebook) },
-            onNewTag = { vm.openQuickCreate(QuickCreateKind.Tag) },
-            onSearch = { vm.closeCreateMenu() /* TODO Search screen */ },
-            onImage = { vm.closeCreateMenu() /* TODO Editor (?new=1&type=image) */ },
-            onVoice = { vm.closeCreateMenu() /* TODO Editor (?new=1&type=voice) */ },
-            onChecklist = { vm.closeCreateMenu() /* TODO Editor (?new=1&type=checklist) */ },
+        // FAB + Create-New menu + quick-create modal + toast (shared with Tags etc.)
+        CreateLayer(
+            state = state,
+            vm = vm,
+            showFab = !state.selectMode, // {!selectMode && <Fab />}
+            onNewNote = { /* TODO Editor (?new=1) */ },
+            onSearch = { /* TODO Search screen */ },
+            onImage = { /* TODO Editor (?new=1&type=image) */ },
+            onVoice = { /* TODO Editor (?new=1&type=voice) */ },
+            onChecklist = { /* TODO Editor (?new=1&type=checklist) */ },
+            onTagCreated = { /* TODO Editor: open a new note with this tag (?new=1&tag=$it) */ },
         )
-
-        // {!selectMode && <Fab />}
-        if (!state.selectMode) {
-            Fab(
-                onClick = vm::toggleCreateMenu,
-                open = state.createMenuOpen,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(end = 18.dp, bottom = 62.dp + 12.dp),
-            )
-        }
-
-        // .toast — sits 12dp above the bottom nav
-        InkToast(
-            toast = state.toast,
-            onAction = vm::onToastAction,
-            onDismiss = vm::dismissToast,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(start = 17.dp, end = 17.dp, bottom = 62.dp + navInset + 12.dp),
-        )
-
-        state.quickCreate?.let { kind ->
-            QuickCreateModal(
-                kind = kind,
-                onDismiss = vm::closeQuickCreate,
-                onSave = { text ->
-                    when (kind) {
-                        QuickCreateKind.Notebook -> vm.createNotebook(text)
-                        QuickCreateKind.Tag -> {
-                            val tag = vm.createTag(text)
-                            // TODO Editor: open a new note with this tag (?new=1&tag=$tag)
-                        }
-                    }
-                },
-            )
-        }
 
         if (state.deleteConfirmOpen) {
             DeleteConfirmModal(
@@ -537,14 +498,22 @@ private fun ToolbarButton(
 
 /** .sec-header / .sec-title / .count-badge */
 @Composable
-private fun SectionHeader(icon: Int, title: String, count: Int, modifier: Modifier = Modifier) {
+internal fun SectionHeader(
+    icon: Int?,
+    title: String,
+    count: Int,
+    modifier: Modifier = Modifier,
+    topPadding: androidx.compose.ui.unit.Dp = 8.dp,
+) {
     val c = Ink.colors
     Row(
-        modifier.fillMaxWidth().padding(top = 8.dp, bottom = 7.dp),
+        modifier.fillMaxWidth().padding(top = topPadding, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FaIcon(icon, tint = c.accent, size = 11.dp)
-        Spacer(Modifier.size(5.dp))
+        if (icon != null) {
+            FaIcon(icon, tint = c.accent, size = 11.dp)
+            Spacer(Modifier.size(5.dp))
+        }
         InkText(
             title.uppercase(),
             size = 11.sp,

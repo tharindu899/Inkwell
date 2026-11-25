@@ -1,6 +1,7 @@
 package com.inkwell.notes.ui
 
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -15,14 +16,17 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.inkwell.notes.auth.AuthViewModel
 import com.inkwell.notes.data.AppPrefs
 import com.inkwell.notes.ui.screens.HomeScreen
+import com.inkwell.notes.ui.components.NavTab
 import com.inkwell.notes.ui.screens.LoginScreen
+import com.inkwell.notes.ui.screens.TagsScreen
 import com.inkwell.notes.ui.theme.Ink
 import com.inkwell.notes.ui.theme.InkwellTheme
 import com.inkwell.notes.ui.theme.ThemeMode
 
 /**
- * Root of the app. Mirrors App.jsx routing for now:
- *   not logged in → Login,  logged in → Home.
+ * Root of the app. Mirrors App.jsx routing:
+ *   not logged in → Login,  logged in → the screen on top of the [Navigator] stack.
+ * The system Back button pops the stack (and leaves the app from Home).
  */
 @Composable
 fun InkwellApp(vm: AuthViewModel = viewModel()) {
@@ -54,7 +58,31 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                 onSignIn = { vm.startSignIn { intent -> signInLauncher.launch(intent) } },
             )
         } else {
-            HomeScreen(user = user, onSignOut = vm::signOut)
+            // New navigator per sign-in, so a fresh login always starts on Home.
+            val nav = remember { Navigator() }
+            BackHandler(enabled = nav.canGoBack) { nav.back() }
+
+            val onNavTab: (NavTab) -> Unit = { tab ->
+                when (tab) {
+                    NavTab.Home -> nav.switchTab(Route.Home)
+                    NavTab.Tags -> nav.switchTab(Route.Tags())
+                    NavTab.Notebooks -> Unit // TODO Notebooks screen (step 3)
+                }
+            }
+
+            when (val route = nav.current) {
+                Route.Home -> HomeScreen(
+                    user = user,
+                    onSignOut = vm::signOut,
+                    onNavTab = onNavTab,
+                )
+                is Route.Tags -> TagsScreen(
+                    initialTag = route.tag,
+                    onBack = { nav.back() },
+                    onNavTab = onNavTab,
+                    onSearch = { /* TODO Search screen */ },
+                )
+            }
         }
     }
 }

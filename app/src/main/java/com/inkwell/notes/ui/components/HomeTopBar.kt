@@ -125,7 +125,7 @@ fun HomeTopBar(
 
 /** .icon-btn — 38px circle, 15px glyph */
 @Composable
-private fun IconBtn(icon: Int, onClick: () -> Unit) {
+internal fun IconBtn(icon: Int, onClick: () -> Unit) {
     val c = Ink.colors
     Box(
         Modifier.size(38.dp).clip(CircleShape).background(c.bgCard).tap(onClick),

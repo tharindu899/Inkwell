@@ -15,8 +15,9 @@ reference until every screen is ported.
 | Home — step 2     | multi-select, long-press, bulk pin/delete, confirm modal, Undo toast | `HomeScreen.kt`, `NoteCard.kt`, `Toast.kt`, `DeleteConfirmModal.kt` | ✅ |
 | Home — step 3     | pinned drag-reorder (grip handle) | `HomeScreen.kt`, `NoteCard.kt`, `NotesStore.movePinned` | ✅ |
 | Home — step 4     | Create-New menu (FAB) + notebook/tag quick-create modal | `CreateMenu.kt`, `QuickCreateModal.kt`, `Fab.kt` | ✅ UI (navigation = TODO) |
-| Home — step 5+    | navigation to Editor / Search / Tags / Notebooks / Settings / Profile | — | ⏳ next |
-| Editor, Notebooks, Search, Tags, Profile, Settings, Drive sync, update checker | | | ⏳ |
+| Navigation        | `App.jsx` routes + back button | `ui/Navigator.kt`, `InkwellApp.kt` | ✅ simple back-stack (no library) |
+| Tags              | `pages/Tags.jsx`              | `ui/screens/TagsScreen.kt`, `InnerTopBar.kt` | ✅ (bottom-nav Tags tab works) |
+| Notebooks, NotebookDetail, Search, Profile, Settings, Editor, Drive sync, update checker | | | ⏳ |
 
 After sign-in the app shows Home. **Temporary:** long-press the avatar to sign out
 (until the Profile screen is ported).
@@ -51,8 +52,9 @@ app/src/main/java/com/inkwell/notes/
 │                                                     iw_notes, iw_notebooks, iw_sort, iw_seed_version)
 ├── util/        Helpers             (formatDate, stripHtml, fmtNum, greeting …)
 └── ui/
-    ├── InkwellApp.kt                (root / routing)
+    ├── InkwellApp.kt                (root: login gate + current screen)
+    ├── Navigator.kt                 (Route + back-stack)
     ├── theme/Theme.kt               (colours, fonts, radii)
     ├── components/                  (InkText, NoteCard, Toast, DeleteConfirmModal …)
-    └── screens/                     (one file per page)
+    └── screens/                     (one file per page; CreateLayer = FAB/menu/toast shared by pages)
 ```
