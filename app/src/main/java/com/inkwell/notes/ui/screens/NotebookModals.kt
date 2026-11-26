@@ -64,7 +64,7 @@ import com.inkwell.notes.ui.theme.Ink
 
 /** Bottom-anchored card over a dim scrim — `.modal-overlay.show` + `.modal`. */
 @Composable
-internal fun ModalCard(
+private fun ModalCard(
     onDismiss: () -> Unit,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
@@ -96,20 +96,20 @@ internal fun ModalCard(
 }
 
 @Composable
-internal fun ModalHead(title: String, sub: String) {
+private fun ModalHead(title: String, sub: String) {
     InkText(title, family = Ink.serif, size = 21.sp, weight = FontWeight.Bold, lineHeight = 24.sp)
     Spacer(Modifier.height(8.dp))
     InkText(sub, size = 14.sp, color = Ink.colors.text2, lineHeight = 20.sp)
 }
 
 @Composable
-internal fun ModalLabel(text: String) {
+private fun ModalLabel(text: String) {
     InkText(text.uppercase(), size = 12.sp, weight = FontWeight.ExtraBold, color = Ink.colors.text3, letterSpacing = 0.96.sp)
 }
 
 /** `.modal-actions .btn` — 52dp, radius 16. */
 @Composable
-internal fun ModalBtn(label: String, bg: Color, textColor: Color, border: Color, modifier: Modifier, onClick: () -> Unit) {
+private fun ModalBtn(label: String, bg: Color, textColor: Color, border: Color, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     Box(
         modifier.heightIn(min = 52.dp).clip(shape).background(bg).border(1.dp, border, shape).tap(onClick),
