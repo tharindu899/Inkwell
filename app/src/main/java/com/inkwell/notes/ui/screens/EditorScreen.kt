@@ -468,16 +468,16 @@ private fun DrawScope.drawListControls(
             val r = lay.getBoundingBox(ci)
             val cx = (r.left + r.right) / 2f
             val cy = (r.top + r.bottom) / 2f
-            val h = fontPx * 0.22f
-            val path = Path().apply {
-                if (p.collapsed) { // ▸
-                    moveTo(cx - h * 0.6f, cy - h); lineTo(cx + h, cy); lineTo(cx - h * 0.6f, cy + h)
-                } else { // ▾
-                    moveTo(cx - h, cy - h * 0.6f); lineTo(cx + h, cy - h * 0.6f); lineTo(cx, cy + h)
-                }
-                close()
+            // chevron = two round-capped strokes: › when collapsed, ⌄ when open
+            val h = fontPx * 0.2f
+            val sw = (fontPx * 0.11f).coerceAtLeast(1.5f)
+            if (p.collapsed) {
+                drawLine(accent, Offset(cx - h * 0.5f, cy - h), Offset(cx + h * 0.5f, cy), sw, StrokeCap.Round)
+                drawLine(accent, Offset(cx + h * 0.5f, cy), Offset(cx - h * 0.5f, cy + h), sw, StrokeCap.Round)
+            } else {
+                drawLine(accent, Offset(cx - h, cy - h * 0.5f), Offset(cx, cy + h * 0.5f), sw, StrokeCap.Round)
+                drawLine(accent, Offset(cx, cy + h * 0.5f), Offset(cx + h, cy - h * 0.5f), sw, StrokeCap.Round)
             }
-            drawPath(path, accent)
         }
         val bi = tr.layout.boxOffset(k)
         if (bi in 0 until shownLen) {
