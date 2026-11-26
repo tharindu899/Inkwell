@@ -89,10 +89,12 @@ class RichTransformation(
                 pop()
             }
 
-            val block = blockSpan(p)
+            val block = blockSpan(p, header = p.type == BlockType.TABLE && (i == 0 || doc.paras[i - 1].type != BlockType.TABLE))
             if (block != null) pushStyle(block)
             if (p.type == BlockType.CODE) {
                 append(doc.text.substring(s, e))
+            } else if (p.type == BlockType.TABLE) {
+                append(doc.text.substring(s, e).replace('\t', CELL_SEPARATOR)) // same length → offsets stay 1:1
             } else {
                 var a = s
                 while (a < e) {
@@ -112,7 +114,13 @@ class RichTransformation(
         }
     }
 
-    private fun blockSpan(p: Para): SpanStyle? = when (p.type) {
+    private fun blockSpan(p: Para, header: Boolean = false): SpanStyle? = when (p.type) {
+        BlockType.TABLE -> SpanStyle(
+            fontFamily = FontFamily.Monospace,
+            fontSize = (style.fontSizeSp * 0.92f).sp,
+            fontWeight = if (header) FontWeight.Bold else null,
+            background = style.codeBg,
+        )
         BlockType.H1 -> SpanStyle(fontSize = (style.fontSizeSp * 1.4f).sp, fontWeight = FontWeight.Bold, fontFamily = style.serif)
         BlockType.H2 -> SpanStyle(fontSize = (style.fontSizeSp * 1.15f).sp, fontWeight = FontWeight.SemiBold, fontFamily = style.serif)
         BlockType.H3 -> SpanStyle(fontSize = style.fontSizeSp.sp, fontWeight = FontWeight.SemiBold, fontFamily = style.serif)
@@ -122,10 +130,13 @@ class RichTransformation(
         else -> null
     }
 
-    private fun markSpan(m: Int): SpanStyle? {
-        if (m == 0) return null
+    private fun markSpan(all: Int): SpanStyle? {
+        if (all == 0) return null
+        val m = all and Mark.FORMAT_MASK
+        val isLink = Mark.linkId(all) != 0
+        if (m == 0 && !isLink) return null
         val deco = buildList {
-            if (m and Mark.UNDERLINE != 0) add(TextDecoration.Underline)
+            if (m and Mark.UNDERLINE != 0 || isLink) add(TextDecoration.Underline)
             if (m and Mark.STRIKE != 0) add(TextDecoration.LineThrough)
         }
         val baseline = when {
@@ -138,9 +149,24 @@ class RichTransformation(
             fontStyle = if (m and Mark.ITALIC != 0) FontStyle.Italic else null,
             textDecoration = if (deco.isEmpty()) null else TextDecoration.combine(deco),
             baselineShift = baseline,
-            fontSize = if (baseline != null) (style.fontSizeSp * 0.75f).sp else TextUnit.Unspecified,
-            background = if (m and Mark.HIGHLIGHT != 0) style.highlightBg else Color.Unspecified,
+            fontSize = when {
+                baseline != null -> (style.fontSizeSp * 0.75f).sp
+                m and Mark.CODE != 0 -> (style.fontSizeSp * 0.92f).sp
+                else -> TextUnit.Unspecified
+            },
+            fontFamily = if (m and Mark.CODE != 0) FontFamily.Monospace else null,
+            color = if (isLink) style.accent else Color.Unspecified,
+            background = when {
+                m and Mark.HIGHLIGHT != 0 -> style.highlightBg
+                m and Mark.CODE != 0 -> style.codeBg
+                else -> Color.Unspecified
+            },
         )
+    }
+
+    private companion object {
+        /** Shown in place of the tab between two table cells (one char, so offsets don't shift). */
+        const val CELL_SEPARATOR = '│'
     }
 
     /** Caret mapping (real text ⇄ shown text), used to keep the caret on screen. */

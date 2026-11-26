@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
@@ -57,8 +58,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
@@ -75,6 +78,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.inkwell.notes.R
 import com.inkwell.notes.data.AppPrefs
+import com.inkwell.notes.editor.BlockType
 import com.inkwell.notes.editor.RichStyle
 import com.inkwell.notes.editor.RichTransformation
 import com.inkwell.notes.ui.Route
@@ -101,7 +105,8 @@ import kotlinx.coroutines.delay
  *   Enter / Backspace list behaviour, basic code blocks.
  * Part 4: tags row → "Manage tags" modal, notebook row → "Move to Notebook" sheet (+ inline create).
  *   Both rows are tappable; they are hidden in Reading mode like the web (`.read-mode .tags-row`).
- * Coming next: code-block tools / tables / links, images + drawing, markdown source mode, export.
+ * Part 5: inline code, code-block bar, links, divider, tables (tap a row → grid editor), date/time, paste handling.
+ * Coming next: images + drawing, markdown source mode, export.
  */
 @Composable
 fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
@@ -138,6 +143,9 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     BackHandler(enabled = ctl.nbCreateOpen) { ctl.closeCreateNotebook() }
     BackHandler(enabled = ctl.tagManageOpen) { ctl.closeTagManager() }
     BackHandler(enabled = ctl.nbPickerOpen) { ctl.closeNotebookPicker() }
+    BackHandler(enabled = ctl.linkEdit != null) { ctl.closeLinkDialog() }
+    BackHandler(enabled = ctl.tableEdit != null) { ctl.closeTableEditor() }
+    val clipboard = LocalClipboardManager.current
 
     val titleFocus = remember { FocusRequester() }
     val bodyFocus = remember { FocusRequester() }
@@ -283,17 +291,27 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                                 val lay = layoutRes
                                 val tr = transformationNow
                                 if (lay == null || tr == null) return@awaitEachGesture
-                                val hit = hitListControl(lay, tr, down.position, tapPadPx) ?: return@awaitEachGesture
+                                val hit = hitListControl(lay, tr, down.position, tapPadPx)
+                                // A tap on a table row opens the grid editor (rows can't be edited as plain text).
+                                val tablePara = if (hit == null && ctl.bodyEditable && !ctl.readMode) hitTableRow(lay, tr, down.position) else null
+                                if (hit == null && tablePara == null) return@awaitEachGesture
                                 val slop = viewConfiguration.touchSlop
+                                val longPress = viewConfiguration.longPressTimeoutMillis
                                 while (true) {
                                     val ev = awaitPointerEvent(PointerEventPass.Initial)
                                     val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
                                     if (!ch.pressed) {
                                         ch.consume()
-                                        if (hit.chevron) ctl.toggleCollapse(hit.para) else ctl.toggleChecked(hit.para)
+                                        if (hit != null) {
+                                            if (hit.chevron) ctl.toggleCollapse(hit.para) else ctl.toggleChecked(hit.para)
+                                        } else if (tablePara != null) {
+                                            ctl.openTableEditor(tablePara)
+                                        }
                                         return@awaitEachGesture
                                     }
                                     if ((ch.position - down.position).getDistance() > slop) return@awaitEachGesture
+                                    // a long press belongs to the text field (selection), not to the table tap
+                                    if (hit == null && ch.uptimeMillis - down.uptimeMillis >= longPress) return@awaitEachGesture
                                 }
                             }
                         },
@@ -335,6 +353,17 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
 
             // ── formatting toolbar: docked at the bottom, right above the keyboard ──
             if (ctl.bodyEditable && !ctl.readMode) {
+                EditorContextBar(
+                    kind = ctl.contextKind,
+                    onCopyCode = { ctl.copyCodeBlock { clipboard.setText(AnnotatedString(it)) } },
+                    onJumpCode = ctl::jumpToCodeEnd,
+                    onDeleteCode = ctl::deleteCodeBlock,
+                    onEditTable = ctl::editTableAtCaret,
+                    onDeleteTable = ctl::deleteTableAtCaret,
+                    onEditLink = ctl::openLinkDialog,
+                    onOpenLink = ctl::openLinkAtCaret,
+                    onRemoveLink = ctl::removeLink,
+                )
                 EditorToolbar(
                     state = ctl.toolbarState,
                     onUndo = ctl::undo,
@@ -345,6 +374,10 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     onIndent = ctl::changeIndent,
                     onClear = ctl::clearFormat,
                     onMarkdown = ctl::toggleMarkdown,
+                    onLink = ctl::onLinkButton,
+                    onDivider = ctl::insertDivider,
+                    onTable = ctl::insertTable,
+                    onDateTime = ctl::insertDateTime,
                     scroll = toolbarScroll,
                 )
             }
@@ -395,6 +428,23 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 onDismiss = ctl::closeCreateNotebook,
                 onSave = ctl::createNotebookAndMove,
             )
+        }
+
+        // ── Part 5: link popover + table grid ──
+        ctl.linkEdit?.let { st ->
+            key(st) {
+                LinkDialog(state = st, onSubmit = ctl::submitLink, onClose = ctl::closeLinkDialog)
+            }
+        }
+        ctl.tableEdit?.let { st ->
+            key(st) {
+                TableEditorSheet(
+                    state = st,
+                    onSave = ctl::saveTable,
+                    onDelete = { ctl.deleteTableAt(st.first) },
+                    onClose = ctl::closeTableEditor,
+                )
+            }
         }
 
         // Last, so a toast (e.g. "Notebook name required") is never hidden behind a modal scrim.
@@ -522,6 +572,14 @@ private fun DrawScope.drawListControls(
                 drawLine(accent, Offset(cx, cy + h * 0.5f), Offset(cx + h, cy - h * 0.5f), sw, StrokeCap.Round)
             }
         }
+        if (p.type == BlockType.HR) {
+            val hi = tr.layout.prefixStart(k)
+            if (hi in 0 until shownLen) {
+                val r = lay.getBoundingBox(hi)
+                val y = (r.top + r.bottom) / 2f
+                drawLine(outline, Offset(0f, y), Offset(size.width, y), (fontPx * 0.09f).coerceAtLeast(1.5f), StrokeCap.Round)
+            }
+        }
         val bi = tr.layout.boxOffset(k)
         if (bi in 0 until shownLen) {
             val r = lay.getBoundingBox(bi)
@@ -572,6 +630,15 @@ private fun hitListControl(lay: TextLayoutResult, tr: RichTransformation, pos: O
     return best
 }
 
+/** The table-row paragraph under [pos] (layout coordinates), or null. */
+private fun hitTableRow(lay: TextLayoutResult, tr: RichTransformation, pos: Offset): Int? {
+    if (pos.y < 0f || pos.y > lay.size.height.toFloat()) return null
+    val line = lay.getLineForVerticalPosition(pos.y)
+    if (pos.y > lay.getLineBottom(line)) return null
+    val para = tr.layout.paraAtTransformed(lay.getLineStart(line))
+    return if (tr.doc.paras[para].type == BlockType.TABLE) para else null
+}
+
 /** Shown above the body of notes that use rich formatting the Part 1 editor can't write back yet. */
 @Composable
 private fun RichNoteBanner() {
@@ -589,8 +656,8 @@ private fun RichNoteBanner() {
     ) {
         FaIcon(R.drawable.ic_fa_circle_info, tint = c.accent, size = 14.dp)
         InkText(
-            "This note has tables, links, images or inline code. Those blocks arrive in the next " +
-                "editor parts — until then the body stays read-only and untouched (title, pin and delete work).",
+            "This note uses formatting the editor can't write back yet (for example images or tables with " +
+                "formatted cells). The body stays read-only and untouched — title, pin and delete still work.",
             size = 12.sp,
             color = c.text2,
             lineHeight = 17.sp,

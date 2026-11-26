@@ -1,6 +1,8 @@
 package com.inkwell.notes.ui.screens
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.SystemClock
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -15,9 +17,14 @@ import com.inkwell.notes.data.NotesStore
 import com.inkwell.notes.data.model.Note
 import com.inkwell.notes.data.model.Notebook
 import com.inkwell.notes.editor.Align
+import com.inkwell.notes.editor.Block
 import com.inkwell.notes.editor.BlockType
+import com.inkwell.notes.editor.EditResult
 import com.inkwell.notes.editor.HtmlCodec
+import com.inkwell.notes.editor.LinkTable
 import com.inkwell.notes.editor.Mark
+import com.inkwell.notes.editor.Para
+import com.inkwell.notes.editor.PasteHandler
 import com.inkwell.notes.editor.RichDoc
 import com.inkwell.notes.ui.Route
 import com.inkwell.notes.ui.components.ToastState
@@ -26,6 +33,8 @@ import com.inkwell.notes.util.countWords
 import com.inkwell.notes.util.genId
 import com.inkwell.notes.util.normalizeTagInput
 import java.text.Collator
+import java.text.DateFormat
+import java.util.Date
 
 /**
  * State + save logic of the Editor page (the non-visual half of `pages/Editor.jsx`).
@@ -35,6 +44,9 @@ import java.text.Collator
  *  - `saveNow`      → [save] (skips when nothing changed, catches storage errors → toast)
  *  - flush on pause / leave → [flush]
  *  - 2 s debounced auto-save → driven by [edits] from the screen (not while Reading mode is on)
+ *
+ * Part 5: inline code, links (popover + edit / remove / open), divider, tables (grid editor sheet), code-block
+ * actions (copy / jump to end / delete), date-time insert, and paste handling (markdown / code / plain, sanitised).
  *
  * Part 4: tags (manage modal: add with Enter / comma, Backspace on an empty input removes the last, tap a chip to
  * remove, saved-tag quick chips) + notebook (picker sheet, inline "Create notebook" that moves this note into it).
@@ -108,6 +120,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
                 canUndo = undoStack.isNotEmpty(),
                 canRedo = redoStack.isNotEmpty(),
                 markdown = markdownShortcuts,
+                inLink = doc.linkSpanAt(sel.min, sel.max) != null,
             )
         }
 
@@ -236,6 +249,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
             return
         }
         val caret = if (v.selection.collapsed) v.selection.start else null
+        if (handlePaste(v, caret)) return
         val result = doc.edit(v.text, pending, markdownShortcuts, caret)
         // A rewritten edit (shortcut conversion, leaving a list …) is its own undo step, so Undo takes just that back.
         recordBefore(if (result.caret != null) KIND_FORMAT else KIND_TYPING)
@@ -331,6 +345,261 @@ class EditorController(private val context: Context, route: Route.Editor) {
         recordBefore(KIND_FORMAT)
         doc = op(doc)
         markDirty()
+    }
+
+    // ─── paste (Part 5) ──────────────────────
+
+    /**
+     * A multi-line insertion is a paste: markdown becomes real blocks, code becomes a code block, anything else
+     * is cleaned (line endings, control characters, tabs) and typed in. @return true when it handled the change.
+     */
+    private fun handlePaste(v: TextFieldValue, caret: Int?): Boolean {
+        val ch = PasteHandler.diff(doc.text, v.text, caret) ?: return false
+        val t = ch.text
+        if (t.length < 2 || t == "\n" || t.isBlank() || '\n' !in t && '\r' !in t) return false
+        // A table row only takes cell text; RichDoc.edit flattens line breaks there.
+        val touchesTable = (doc.paraIndexAt(ch.start)..doc.paraIndexAt(ch.end)).any { doc.paras[it].type == BlockType.TABLE }
+        if (touchesTable) return false
+
+        val clean = PasteHandler.sanitize(t)
+        var kind = PasteHandler.classify(clean)
+        if (kind == PasteHandler.Kind.MARKDOWN && !markdownShortcuts) kind = PasteHandler.Kind.PLAIN
+        val result: EditResult = if (kind == PasteHandler.Kind.PLAIN) {
+            if (clean == t) return false
+            val newText = doc.text.substring(0, ch.start) + clean + doc.text.substring(ch.end)
+            doc.edit(newText, pending, markdownShortcuts, ch.start + clean.length)
+        } else {
+            PasteHandler.splice(doc, ch.start, ch.end, PasteHandler.toBlocks(kind, clean))
+        }
+        recordBefore(KIND_FORMAT)
+        pending = null
+        doc = result.doc
+        val len = result.doc.text.length
+        body = TextFieldValue(result.doc.text, TextRange((result.caret ?: (ch.start + clean.length)).coerceIn(0, len)))
+        markDirty()
+        return true
+    }
+
+    /** Swaps in [newDoc] as its own undo step with the caret at [caret]. */
+    private fun apply(newDoc: RichDoc, caret: Int) {
+        recordBefore(KIND_FORMAT)
+        doc = newDoc
+        body = TextFieldValue(newDoc.text, TextRange(caret.coerceIn(0, newDoc.text.length)))
+        pending = null
+        markDirty()
+    }
+
+    // ─── date / time, divider (Part 5) ───────
+
+    /** `insertDateTime()` — the device's locale date + time at the caret. */
+    fun insertDateTime() {
+        if (!canFormat) return
+        val t = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date())
+        val sel = body.selection
+        val a = sel.min
+        val newText = doc.text.substring(0, a) + t + doc.text.substring(sel.max)
+        val r = doc.edit(newText, pending, false, a + t.length)
+        apply(r.doc, r.caret ?: (a + t.length))
+    }
+
+    /** Where new whole blocks go: replace an empty plain line, else below the current paragraph (below a table / code run). */
+    private fun insertBlocksAtCaret(blocks: List<Block>): Pair<RichDoc, Int> {
+        val i = doc.paraIndexAt(body.selection.max)
+        val run = doc.tableRun(i) ?: doc.codeRun(i)
+        val emptyPlain = run == null && doc.paras[i].type == BlockType.P && doc.paraEnd(i) == doc.starts[i]
+        val at = when {
+            emptyPlain -> i
+            run != null -> run.last + 1
+            else -> i + 1
+        }
+        return doc.replaceParas(at, if (emptyPlain) at + 1 else at, blocks) to at
+    }
+
+    /** Divider (`<hr>`): a rule line, with a fresh paragraph under it for the caret. */
+    fun insertDivider() {
+        if (!canFormat) return
+        val (next, at) = insertBlocksAtCaret(
+            listOf(Block("", IntArray(0), Para(BlockType.HR)), Block("", IntArray(0), Para())),
+        )
+        apply(next, next.starts[(at + 1).coerceAtMost(next.paraCount - 1)])
+    }
+
+    // ─── tables (Part 5) ─────────────────────
+
+    var tableEdit by mutableStateOf<TableEdit?>(null)
+        private set
+
+    /** Insert a 2 × 2 table (header + one row, like the web) and open the grid editor on it. */
+    fun insertTable() {
+        if (!canFormat) return
+        val rows = listOf(listOf("Column 1", "Column 2"), listOf("Text", "Text"))
+        val blocks = rows.map { tableBlock(it) } + Block("", IntArray(0), Para())
+        val (next, at) = insertBlocksAtCaret(blocks)
+        apply(next, next.starts[(at + rows.size).coerceAtMost(next.paraCount - 1)])
+        tableEdit = TableEdit(at, at + rows.size - 1, rows)
+    }
+
+    private fun tableBlock(cells: List<String>): Block {
+        val t = cells.joinToString("\t") { it.replace('\t', ' ').replace('\n', ' ') }
+        return Block(t, IntArray(t.length), Para(BlockType.TABLE))
+    }
+
+    /** Tap on a table row (or "Edit table"). */
+    fun openTableEditor(para: Int) {
+        if (!canFormat) return
+        val run = doc.tableRun(para) ?: return
+        tableEdit = TableEdit(run.first, run.last, doc.tableRows(run))
+    }
+
+    fun closeTableEditor() {
+        tableEdit = null
+    }
+
+    fun saveTable(rows: List<List<String>>) {
+        val st = tableEdit ?: return
+        tableEdit = null
+        if (rows.isEmpty()) {
+            deleteTableAt(st.first)
+            return
+        }
+        val clean = rows.map { r -> r.map { it.replace('\t', ' ').replace('\n', ' ').trim().take(200) } }
+        if (clean == st.rows) return
+        val next = doc.replaceParas(st.first, st.last + 1, clean.map { tableBlock(it) })
+        apply(next, next.starts[(st.first + clean.size).coerceAtMost(next.paraCount - 1)])
+    }
+
+    fun deleteTableAt(para: Int) {
+        if (!canFormat) return
+        val run = doc.tableRun(para) ?: return
+        tableEdit = null
+        val next = doc.replaceParas(run.first, run.last + 1, emptyList())
+        apply(next, next.starts[run.first.coerceAtMost(next.paraCount - 1)])
+    }
+
+    fun deleteTableAtCaret() = deleteTableAt(doc.paraIndexAt(body.selection.min))
+
+    fun editTableAtCaret() = openTableEditor(doc.paraIndexAt(body.selection.min))
+
+    // ─── code block actions (Part 5) ─────────
+
+    /** What the context bar above the toolbar offers at the caret. */
+    val contextKind: ContextKind
+        get() {
+            historyVersion.let { }
+            if (!canFormat) return ContextKind.None
+            val sel = body.selection
+            return when {
+                doc.paraAt(sel.min).type == BlockType.CODE -> ContextKind.Code
+                doc.paraAt(sel.min).type == BlockType.TABLE -> ContextKind.Table
+                doc.linkSpanAt(sel.min, sel.max) != null -> ContextKind.Link
+                else -> ContextKind.None
+            }
+        }
+
+    private fun codeRunAtCaret(): IntRange? = doc.codeRun(doc.paraIndexAt(body.selection.min))
+
+    fun copyCodeBlock(setClipboard: (String) -> Unit) {
+        val run = codeRunAtCaret() ?: return
+        setClipboard(doc.textOf(run))
+        showToast("Code copied", R.drawable.ic_fa_check)
+    }
+
+    /** "Jump to bottom": caret to the end of the code block's last line. */
+    fun jumpToCodeEnd() {
+        val run = codeRunAtCaret() ?: return
+        pending = null
+        body = TextFieldValue(doc.text, TextRange(doc.paraEnd(run.last)))
+    }
+
+    fun deleteCodeBlock() {
+        if (!canFormat) return
+        val run = codeRunAtCaret() ?: return
+        val next = doc.replaceParas(run.first, run.last + 1, emptyList())
+        apply(next, next.starts[run.first.coerceAtMost(next.paraCount - 1)])
+    }
+
+    // ─── links (Part 5) ──────────────────────
+
+    var linkEdit by mutableStateOf<LinkEdit?>(null)
+        private set
+
+    /** Toolbar link button: removes the link under the caret, otherwise opens the popover (like the web). */
+    fun onLinkButton() {
+        if (!canFormat) return
+        val sel = body.selection
+        if (doc.linkSpanAt(sel.min, sel.max) != null) removeLink() else openLinkDialog()
+    }
+
+    fun openLinkDialog() {
+        if (!canFormat) return
+        val sel = body.selection
+        val span = doc.linkSpanAt(sel.min, sel.max)
+        linkEdit = if (span != null) {
+            LinkEdit(
+                start = span.first,
+                end = span.last + 1,
+                url = LinkTable.urlOf(Mark.linkId(doc.marks[span.first])).orEmpty(),
+                text = doc.text.substring(span.first, span.last + 1),
+                editing = true,
+            )
+        } else {
+            val picked = doc.text.substring(sel.min, sel.max).trim().takeIf { '\n' !in it }.orEmpty()
+            LinkEdit(sel.min, sel.max, "", picked, false)
+        }
+    }
+
+    fun closeLinkDialog() {
+        linkEdit = null
+    }
+
+    fun removeLink() {
+        if (!canFormat) return
+        val sel = body.selection
+        val span = doc.linkSpanAt(sel.min, sel.max) ?: return
+        apply(doc.setLink(span.first, span.last + 1, null), sel.end)
+        showToast("Link removed", R.drawable.ic_fa_circle_check)
+    }
+
+    fun openLinkAtCaret() {
+        val sel = body.selection
+        val span = doc.linkSpanAt(sel.min, sel.max) ?: return
+        val url = LinkTable.urlOf(Mark.linkId(doc.marks[span.first])) ?: return
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            showToast("Can't open this link", R.drawable.ic_fa_circle_exclamation)
+        }
+    }
+
+    fun submitLink(rawUrl: String, rawLabel: String) {
+        val st = linkEdit ?: return
+        val url = normalizeUrl(rawUrl)
+        if (url.isEmpty()) {
+            showToast("Enter a URL", R.drawable.ic_fa_circle_exclamation)
+            return
+        }
+        linkEdit = null
+        val label = rawLabel.trim()
+        when {
+            st.editing -> apply(doc.setLink(st.start, st.end, url), body.selection.end)
+            st.start != st.end && doc.text.substring(st.start, st.end).isNotBlank() ->
+                apply(doc.setLink(st.start, st.end, url), st.end)
+            else -> {
+                val t = label.ifEmpty { url }.replace('\n', ' ')
+                val newText = doc.text.substring(0, st.start) + t + doc.text.substring(st.end)
+                val r = doc.edit(newText, null, false, st.start + t.length)
+                apply(r.doc.setLink(st.start, st.start + t.length, url), st.start + t.length)
+            }
+        }
+        showToast("Link inserted", R.drawable.ic_fa_globe)
+    }
+
+    /** Web `normalizeUrl`: http(s) / mailto / tel stay, anything else gets `https://`. */
+    private fun normalizeUrl(raw: String): String {
+        val v = raw.trim()
+        if (v.isEmpty()) return ""
+        if (Regex("^(https?:|mailto:|tel:)", RegexOption.IGNORE_CASE).containsMatchIn(v)) return v
+        return "https://" + v.trimStart('/')
     }
 
     // ─── undo / redo ─────────────────────────
@@ -625,3 +894,12 @@ class EditorController(private val context: Context, route: Route.Editor) {
     private fun fingerprint(title: String, content: String): String =
         "$title\u0000$content\u0000${note.pinned}\u0000${note.notebookId}\u0000${note.tags}"
 }
+
+/** Link popover state: the range being linked ([start, end) — empty = insert), its URL and label. */
+class LinkEdit(val start: Int, val end: Int, val url: String, val text: String, val editing: Boolean)
+
+/** Table editor state: paragraph rows [first, last] and their cell texts. */
+class TableEdit(val first: Int, val last: Int, val rows: List<List<String>>)
+
+/** What the bar above the toolbar shows. */
+enum class ContextKind { None, Code, Table, Link }

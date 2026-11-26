@@ -5,9 +5,10 @@ package com.inkwell.notes.editor
  *
  * Understands: `p div br h1–h6 ul ol li (nested) blockquote pre/code strong/b em/i u s/strike/del sup sub mark span label`
  * with `style="text-align:…; margin-left:…px"`, the web checklist markup (`ul.check-list`, `li[data-checked]`,
- * `span.check-box`, `span.check-text`) and `li[data-collapsed]`. Anything else (tables, inline code, images,
- * links, hr …) makes [parse] return null — the editor then shows the note read-only instead of
- * flattening it. Later parts extend this list.
+ * `span.check-box`, `span.check-text`) and `li[data-collapsed]`.
+ * Part 5 adds inline `code`, links (`a[href]` with http / https / mailto / tel), `hr`, and tables whose cells are
+ * plain text (`table thead tbody tr th td`). Anything else (images, rich table cells, colspan …) makes [parse]
+ * return null — the editor then shows the note read-only instead of flattening it. Later parts extend this list.
  */
 object HtmlCodec {
     private const val INDENT_PX = 24
@@ -26,13 +27,16 @@ object HtmlCodec {
         "style", "dir", "lang", "spellcheck", "align",
         "data-checked", "data-collapsed", "data-check-label", "data-type",
         "role", "aria-checked", "aria-readonly", "tabindex", "contenteditable",
+        "href", "target", "rel", "scope",
     )
     private val SAFE_CLASSES = setOf(
         "check-list", "check-box", "check-text", "li-collapsible", "li-collapsed", "code-scroll", "ed-code",
+        "md-table", "md-table-wrap",
     )
     private val LANG_CLASS = Regex("^language-[a-z0-9_-]+$", RegexOption.IGNORE_CASE)
     private val ATTR_RE = Regex("""([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?""")
     private val WS_RE = Regex("\\s+")
+    private val SAFE_HREF = Regex("^(https?:|mailto:|tel:)", RegexOption.IGNORE_CASE)
 
     private class Elem(
         val name: String,
@@ -58,7 +62,14 @@ object HtmlCodec {
         private var headingLevel = 0
         private var preDepth = 0
         private var preStartParas = 0
-        private val counts = IntArray(7) // b i u s sup sub mark
+        private val counts = IntArray(8) // b i u s sup sub mark code
+        private var linkId = 0
+
+        // tables (Part 5): only plain-text cells are representable
+        private var tableDepth = 0
+        private val rows = ArrayList<List<String>>()
+        private var row: ArrayList<String>? = null
+        private var cell: StringBuilder? = null
 
         fun run(): RichDoc? {
             var pos = 0
@@ -84,7 +95,10 @@ object HtmlCodec {
                 pos = gt + 1
             }
             closePara(force = false)
+            if (tableDepth > 0) { finishCell(); finishRow(); emitTable(); tableDepth = 0 }
             if (paras.isEmpty()) return RichDoc.EMPTY
+            // keep a place to type after a trailing table / divider
+            if (paras.last().type.isAtomic) addBlankPara()
 
             val sb = StringBuilder()
             val marks = ArrayList<Int>()
@@ -133,6 +147,7 @@ object HtmlCodec {
             var collapsed = false
             var taskList = false
             var checkBox = false
+            var href: String? = null
             for (m in ATTR_RE.findAll(attrSrc)) {
                 val an = m.groupValues[1].lowercase()
                 val av = m.groupValues[2].ifEmpty { m.groupValues[3].ifEmpty { m.groupValues[4] } }
@@ -146,6 +161,9 @@ object HtmlCodec {
                     continue
                 }
                 if (an !in ALLOWED_ATTRS) return false
+                if ((an == "href" || an == "target" || an == "rel") && name != "a") return false
+                if (an == "scope" && name != "th" && name != "td") return false
+                if (an == "href") href = av
                 if (an == "data-type" && av == "taskList") taskList = true
                 if ((an == "data-checked" || an == "aria-checked") && av == "true") checked = true
                 if (an == "data-collapsed" && av == "true") collapsed = true
@@ -165,7 +183,48 @@ object HtmlCodec {
                 }
             }
 
+            // inside a table cell only plain text (and <br>) is representable
+            if (cell != null && name != "br" && name != "td" && name != "th" && name != "tr") return false
+
             when (name) {
+                "a" -> {
+                    val h = decode(href.orEmpty()).trim()
+                    if (h.isEmpty() || !SAFE_HREF.containsMatchIn(h)) return false
+                    linkId = LinkTable.idFor(h)
+                    elems.add(Elem("a", null, null))
+                }
+                "hr" -> {
+                    if (preDepth > 0 || lists.isNotEmpty() || quoteDepth > 0 || tableDepth > 0) return false
+                    closePara(false)
+                    cur = Para(BlockType.HR)
+                    curText.setLength(0)
+                    curMarks.clear()
+                    open = true
+                    commit()
+                }
+                "table" -> {
+                    if (tableDepth > 0 || preDepth > 0 || lists.isNotEmpty() || quoteDepth > 0) return false
+                    closePara(false)
+                    tableDepth = 1
+                    rows.clear()
+                    elems.add(Elem("table", null, null))
+                }
+                "thead", "tbody", "tfoot" -> {
+                    if (tableDepth == 0) return false
+                    elems.add(Elem(name, null, null))
+                }
+                "tr" -> {
+                    if (tableDepth == 0) return false
+                    finishCell(); finishRow()
+                    row = ArrayList()
+                    elems.add(Elem("tr", null, null))
+                }
+                "th", "td" -> {
+                    if (tableDepth == 0 || row == null) return false
+                    finishCell()
+                    cell = StringBuilder()
+                    elems.add(Elem(name, null, null))
+                }
                 "p", "div" -> {
                     if (preDepth > 0) { elems.add(Elem(name, null, null)); return true }
                     closePara(false); elems.add(Elem(name, align, indent)); startPara()
@@ -201,10 +260,12 @@ object HtmlCodec {
                     startPara()
                 }
                 "code" -> {
-                    if (preDepth == 0) return false // inline code arrives with Part 5
+                    if (preDepth == 0) counts[7]++ // inline code; inside <pre> it's just the block's wrapper
                     elems.add(Elem(name, null, null))
                 }
                 "br" -> {
+                    val c = cell
+                    if (c != null) { c.append(' '); return true }
                     if (!open) startPara()
                     commit()
                     if (preDepth > 0) startPara()
@@ -262,13 +323,51 @@ object HtmlCodec {
                 "sup" -> counts[4] = maxOf(0, counts[4] - 1)
                 "sub" -> counts[5] = maxOf(0, counts[5] - 1)
                 "mark" -> counts[6] = maxOf(0, counts[6] - 1)
+                "code" -> if (preDepth == 0) counts[7] = maxOf(0, counts[7] - 1)
+                "a" -> linkId = 0
+                "th", "td" -> finishCell()
+                "tr" -> { finishCell(); finishRow() }
+                "table" -> { finishCell(); finishRow(); emitTable(); tableDepth = 0 }
             }
             return true
+        }
+
+        private fun finishCell() {
+            val c = cell ?: return
+            row?.add(c.toString().trim())
+            cell = null
+        }
+
+        private fun finishRow() {
+            val r = row ?: return
+            if (r.isNotEmpty()) rows.add(r)
+            row = null
+        }
+
+        private fun addBlankPara() {
+            texts.add("")
+            markLists.add(IntArray(0))
+            paras.add(Para())
+        }
+
+        /** Writes the collected rows as TABLE paragraphs (cells joined by a tab, all rows the same width). */
+        private fun emitTable() {
+            if (rows.isEmpty()) return
+            val cols = rows.maxOf { it.size }
+            if (paras.isNotEmpty() && paras.last().type == BlockType.TABLE) addBlankPara() // keep adjacent tables apart
+            for (r in rows) {
+                val t = (0 until cols).joinToString("\t") { k -> r.getOrElse(k) { "" }.replace('\t', ' ').replace('\n', ' ') }
+                texts.add(t)
+                markLists.add(IntArray(t.length))
+                paras.add(Para(BlockType.TABLE))
+            }
+            rows.clear()
         }
 
         private val SUPPORTED_CLOSE = setOf(
             "p", "div", "li", "ul", "ol", "blockquote", "span", "label", "pre", "code", "b", "strong", "i", "em", "u", "s",
             "strike", "del", "sup", "sub", "mark", "h1", "h2", "h3", "h4", "h5", "h6", "br",
+            "a", "hr", "table", "thead", "tbody", "tfoot", "tr", "td", "th",
         )
 
         private fun currentMarks(): Int {
@@ -280,6 +379,8 @@ object HtmlCodec {
             if (counts[4] > 0) m = m or Mark.SUP
             if (counts[5] > 0) m = m or Mark.SUB
             if (counts[6] > 0) m = m or Mark.HIGHLIGHT
+            if (counts[7] > 0) m = m or Mark.CODE
+            if (linkId != 0) m = Mark.withLink(m, linkId)
             return m
         }
 
@@ -339,6 +440,9 @@ object HtmlCodec {
 
         private fun text(raw: String) {
             if (raw.isEmpty()) return
+            val c = cell
+            if (c != null) { c.append(decode(raw).replace(WS_RE, " ")); return }
+            if (tableDepth > 0) return // whitespace between table tags
             if (preDepth > 0) { codeText(raw); return }
             var s = decode(raw).replace(WS_RE, " ")
             if (!open) {
@@ -410,6 +514,17 @@ object HtmlCodec {
                 i = listRun(doc, i, out)
                 continue
             }
+            if (p.type == BlockType.HR) {
+                out.append("<hr>")
+                i++
+                continue
+            }
+            if (p.type == BlockType.TABLE) {
+                val run = doc.tableRun(i)!!
+                out.append(tableHtml(doc.tableRows(run)))
+                i = run.last + 1
+                continue
+            }
             if (p.type == BlockType.CODE) {
                 val lines = ArrayList<String>()
                 while (i < doc.paraCount && doc.paras[i].type == BlockType.CODE) {
@@ -432,6 +547,23 @@ object HtmlCodec {
             i++
         }
         return out.toString()
+    }
+
+    /** First row = header (same shape the web's Insert table makes). */
+    private fun tableHtml(rows: List<List<String>>): String {
+        val sb = StringBuilder("<table><thead><tr>")
+        for (c in rows.first()) sb.append("<th>").append(escape(c)).append("</th>")
+        sb.append("</tr></thead>")
+        if (rows.size > 1) {
+            sb.append("<tbody>")
+            for (r in rows.drop(1)) {
+                sb.append("<tr>")
+                for (c in r) sb.append("<td>").append(escape(c)).append("</td>")
+                sb.append("</tr>")
+            }
+            sb.append("</tbody>")
+        }
+        return sb.append("</table>").toString()
     }
 
     /** Writes the run of list items starting at [from] as (nested) `<ul>` / `<ol>`; returns the index after it. */
@@ -499,7 +631,16 @@ object HtmlCodec {
         val e = doc.paraEnd(para)
         if (s == e) return "<br>"
         val sb = StringBuilder()
+        var curLink = 0
         forRuns(doc, s, e) { a, b, m ->
+            // one <a> spans every consecutive run that shares the link, whatever formatting is inside it
+            val id = Mark.linkId(m)
+            if (id != curLink) {
+                if (curLink != 0) sb.append("</a>")
+                val url = if (id != 0) LinkTable.urlOf(id) else null
+                if (url != null) sb.append("<a href=\"").append(escapeAttr(url)).append("\" target=\"_blank\" rel=\"noreferrer\">")
+                curLink = if (url != null) id else 0
+            }
             val open = StringBuilder()
             val close = StringBuilder()
             for ((flag, tag) in HTML_TAGS) {
@@ -510,6 +651,7 @@ object HtmlCodec {
             }
             sb.append(open).append(escape(doc.text.substring(a, b))).append(close)
         }
+        if (curLink != 0) sb.append("</a>")
         return sb.toString()
     }
 
@@ -521,6 +663,7 @@ object HtmlCodec {
         Mark.SUP to "sup",
         Mark.SUB to "sub",
         Mark.HIGHLIGHT to "mark",
+        Mark.CODE to "code", // innermost
     )
 
     private inline fun forRuns(doc: RichDoc, s: Int, e: Int, f: (Int, Int, Int) -> Unit) {
@@ -532,6 +675,9 @@ object HtmlCodec {
             a = b
         }
     }
+
+    private fun escapeAttr(s: String): String =
+        s.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
 
     private fun escape(s: String): String =
         s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -563,21 +709,54 @@ object HtmlCodec {
                 prevType = BlockType.CODE
                 continue
             }
+            if (p.type == BlockType.HR) {
+                if (wrote) sb.append("\n\n")
+                sb.append("---")
+                wrote = true
+                prevType = BlockType.HR
+                i++
+                continue
+            }
+            if (p.type == BlockType.TABLE) {
+                val run = doc.tableRun(i)!!
+                val rows = doc.tableRows(run).map { r -> r.map { it.replace("|", "\\|") } }
+                if (wrote) sb.append("\n\n")
+                sb.append("| ").append(rows.first().joinToString(" | ")).append(" |\n")
+                sb.append("| ").append(rows.first().joinToString(" | ") { "---" }).append(" |")
+                for (r in rows.drop(1)) sb.append("\n| ").append(r.joinToString(" | ")).append(" |")
+                wrote = true
+                prevType = BlockType.TABLE
+                i = run.last + 1
+                continue
+            }
             i++
 
             if (s == e) { prevType = null; continue } // blank lines aren't content in markdown
 
             val inline = StringBuilder()
+            val linkBuf = StringBuilder()
+            var curLink = 0
+            fun flushLink() {
+                if (curLink != 0) {
+                    val url = LinkTable.urlOf(curLink)
+                    if (url != null) inline.append('[').append(linkBuf).append("](").append(url).append(')') else inline.append(linkBuf)
+                }
+                linkBuf.setLength(0)
+            }
             forRuns(doc, s, e) { a, b, m ->
+                val id = Mark.linkId(m)
+                if (id != curLink) { flushLink(); curLink = id }
                 var t = doc.text.substring(a, b)
+                if (m and Mark.CODE != 0) t = "`$t`"
                 if (m and Mark.STRIKE != 0) t = "~~$t~~"
                 if (m and Mark.BOLD != 0) t = "**$t**"
                 if (m and Mark.ITALIC != 0) t = "*$t*"
                 if (m and Mark.UNDERLINE != 0) t = "<u>$t</u>"
                 if (m and Mark.SUP != 0) t = "<sup>$t</sup>"
                 if (m and Mark.SUB != 0) t = "<sub>$t</sub>"
-                inline.append(t)
+                if (curLink != 0) linkBuf.append(t) else inline.append(t)
             }
+            flushLink()
             val k = i - 1
             val prefix = when (p.type) {
                 BlockType.H1 -> "# "
