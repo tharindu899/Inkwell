@@ -64,7 +64,7 @@ import com.inkwell.notes.ui.theme.Ink
 
 /** Bottom-anchored card over a dim scrim — `.modal-overlay.show` + `.modal`. */
 @Composable
-private fun ModalCard(
+internal fun ModalCard(
     onDismiss: () -> Unit,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
@@ -96,20 +96,20 @@ private fun ModalCard(
 }
 
 @Composable
-private fun ModalHead(title: String, sub: String) {
+internal fun ModalHead(title: String, sub: String) {
     InkText(title, family = Ink.serif, size = 21.sp, weight = FontWeight.Bold, lineHeight = 24.sp)
     Spacer(Modifier.height(8.dp))
     InkText(sub, size = 14.sp, color = Ink.colors.text2, lineHeight = 20.sp)
 }
 
 @Composable
-private fun ModalLabel(text: String) {
+internal fun ModalLabel(text: String) {
     InkText(text.uppercase(), size = 12.sp, weight = FontWeight.ExtraBold, color = Ink.colors.text3, letterSpacing = 0.96.sp)
 }
 
 /** `.modal-actions .btn` — 52dp, radius 16. */
 @Composable
-private fun ModalBtn(label: String, bg: Color, textColor: Color, border: Color, modifier: Modifier, onClick: () -> Unit) {
+internal fun ModalBtn(label: String, bg: Color, textColor: Color, border: Color, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     Box(
         modifier.heightIn(min = 52.dp).clip(shape).background(bg).border(1.dp, border, shape).tap(onClick),
@@ -126,6 +126,9 @@ fun NotebookFormModal(
     editing: Notebook?,
     onDismiss: () -> Unit,
     onSave: (name: String, color: String, icon: String) -> Unit,
+    /** Overrides for the heading copy (the Editor's "Create Notebook" reuses this form). */
+    title: String? = null,
+    subtitle: String? = null,
 ) {
     val c = Ink.colors
     var name by remember { mutableStateOf(editing?.name.orEmpty()) }
@@ -138,8 +141,8 @@ fun NotebookFormModal(
 
     ModalCard(onDismiss) {
         ModalHead(
-            if (editing != null) "Edit Notebook" else "New Notebook",
-            if (editing != null) "Update name, colour, or icon." else "Name it, pick a colour and an icon.",
+            title ?: if (editing != null) "Edit Notebook" else "New Notebook",
+            subtitle ?: if (editing != null) "Update name, colour, or icon." else "Name it, pick a colour and an icon.",
         )
         Spacer(Modifier.height(18.dp))
 

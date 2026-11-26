@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,7 +59,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
@@ -95,8 +99,9 @@ import kotlinx.coroutines.delay
  * Part 2: rich body (RichDoc) + formatting toolbar (marks, headings, lists, quote, align, indent, undo/redo).
  * Part 3: checklists (tap a box), nested + collapsible lists (tap a chevron), markdown shortcuts + toggle,
  *   Enter / Backspace list behaviour, basic code blocks.
- * Coming next: tags & notebook pickers, code-block tools / tables / links, images + drawing,
- *   markdown source mode, export.
+ * Part 4: tags row → "Manage tags" modal, notebook row → "Move to Notebook" sheet (+ inline create).
+ *   Both rows are tappable; they are hidden in Reading mode like the web (`.read-mode .tags-row`).
+ * Coming next: code-block tools / tables / links, images + drawing, markdown source mode, export.
  */
 @Composable
 fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
@@ -130,6 +135,9 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     }
 
     BackHandler(enabled = ctl.deleteConfirmOpen) { ctl.dismissDelete() }
+    BackHandler(enabled = ctl.nbCreateOpen) { ctl.closeCreateNotebook() }
+    BackHandler(enabled = ctl.tagManageOpen) { ctl.closeTagManager() }
+    BackHandler(enabled = ctl.nbPickerOpen) { ctl.closeNotebookPicker() }
 
     val titleFocus = remember { FocusRequester() }
     val bodyFocus = remember { FocusRequester() }
@@ -319,9 +327,9 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
 
             // ── bottom panel: tags, notebook, counts ──
             // While the keyboard is up the writing area is small, so tags / notebook step aside.
-            if (!imeVisible) {
-                TagsRow(tags = ctl.note.tags)
-                NotebookRow(name = ctl.notebook?.name, colorHex = ctl.notebook?.color)
+            if (!imeVisible && !ctl.readMode) {
+                TagsRow(tags = ctl.note.tags, onClick = ctl::openTagManager)
+                NotebookRow(name = ctl.notebook?.name, colorHex = ctl.notebook?.color, onClick = ctl::openNotebookPicker)
             }
             EditorFooter(words = ctl.wordCount, chars = ctl.charCount, saved = ctl.saved)
 
@@ -342,16 +350,6 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             }
         }
 
-        InkToast(
-            toast = ctl.toast,
-            onAction = {},
-            onDismiss = ctl::dismissToast,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(bottomInsets)
-                .padding(bottom = 140.dp),
-        )
-
         if (ctl.deleteConfirmOpen) {
             DeleteConfirmModal(
                 count = 1,
@@ -364,6 +362,51 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 },
             )
         }
+
+        // ── Part 4: notebook picker, tag manager, create-notebook form ──
+        if (ctl.nbPickerOpen) {
+            NotebookPickerSheet(
+                notebooks = ctl.pickerNotebooks,
+                selectedId = ctl.note.notebookId,
+                onPick = ctl::pickNotebook,
+                onCreate = ctl::openCreateNotebook,
+                onDismiss = ctl::closeNotebookPicker,
+            )
+        }
+        if (ctl.tagManageOpen) {
+            TagManageModal(
+                tags = ctl.note.tags,
+                saved = ctl.savedTagOptions,
+                input = ctl.tagInput,
+                onInput = ctl::onTagInputChange,
+                onCommit = ctl::commitTag,
+                onBackspaceEmpty = ctl::removeLastTag,
+                onRemove = ctl::removeTag,
+                onPickSaved = ctl::toggleSavedTag,
+                onAddOrClose = ctl::addOrCloseTags,
+                onClose = ctl::closeTagManager,
+            )
+        }
+        if (ctl.nbCreateOpen) {
+            NotebookFormModal(
+                editing = null,
+                title = "Create Notebook",
+                subtitle = "Create a notebook and move this note into it.",
+                onDismiss = ctl::closeCreateNotebook,
+                onSave = ctl::createNotebookAndMove,
+            )
+        }
+
+        // Last, so a toast (e.g. "Notebook name required") is never hidden behind a modal scrim.
+        InkToast(
+            toast = ctl.toast,
+            onAction = {},
+            onDismiss = ctl::dismissToast,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(bottomInsets)
+                .padding(bottom = 140.dp),
+        )
     }
 }
 
@@ -560,29 +603,41 @@ private fun RichNoteBanner() {
 // ─────────────────────────────────────────────
 
 @Composable
-private fun PanelRow(content: @Composable () -> Unit) {
+private fun PanelRow(onClick: () -> Unit, content: @Composable RowScope.() -> Unit) {
     val c = Ink.colors
-    Column(Modifier.fillMaxWidth().background(c.bg)) {
+    Column(Modifier.fillMaxWidth().background(c.bg).tap(onClick)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(c.border))
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) { content() }
+        ) {
+            content()
+            // `.fa-chevron-up` — tells you the row opens something
+            FaIcon(R.drawable.ic_fa_chevron_up, tint = c.text3, size = 11.dp)
+        }
     }
 }
 
+/** `.tag-selector-row`: "In <accent bold names> +N more" / "No tags selected". Tap → Manage tags. */
 @Composable
-private fun TagsRow(tags: List<String>) {
+private fun TagsRow(tags: List<String>, onClick: () -> Unit) {
     val c = Ink.colors
-    PanelRow {
+    PanelRow(onClick) {
         FaIcon(R.drawable.ic_fa_tag, tint = c.text3, size = 14.dp)
         if (tags.isEmpty()) {
-            InkText("No tags selected", size = 13.sp, color = c.text3)
+            InkText("No tags selected", modifier = Modifier.weight(1f), size = 13.sp, color = c.text3)
         } else {
             val more = if (tags.size > 2) " +${tags.size - 2} more" else ""
             InkText(
-                "In ${tags.take(2).joinToString(", ")}$more",
+                text = buildAnnotatedString {
+                    append("In ")
+                    withStyle(SpanStyle(color = c.accent, fontWeight = FontWeight.Bold)) {
+                        append(tags.take(2).joinToString(", "))
+                    }
+                    append(more)
+                },
+                modifier = Modifier.weight(1f),
                 size = 13.sp,
                 color = c.text2,
                 maxLines = 1,
@@ -592,23 +647,27 @@ private fun TagsRow(tags: List<String>) {
     }
 }
 
+/** `.nb-selector`: "In <notebook>" / "No notebook selected". Tap → Move to Notebook. */
 @Composable
-private fun NotebookRow(name: String?, colorHex: String?) {
+private fun NotebookRow(name: String?, colorHex: String?, onClick: () -> Unit) {
     val c = Ink.colors
-    PanelRow {
+    PanelRow(onClick) {
         FaIcon(R.drawable.ic_fa_book_open, tint = c.text3, size = 14.dp)
         if (name == null) {
-            InkText("No notebook selected", size = 13.sp, color = c.text3)
+            InkText("No notebook selected", modifier = Modifier.weight(1f), size = 13.sp, color = c.text3)
         } else {
-            InkText("In ", size = 13.sp, color = c.text2)
-            InkText(
-                name,
-                size = 13.sp,
-                weight = FontWeight.SemiBold,
-                color = notebookColor(colorHex.orEmpty(), c.accent),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(Modifier.weight(1f)) {
+                InkText("In ", size = 13.sp, color = c.text2)
+                InkText(
+                    name,
+                    modifier = Modifier.weight(1f, fill = false),
+                    size = 13.sp,
+                    weight = FontWeight.SemiBold,
+                    color = notebookColor(colorHex.orEmpty(), c.accent),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

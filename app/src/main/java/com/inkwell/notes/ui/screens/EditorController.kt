@@ -25,6 +25,7 @@ import com.inkwell.notes.util.Iso
 import com.inkwell.notes.util.countWords
 import com.inkwell.notes.util.genId
 import com.inkwell.notes.util.normalizeTagInput
+import java.text.Collator
 
 /**
  * State + save logic of the Editor page (the non-visual half of `pages/Editor.jsx`).
@@ -34,6 +35,10 @@ import com.inkwell.notes.util.normalizeTagInput
  *  - `saveNow`      → [save] (skips when nothing changed, catches storage errors → toast)
  *  - flush on pause / leave → [flush]
  *  - 2 s debounced auto-save → driven by [edits] from the screen (not while Reading mode is on)
+ *
+ * Part 4: tags (manage modal: add with Enter / comma, Backspace on an empty input removes the last, tap a chip to
+ * remove, saved-tag quick chips) + notebook (picker sheet, inline "Create notebook" that moves this note into it).
+ * Tag / notebook changes ride the normal dirty → 2 s auto-save path; they are locked while Reading mode is on.
  *
  * Part 3: checklists (tap a box), nested + collapsible lists, markdown shortcuts (toggle persisted as the
  * `markdownMode` pref, same key as Settings and the web app), Enter / Backspace list behaviour (in [RichDoc.edit]).
@@ -105,6 +110,35 @@ class EditorController(private val context: Context, route: Route.Editor) {
                 markdown = markdownShortcuts,
             )
         }
+
+    // ─── tags + notebook (Part 4) ────────────
+
+    var tagManageOpen by mutableStateOf(false)
+        private set
+
+    /** The text field of the tag modal. */
+    var tagInput by mutableStateOf("")
+        private set
+
+    /** Every tag used by any saved note, snapshotted when the tag modal opens (web `savedTagOptions` source). */
+    private var knownTags by mutableStateOf<List<String>>(emptyList())
+
+    /** "Saved tags" quick chips: tags used elsewhere that this note doesn't have yet — max 12. */
+    val savedTagOptions: List<String>
+        get() {
+            val current = note.tags.map { it.lowercase() }.toSet()
+            return knownTags.filter { it !in current }.take(12)
+        }
+
+    var nbPickerOpen by mutableStateOf(false)
+        private set
+
+    var nbCreateOpen by mutableStateOf(false)
+        private set
+
+    /** Notebooks listed by the picker, loaded when it opens. */
+    var pickerNotebooks by mutableStateOf<List<Notebook>>(emptyList())
+        private set
 
     /** Reading mode: fields are locked, auto-save is off. */
     var readMode by mutableStateOf(false)
@@ -342,6 +376,141 @@ class EditorController(private val context: Context, route: Route.Editor) {
         edits++
     }
 
+    // ─── tags (Part 4) ───────────────────────
+
+    fun openTagManager() {
+        if (locked()) return
+        tagInput = ""
+        knownTags = store.getNotes()
+            .flatMap { it.tags }
+            .map { it.trim().lowercase() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .sortedWith(Collator.getInstance())
+        tagManageOpen = true
+    }
+
+    fun closeTagManager() {
+        tagManageOpen = false
+        tagInput = ""
+    }
+
+    /** Typing in the tag field. A comma commits what came before it (also for pasted "a,b,c"). */
+    fun onTagInputChange(raw: String) {
+        if (',' !in raw) {
+            tagInput = raw.take(TAG_MAX)
+            return
+        }
+        val parts = raw.split(',')
+        parts.dropLast(1).forEach { addTag(it) }
+        tagInput = parts.last().take(TAG_MAX)
+    }
+
+    /** Enter / IME Done in the tag field. */
+    fun commitTag() {
+        if (locked()) return
+        addTag(tagInput)
+        tagInput = ""
+    }
+
+    /** The modal's "Add" button: adds a typed tag, or closes when the field is empty. */
+    fun addOrCloseTags() {
+        if (tagInput.isNotBlank()) commitTag() else closeTagManager()
+    }
+
+    /** Backspace on an empty tag field removes the last tag. */
+    fun removeLastTag() {
+        if (tagInput.isNotEmpty() || note.tags.isEmpty() || locked()) return
+        note = note.copy(tags = note.tags.dropLast(1))
+        markDirty()
+    }
+
+    fun removeTag(tag: String) {
+        if (locked()) return
+        if (tag !in note.tags) return
+        note = note.copy(tags = note.tags.filter { it != tag })
+        markDirty()
+    }
+
+    /** Tap on a saved-tag chip: adds it (or removes it if the note already has it). */
+    fun toggleSavedTag(tag: String) {
+        if (tag in note.tags) removeTag(tag) else {
+            if (locked()) return
+            addTag(tag)
+        }
+    }
+
+    private fun addTag(raw: String) {
+        val v = normalizeTagInput(raw)
+        if (v.isEmpty() || v in note.tags) return
+        note = note.copy(tags = note.tags + v)
+        markDirty()
+    }
+
+    // ─── notebook (Part 4) ───────────────────
+
+    fun openNotebookPicker() {
+        if (locked()) return
+        pickerNotebooks = store.getNotebooks()
+        nbPickerOpen = true
+    }
+
+    fun closeNotebookPicker() {
+        nbPickerOpen = false
+    }
+
+    /** `pickNb(id)` — null = "None". */
+    fun pickNotebook(id: String?) {
+        if (locked()) return
+        val nb = id?.let(store::getNotebook)
+        note = note.copy(
+            notebookId = nb?.id,
+            notebookName = nb?.name.orEmpty(),
+            notebookColor = nb?.color.orEmpty(),
+        )
+        notebook = nb
+        nbPickerOpen = false
+        markDirty()
+    }
+
+    /** Picker → "Create notebook": swaps the sheet for the create form. */
+    fun openCreateNotebook() {
+        if (locked()) return
+        nbPickerOpen = false
+        nbCreateOpen = true
+    }
+
+    fun closeCreateNotebook() {
+        nbCreateOpen = false
+    }
+
+    /** `submitCreateNotebook()` — makes the notebook, moves this note into it and saves straight away. */
+    fun createNotebookAndMove(rawName: String, color: String, icon: String) {
+        if (locked()) return
+        val name = rawName.trim()
+        if (name.isEmpty()) {
+            showToast("Notebook name required", R.drawable.ic_fa_circle_exclamation)
+            return
+        }
+        val now = Iso.now()
+        val nb = Notebook(id = genId(), name = name.take(32), color = color, icon = icon, createdAt = now, updatedAt = now)
+        store.saveNotebook(nb)
+        note = note.copy(notebookId = nb.id, notebookName = nb.name, notebookColor = nb.color)
+        notebook = nb
+        nbCreateOpen = false
+        nbPickerOpen = false
+        markDirty()
+        save()
+        showToast("Notebook created and selected", R.drawable.ic_fa_book_open)
+    }
+
+    /** Web `isEditorReadLocked(true)`: edits are refused (with a toast) while Reading mode is on. */
+    private fun locked(): Boolean {
+        if (!readMode) return false
+        showToast("Reading mode is locked — turn it off to edit", R.drawable.ic_fa_circle_exclamation)
+        return true
+    }
+
     // ─── toolbar actions ─────────────────────
 
     fun toggleReadMode() {
@@ -449,6 +618,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
         const val KIND_FORMAT = 2
         const val TYPING_GAP_MS = 700L
         const val MAX_HISTORY = 100
+        const val TAG_MAX = 24
     }
 
     /** Everything a save would write; equal fingerprint = nothing to save (the web `saveHash`). */
