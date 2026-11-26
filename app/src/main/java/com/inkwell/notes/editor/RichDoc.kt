@@ -298,6 +298,13 @@ class RichDoc private constructor(
             }
         }
 
+        // A code block is edited in its own editor: its text is not in the field, so anything typed, pasted or entered at
+        // its slot goes onto a new paragraph right below the block instead of into the (invisible) code.
+        if (paras[i].type == BlockType.CODE && removed.isEmpty() && inserted.isNotEmpty()) {
+            val r = codeBlockAt(p)
+            if (r != null) return typedAfterObject(r.last, if (inserted == "\n") "" else inserted, typingMarks)
+        }
+
         // Backspace at the start of a line.
         if (removed == "\n" && inserted.isEmpty()) {
             val j = i + 1
@@ -310,6 +317,10 @@ class RichDoc private constructor(
                 }
                 if (pi.type == BlockType.CODE && pj.type == BlockType.CODE) {
                     // inside a code block Backspace joins the lines (falls through to the normal merge)
+                } else if (pi.type == BlockType.CODE && starts[j] != paraEnd(j)) {
+                    // Backspace at the start of the line below a code block: never merge text into the block (an empty
+                    // line is still removed by the normal merge). Delete the block from its editor.
+                    return EditResult(this, caret = p + 1)
                 } else if (pj.type.isObject) {
                     // Backspace into a divider / table: the normal merge below drops its (empty) line.
                 } else if (pj.type != BlockType.P || pj.indent > 0) {
@@ -512,7 +523,7 @@ class RichDoc private constructor(
     private fun withPara(index: Int, para: Para): RichDoc {
         val l = ArrayList(paras)
         l[index] = para
-        return RichDoc(text, marks, normalize(l), urls)
+        return create(text, marks, normalize(l), urls)
     }
 
     // ─── formatting ───────────────────────────
@@ -592,7 +603,7 @@ class RichDoc private constructor(
         if (shift.all { it == 0 }) return this
         val l = ArrayList(paras)
         for (k in 0 until n) if (shift[k] != 0) l[k] = l[k].copy(indent = (l[k].indent + shift[k]).coerceIn(0, MAX_INDENT))
-        return RichDoc(text, marks, normalize(l), urls)
+        return create(text, marks, normalize(l), urls)
     }
 
     /**
@@ -606,7 +617,7 @@ class RichDoc private constructor(
         for (k in a until b) m[k] = m[k] and Mark.LINK_MASK
         val l = ArrayList(paras)
         for (k in paraRange(start, end)) if (!l[k].type.isObject) l[k] = Para()
-        return RichDoc(text, m, normalize(l), urls)
+        return create(text, m, normalize(l), urls)
     }
 
     /** Tap on a checklist box. */
@@ -631,7 +642,7 @@ class RichDoc private constructor(
                 changed = true
             }
         }
-        return if (changed) RichDoc(text, marks, normalize(l), urls) else this
+        return if (changed) create(text, marks, normalize(l), urls) else this
     }
 
     // ─── links (Part 5) ───────────────────────
@@ -885,6 +896,19 @@ class RichDoc private constructor(
     /** Offset right after the last character of a code block. */
     fun codeBlockEnd(r: IntRange): Int = paraEnd(r.last)
 
+    /**
+     * Replaces the lines of code block [r] by [code] (one code line per `\n`). The caret goes to the paragraph after the
+     * block; the document never ends on a code block, so there always is one.
+     */
+    fun replaceCodeBlock(r: IntRange, code: String): EditResult {
+        val ls = lines()
+        repeat(r.last - r.first + 1) { ls.removeAt(r.first) }
+        val rows = code.replace("\r", "").split('\n')
+        for ((k, row) in rows.withIndex()) ls.add(r.first + k, Line(row, IntArray(row.length), Para(type = BlockType.CODE)))
+        val d = fromLines(ls, urls)
+        return EditResult(d, caret = d.starts[(r.first + rows.size).coerceAtMost(d.paraCount - 1)])
+    }
+
     /** Replaces a whole code block with one empty paragraph. */
     fun deleteCodeBlock(r: IntRange): EditResult {
         val ls = lines()
@@ -904,7 +928,7 @@ class RichDoc private constructor(
     private fun mapParas(range: Iterable<Int>, f: (Para) -> Para): RichDoc {
         val l = ArrayList(paras)
         for (k in range) l[k] = f(l[k])
-        return RichDoc(text, marks, normalize(l), urls)
+        return create(text, marks, normalize(l), urls)
     }
 
     companion object {
@@ -964,11 +988,14 @@ class RichDoc private constructor(
                 else -> paras + List(need - paras.size) { Para() }
             }
             val p = normalize(p0)
-            if (p.none { it.type.isObject }) return RichDoc(text, m, p, urls)
+            if (p.none { it.type.isObject || it.type == BlockType.CODE }) return RichDoc(text, m, p, urls)
             return repairObjects(text, m, p, urls)
         }
 
-        /** Divider / table lines hold no text (a line that does becomes a plain paragraph), and the document never ends on one. */
+        /**
+         * Divider / table lines hold no text (a line that does becomes a plain paragraph), and the document never ends on
+         * one — nor on a code block (its text is not in the field, so there must be a line after it to write in).
+         */
         private fun repairObjects(text: String, marks: IntArray, paras: List<Para>, urls: List<String>): RichDoc {
             var ps: MutableList<Para> = ArrayList(paras)
             var pos = 0
@@ -980,7 +1007,7 @@ class RichDoc private constructor(
             }
             var t = text
             var mk = marks
-            if (ps.last().type.isObject) {
+            if (ps.last().type.isObject || ps.last().type == BlockType.CODE) {
                 t = text + "\n"
                 mk = marks.copyOf(marks.size + 1)
                 ps.add(Para())

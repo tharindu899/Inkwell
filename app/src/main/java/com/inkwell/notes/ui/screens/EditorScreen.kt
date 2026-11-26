@@ -31,6 +31,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -68,6 +69,8 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.font.FontFamily
 import com.inkwell.notes.editor.BlockType
+import com.inkwell.notes.editor.CodeHighlighter
+import com.inkwell.notes.editor.CodePalette
 import com.inkwell.notes.editor.TableData
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -76,6 +79,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -112,7 +116,7 @@ import kotlinx.coroutines.delay
  *   Enter / Backspace list behaviour, basic code blocks.
  * Part 4: tags row → "Manage tags" modal, notebook row → "Move to Notebook" sheet (+ inline create).
  *   Both rows are tappable; they are hidden in Reading mode like the web (`.read-mode .tags-row`).
- * Part 5: inline code, code-block bar (Copy / Bottom / Delete above the toolbar), tables (drawn in the body, edited in a
+ * Part 5: inline code, code blocks (GitHub-style boxes that scroll sideways, edited in their own sheet), tables (drawn in the body, edited in a
  *   sheet; wide tables scroll sideways), link popover (tap a link in Reading mode to open it), divider, date/time, paste.
  * Coming next: images + drawing, markdown source mode, export.
  */
@@ -374,28 +378,30 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     },
                 )
 
-                // Code blocks: small Copy button in the top-right corner of every block
-                if (layoutRes != null && transformation != null && layoutRes!!.layoutInput.text.length == transformation.layout.length) {
-                    val lay2 = layoutRes!!
-                    val tr2 = transformation
-                    var kb = 0
-                    while (kb < ctl.doc.paraCount) {
-                        if (ctl.doc.paras[kb].type == BlockType.CODE && (kb == 0 || ctl.doc.paras[kb - 1].type != BlockType.CODE)) {
-                            val first = kb
-                            val off = tr2.layout.textStart(first)
-                            if (off >= 0) {
-                                val top2 = lay2.getLineTop(lay2.getLineForOffset(off.coerceAtMost(tr2.layout.length)))
-                                androidx.compose.runtime.key(first + 100000) {
-                                    CodeCopyButton(
-                                        modifier = Modifier
-                                            .padding(horizontal = 20.dp)
-                                            .offset { IntOffset(0, padTopPx + top2.toInt() - 4.dp.roundToPx()) },
-                                        onCopy = { ctl.copyCodeBlockAt(first) },
-                                    )
-                                }
-                            }
+                // Code blocks: the text field only reserves their (tall) line; the GitHub-style box — syntax colours, long
+                // lines scroll sideways instead of wrapping — sits on top. Tap it to edit (own editor, like tables).
+                val layC = layoutRes
+                val trC = transformation
+                if (layC != null && trC != null && layC.layoutInput.text.length == trC.layout.length) {
+                    for (k in 0 until ctl.doc.paraCount) {
+                        if (!trC.layout.isCodeFirst(k)) continue
+                        val off = trC.layout.objectOffset(k)
+                        if (off < 0 || off >= trC.layout.length) continue
+                        val line = layC.getLineForOffset(off)
+                        val top = layC.getLineTop(line)
+                        val bottom = layC.getLineBottom(line)
+                        val code = ctl.doc.codeBlockText(k..(k + trC.layout.codeLines(k) - 1))
+                        androidx.compose.runtime.key(k) {
+                            CodeBlock(
+                                code = code,
+                                modifier = Modifier
+                                    .padding(horizontal = 20.dp)
+                                    .offset { IntOffset(0, padTopPx + top.toInt()) }
+                                    .height(with(density) { (bottom - top).toDp() }),
+                                onClick = { ctl.openCodeBlock(k) },
+                                onCopy = { ctl.copyCodeBlockAt(k) },
+                            )
                         }
-                        kb++
                     }
                 }
 
@@ -434,16 +440,6 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 NotebookRow(name = ctl.notebook?.name, colorHex = ctl.notebook?.color, onClick = ctl::openNotebookPicker)
             }
             EditorFooter(words = ctl.wordCount, chars = ctl.charCount, saved = ctl.saved)
-
-            // ── code block actions (Copy / Bottom / Delete) while the caret is inside a code block ──
-            if (ctl.bodyEditable && ctl.toolbarState.inCodeBlock) {
-                CodeActionsBar(
-                    canDelete = !ctl.readMode,
-                    onCopy = ctl::copyCodeBlock,
-                    onBottom = ctl::codeBlockToBottom,
-                    onDelete = ctl::deleteCodeBlock,
-                )
-            }
 
             // ── formatting toolbar: docked at the bottom, right above the keyboard ──
             if (ctl.bodyEditable && !ctl.readMode) {
@@ -531,6 +527,20 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             if (data != null) {
                 androidx.compose.runtime.key(idx) {
                     TableEditModal(initial = data, onClose = ctl::closeTable, onDelete = ctl::deleteTable)
+                }
+            }
+        }
+
+        ctl.codeEditing?.let { first ->
+            val r = ctl.doc.codeBlockAt(ctl.doc.starts.getOrElse(first) { 0 })
+            if (r != null) {
+                androidx.compose.runtime.key(first) {
+                    CodeEditModal(
+                        initial = ctl.doc.codeBlockText(r),
+                        onClose = ctl::closeCodeBlock,
+                        onDelete = ctl::deleteCodeBlock,
+                        onCopy = ctl::copyCode,
+                    )
                 }
             }
         }
@@ -917,6 +927,53 @@ private fun TableBlock(data: TableData, modifier: Modifier, onClick: () -> Unit)
                 }
             }
         }
+    }
+}
+
+/**
+ * A code block as shown in the body (GitHub look: boxed, monospace, syntax colours). Long lines do not wrap — the block
+ * scrolls sideways. Tapping it opens the code editor. Its height matches the line [RichTransformation] reserved for it.
+ */
+@Composable
+private fun CodeBlock(code: String, modifier: Modifier, onClick: () -> Unit, onCopy: () -> Unit) {
+    val pal = CodePalette.of(Ink.colors.isDark)
+    val shape = RoundedCornerShape(8.dp)
+    val styled = remember(code, pal) { CodeHighlighter.highlight(code, pal) }
+    val lineSp = with(LocalDensity.current) { RichTransformation.CODE_LINE_DP.dp.toSp() }
+    val style = TextStyle(
+        color = pal.text,
+        fontSize = 13.sp,
+        lineHeight = lineSp,
+        fontFamily = FontFamily.Monospace,
+        lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
+    )
+    Box(
+        modifier
+            .fillMaxWidth()
+            .padding(vertical = RichTransformation.CODE_MARGIN_DP.dp)
+            .clip(shape)
+            .background(pal.bg)
+            .border(1.dp, pal.border, shape)
+            .tap(onClick),
+    ) {
+        Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
+            if (code.isEmpty()) {
+                BasicText(
+                    "Empty code block — tap to write",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = RichTransformation.CODE_PAD_DP.dp),
+                    style = style.copy(color = pal.hint),
+                    softWrap = false,
+                )
+            } else {
+                BasicText(
+                    styled,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = RichTransformation.CODE_PAD_DP.dp),
+                    style = style,
+                    softWrap = false,
+                )
+            }
+        }
+        CodeCopyButton(Modifier.padding(top = 6.dp), onCopy)
     }
 }
 

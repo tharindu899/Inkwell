@@ -63,9 +63,9 @@ class RichTransformation(
     private fun build(): AnnotatedString = buildAnnotatedString {
         val n = doc.paraCount
         var lastShown = n - 1
-        while (lastShown > 0 && doc.hidden[lastShown]) lastShown--
+        while (lastShown > 0 && layout.isHidden(lastShown)) lastShown--
         for (i in 0 until n) {
-            if (doc.hidden[i]) continue
+            if (layout.isHidden(i)) continue
             val p = doc.paras[i]
             val s = doc.starts[i]
             val e = doc.paraEnd(i)
@@ -81,12 +81,17 @@ class RichTransformation(
                 BlockType.H3 -> 1.0f
                 else -> 0f
             }
-            val isObject = p.type.isObject
+            val codeFirst = layout.isCodeFirst(i)
+            val isObject = p.type.isObject || codeFirst
             val needsParagraphStyle = align != null || headingScale > 0f || isObject
             if (needsParagraphStyle) {
                 if (isObject) {
-                    // Divider / table: one tall, untrimmed line — the screen paints the block into that space.
-                    val dp = if (p.type == BlockType.TABLE) tableHeightDp(p.table?.rowCount ?: 1) else HR_HEIGHT_DP
+                    // Divider / table / code block: one tall, untrimmed line — the screen paints the block into that space.
+                    val dp = when {
+                        codeFirst -> codeHeightDp(layout.codeLines(i))
+                        p.type == BlockType.TABLE -> tableHeightDp(p.table?.rowCount ?: 1)
+                        else -> HR_HEIGHT_DP
+                    }
                     pushStyle(
                         ParagraphStyle(
                             lineHeight = (dp / style.fontScale).sp,
@@ -108,9 +113,11 @@ class RichTransformation(
                 pop()
             }
 
-            val block = blockSpan(p)
+            val block = if (codeFirst) null else blockSpan(p)
             if (block != null) pushStyle(block)
-            if (p.type == BlockType.CODE) {
+            if (codeFirst) {
+                // nothing: the code lives in the code block painted over the slot (and in its own editor)
+            } else if (p.type == BlockType.CODE) {
                 append(doc.text.substring(s, e))
             } else {
                 var a = s
@@ -180,6 +187,13 @@ class RichTransformation(
         const val TABLE_PAD_DP = 8f
 
         fun tableHeightDp(rows: Int): Float = rows.coerceAtLeast(1) * TABLE_ROW_DP + 2 * TABLE_PAD_DP
+
+        /** One code line (the block draws the same number) · padding inside the box · gap above / below the box. */
+        const val CODE_LINE_DP = 20f
+        const val CODE_PAD_DP = 10f
+        const val CODE_MARGIN_DP = 4f
+
+        fun codeHeightDp(lines: Int): Float = lines.coerceAtLeast(1) * CODE_LINE_DP + 2 * CODE_PAD_DP + 2 * CODE_MARGIN_DP
     }
 
     /** Caret mapping (real text ⇄ shown text), used to keep the caret on screen. */

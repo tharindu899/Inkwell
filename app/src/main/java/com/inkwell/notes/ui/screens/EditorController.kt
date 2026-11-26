@@ -44,7 +44,7 @@ import java.util.Date
  *  - flush on pause / leave → [flush]
  *  - 2 s debounced auto-save → driven by [edits] from the screen (not while Reading mode is on)
  *
- * Part 5: inline code, code-block actions (Copy / Bottom / Delete), tables (edited in a sheet), link popover,
+ * Part 5: inline code, code blocks (GitHub-style boxes, edited in a sheet), tables (edited in a sheet), link popover,
  * divider, date/time insert and paste handling (markdown / HTML / code detection, sanitising).
  *
  * Part 4: tags (manage modal: add with Enter / comma, Backspace on an empty input removes the last, tap a chip to
@@ -137,6 +137,9 @@ class EditorController(private val context: Context, route: Route.Editor) {
 
     /** Paragraph index of the table open in the table sheet, or null. */
     var tableEditing by mutableStateOf<Int?>(null)
+
+    /** First paragraph of the code block open in the code editor, or null. */
+    var codeEditing by mutableStateOf<Int?>(null)
         private set
 
     // ─── tags + notebook (Part 4) ────────────
@@ -259,8 +262,10 @@ class EditorController(private val context: Context, route: Route.Editor) {
         if (readMode || !bodyEditable) return
         if (v.text == body.text) {
             // Caret / selection / IME-composition change only. Moving the caret drops a pending format.
-            if (v.selection != body.selection) pending = null
+            val moved = v.selection != body.selection
+            if (moved) pending = null
             body = v
+            if (moved) openCodeAtCaret()
             return
         }
         val caret = if (v.selection.collapsed) v.selection.start else null
@@ -300,6 +305,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
             TextFieldValue(result.doc.text, TextRange((result.caret ?: v.selection.start).coerceIn(0, result.doc.text.length)))
         }
         markDirty()
+        if (result.caret != null) openCodeAtCaret()
     }
 
     // ─── formatting (toolbar) ────────────────
@@ -368,28 +374,59 @@ class EditorController(private val context: Context, route: Route.Editor) {
     /** Code-block button: turns the selected lines into a code block (or back to paragraphs). */
     fun toggleCodeBlock() = setBlock(BlockType.CODE)
 
-    /** Copy action of the code bar: the whole block under the caret goes to the clipboard. */
-    fun copyCodeBlock() = copyCodeBlockAt(doc.paraIndexAt(body.selection.min))
-
     /** Copy button drawn on a code block: copies the block that contains paragraph [para]. */
     fun copyCodeBlockAt(para: Int) {
         val r = doc.codeBlockAt(doc.starts.getOrElse(para) { 0 }) ?: return
+        copyCode(doc.codeBlockText(r))
+    }
+
+    fun copyCode(code: String) {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
-        runCatching { cm.setPrimaryClip(ClipData.newPlainText("code", doc.codeBlockText(r))) }
+        runCatching { cm.setPrimaryClip(ClipData.newPlainText("code", code)) }
         showToast("Code copied", R.drawable.ic_fa_check)
     }
 
-    /** "Bottom": caret to the end of the code block (the screen scrolls it into view). */
-    fun codeBlockToBottom() {
-        val r = doc.codeBlockAt(body.selection.min) ?: return
-        val end = doc.codeBlockEnd(r)
-        body = body.copy(selection = TextRange(end))
-        pending = null
+    /** A code block's text is not in the body field, so a caret that lands on one (new block, arrow keys) opens its editor. */
+    private fun openCodeAtCaret() {
+        if (!canFormat) return
+        val at = body.selection.min.coerceIn(0, doc.text.length)
+        val r = doc.codeBlockAt(at) ?: return
+        codeEditing = r.first
     }
 
+    /** Tap on a code block in the body → code editor. */
+    fun openCodeBlock(para: Int) {
+        if (!canFormat || doc.paras.getOrNull(para)?.type != BlockType.CODE) return
+        codeEditing = para
+    }
+
+    /** Editor closed: the edited text replaces the block (one undo step, only when something changed; empty = block removed). */
+    fun closeCodeBlock(code: String) {
+        val i = codeEditing ?: return
+        codeEditing = null
+        val r = doc.codeBlockAt(doc.starts.getOrElse(i) { 0 }) ?: return
+        val clean = code.replace("\r", "")
+        if (clean.isEmpty()) {
+            recordBefore(KIND_FORMAT)
+            applyResult(doc.deleteCodeBlock(r))
+            return
+        }
+        if (doc.codeBlockText(r) == clean) {
+            // nothing changed: put the caret after the block so it doesn't sit "inside" it
+            val next = (r.last + 1).coerceAtMost(doc.paraCount - 1)
+            body = body.copy(selection = TextRange(doc.starts[next]))
+            return
+        }
+        recordBefore(KIND_FORMAT)
+        applyResult(doc.replaceCodeBlock(r, clean))
+    }
+
+    /** "Delete" in the code editor: the block goes away. */
     fun deleteCodeBlock() {
+        val i = codeEditing ?: return
+        codeEditing = null
         if (!canFormat) return
-        val r = doc.codeBlockAt(body.selection.min) ?: return
+        val r = doc.codeBlockAt(doc.starts.getOrElse(i) { 0 }) ?: return
         recordBefore(KIND_FORMAT)
         applyResult(doc.deleteCodeBlock(r))
     }
@@ -522,6 +559,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
         body = TextFieldValue(doc.text, TextRange(c))
         pending = null
         markDirty()
+        openCodeAtCaret()
     }
 
     fun toggleMarkdown() {
@@ -542,8 +580,15 @@ class EditorController(private val context: Context, route: Route.Editor) {
     private inline fun format(op: (RichDoc) -> RichDoc) {
         if (!canFormat) return
         recordBefore(KIND_FORMAT)
-        doc = op(doc)
+        val next = op(doc)
+        doc = next
+        if (next.text != body.text) {
+            // a code block at the end of the note gets an empty line after it (text appended, so the selection stays valid)
+            val sel = body.selection
+            body = TextFieldValue(next.text, TextRange(sel.start.coerceIn(0, next.text.length), sel.end.coerceIn(0, next.text.length)))
+        }
         markDirty()
+        openCodeAtCaret()
     }
 
     // ─── undo / redo ─────────────────────────

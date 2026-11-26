@@ -627,3 +627,131 @@ private fun TableAction(label: String, color: Color, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) { InkText(label, size = 12.sp, weight = FontWeight.ExtraBold, color = color, maxLines = 1) }
 }
+
+
+// ─────────────────────────────────────────────
+// Part 5 — code block editor
+// ─────────────────────────────────────────────
+
+/** Characters that are slow to find on a phone keyboard; one tap puts them at the caret. */
+private val CODE_KEYS = listOf("{", "}", "(", ")", "[", "]", "<", ">", ";", "=", "\"", "'", "/", "\\", "|", "_", "#", "$", "`")
+
+/**
+ * The code editor sheet: monospace, no wrapping (long lines scroll sideways), GitHub syntax colours while you type.
+ * Done (or Back / tapping outside) stores the text; an empty text removes the block.
+ */
+@Composable
+fun CodeEditModal(
+    initial: String,
+    onClose: (String) -> Unit,
+    onDelete: () -> Unit,
+    onCopy: (String) -> Unit,
+) {
+    val c = Ink.colors
+    val pal = remember(c.isDark) { com.inkwell.notes.editor.CodePalette.of(c.isDark) }
+    val cardShape = RoundedCornerShape(22.dp)
+    val boxShape = RoundedCornerShape(12.dp)
+    var value by remember {
+        mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(initial, androidx.compose.ui.text.TextRange(initial.length)))
+    }
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
+    BackHandler { onClose(value.text) }
+
+    val highlight = remember(pal) {
+        androidx.compose.ui.text.input.VisualTransformation { t ->
+            androidx.compose.ui.text.input.TransformedText(
+                com.inkwell.notes.editor.CodeHighlighter.highlight(t.text, pal),
+                androidx.compose.ui.text.input.OffsetMapping.Identity,
+            )
+        }
+    }
+
+    fun insert(s: String) {
+        val sel = value.selection
+        val t = value.text.replaceRange(sel.min, sel.max, s)
+        value = androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(sel.min + s.length))
+    }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.44f))
+            .tap { onClose(value.text) }
+            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
+            .padding(start = 13.dp, end = 13.dp, bottom = 14.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            Modifier
+                .widthIn(max = 640.dp)
+                .fillMaxWidth()
+                .clip(cardShape)
+                .background(c.bg)
+                .border(1.dp, c.border, cardShape)
+                .tap { }
+                .padding(18.dp),
+        ) {
+            InkText("Edit code", family = Ink.serif, size = 20.sp, weight = FontWeight.Bold, lineHeight = 24.sp)
+            Spacer(Modifier.height(4.dp))
+            InkText(
+                "Long lines stay on one line — scroll sideways to read them.",
+                size = 12.sp,
+                color = c.text2,
+                lineHeight = 17.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 140.dp, max = 300.dp)
+                    .clip(boxShape)
+                    .background(pal.bg)
+                    .border(1.dp, pal.border, boxShape)
+                    .verticalScroll(rememberScrollState())
+                    .horizontalScroll(rememberScrollState()),
+            ) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    modifier = Modifier
+                        .focusRequester(focus)
+                        .widthIn(min = 300.dp)
+                        .heightIn(min = 140.dp)
+                        .padding(12.dp),
+                    textStyle = TextStyle(
+                        color = pal.text,
+                        fontSize = 13.sp,
+                        lineHeight = 20.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    ),
+                    cursorBrush = SolidColor(c.accent),
+                    visualTransformation = highlight,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None,
+                        autoCorrectEnabled = false,
+                    ),
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                TableAction("Tab", c.accent) { insert("  ") }
+                TableAction("Copy", c.text2) { onCopy(value.text) }
+                for (k in CODE_KEYS) TableAction(k, c.text1) { insert(k) }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TagButton("Delete block", DeleteRed.copy(alpha = 0.12f), DeleteRed, DeleteRed.copy(alpha = 0.4f), Modifier.weight(1f), onDelete)
+                TagButton("Done", c.accent, onAccent(), c.accent, Modifier.weight(1f)) { onClose(value.text) }
+            }
+        }
+    }
+}
