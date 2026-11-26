@@ -826,7 +826,10 @@ class EditorController(private val context: Context, route: Route.Editor) {
         val rich = bodyEditable
 
         // Brand-new note that is still completely empty: don't litter the list with "Untitled".
-        if (!persisted && titleText.isEmpty() && text.isBlank() && !note.pinned) {
+        // A picked notebook or a tag is a deliberate choice, so such a note is kept.
+        if (!persisted && titleText.isEmpty() && text.isBlank() && !note.pinned &&
+            note.notebookId == null && note.tags.isEmpty()
+        ) {
             dirty = false
             saved = true
             return
