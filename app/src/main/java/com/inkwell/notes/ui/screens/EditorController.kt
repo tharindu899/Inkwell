@@ -369,8 +369,11 @@ class EditorController(private val context: Context, route: Route.Editor) {
     fun toggleCodeBlock() = setBlock(BlockType.CODE)
 
     /** Copy action of the code bar: the whole block under the caret goes to the clipboard. */
-    fun copyCodeBlock() {
-        val r = doc.codeBlockAt(body.selection.min) ?: return
+    fun copyCodeBlock() = copyCodeBlockAt(doc.paraIndexAt(body.selection.min))
+
+    /** Copy button drawn on a code block: copies the block that contains paragraph [para]. */
+    fun copyCodeBlockAt(para: Int) {
+        val r = doc.codeBlockAt(doc.starts.getOrElse(para) { 0 }) ?: return
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
         runCatching { cm.setPrimaryClip(ClipData.newPlainText("code", doc.codeBlockText(r))) }
         showToast("Code copied", R.drawable.ic_fa_check)

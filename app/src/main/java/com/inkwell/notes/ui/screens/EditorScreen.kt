@@ -294,7 +294,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                             val lay = layoutRes
                             val tr = transformationNow
                             if (lay != null && tr != null) {
-                                drawListControls(lay, tr, fontPx, c.accent, c.text3, tickColor, c.borderHi)
+                                drawListControls(lay, tr, fontPx, c.accent, c.text3, tickColor, c.borderHi, c.text3.copy(alpha = 0.12f), c.border)
                             }
                         }
                         // Tap on a checklist box / collapse chevron: handled here (before the text field sees the
@@ -373,6 +373,31 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                         }
                     },
                 )
+
+                // Code blocks: small Copy button in the top-right corner of every block
+                if (layoutRes != null && transformation != null && layoutRes!!.layoutInput.text.length == transformation.layout.length) {
+                    val lay2 = layoutRes!!
+                    val tr2 = transformation
+                    var kb = 0
+                    while (kb < ctl.doc.paraCount) {
+                        if (ctl.doc.paras[kb].type == BlockType.CODE && (kb == 0 || ctl.doc.paras[kb - 1].type != BlockType.CODE)) {
+                            val first = kb
+                            val off = tr2.layout.textStart(first)
+                            if (off >= 0) {
+                                val top2 = lay2.getLineTop(lay2.getLineForOffset(off.coerceAtMost(tr2.layout.length)))
+                                androidx.compose.runtime.key(first + 100000) {
+                                    CodeCopyButton(
+                                        modifier = Modifier
+                                            .padding(horizontal = 20.dp)
+                                            .offset { IntOffset(0, padTopPx + top2.toInt() - 4.dp.roundToPx()) },
+                                        onCopy = { ctl.copyCodeBlockAt(first) },
+                                    )
+                                }
+                            }
+                        }
+                        kb++
+                    }
+                }
 
                 // Tables: the text field only reserves their (tall) line; the real, sideways-scrolling table sits on top.
                 val lay = layoutRes
@@ -615,9 +640,33 @@ private fun DrawScope.drawListControls(
     outline: Color,
     tick: Color,
     ruleColor: Color,
+    codeFill: Color,
+    codeBorder: Color,
 ) {
     val shownLen = lay.layoutInput.text.length
     val doc = tr.doc
+
+    // GitHub-style code blocks: one rounded, bordered box behind all lines of a block
+    var b = 0
+    while (b < doc.paraCount) {
+        if (doc.paras[b].type != BlockType.CODE) { b++; continue }
+        var e = b
+        while (e + 1 < doc.paraCount && doc.paras[e + 1].type == BlockType.CODE) e++
+        val s0 = tr.layout.textStart(b)
+        val e0 = tr.layout.textStart(e) + (doc.paraEnd(e) - doc.starts[e])
+        if (s0 >= 0 && e0 >= 0) {
+            val top = lay.getLineTop(lay.getLineForOffset(s0.coerceAtMost(shownLen)))
+            val bottom = lay.getLineBottom(lay.getLineForOffset(e0.coerceAtMost(shownLen)))
+            val padX = 10.dp.toPx()
+            val padY = 7.dp.toPx()
+            val tl = Offset(-padX, top - padY)
+            val sz = Size(size.width + 2 * padX, bottom - top + 2 * padY)
+            val rad = CornerRadius(9.dp.toPx())
+            drawRoundRect(codeFill, tl, sz, rad)
+            drawRoundRect(codeBorder, tl, sz, rad, style = Stroke(1.dp.toPx()))
+        }
+        b = e + 1
+    }
     for (k in 0 until doc.paraCount) {
         val p = doc.paras[k]
         if (p.type == BlockType.HR) {
@@ -867,6 +916,28 @@ private fun TableBlock(data: TableData, modifier: Modifier, onClick: () -> Unit)
                     }
                 }
             }
+        }
+    }
+}
+
+/** GitHub-style "Copy" chip in the corner of a code block; shows "Copied" for a moment. */
+@Composable
+private fun CodeCopyButton(modifier: Modifier, onCopy: () -> Unit) {
+    val c = Ink.colors
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { delay(1000L); copied = false } }
+    val shape = RoundedCornerShape(7.dp)
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
+        Box(
+            Modifier
+                .padding(end = 6.dp)
+                .clip(shape)
+                .background(c.bg.copy(alpha = 0.92f))
+                .border(1.dp, c.border, shape)
+                .tap { onCopy(); copied = true }
+                .padding(horizontal = 9.dp, vertical = 4.dp),
+        ) {
+            InkText(if (copied) "Copied" else "Copy", size = 11.sp, weight = FontWeight.Bold, color = if (copied) c.success else c.text2)
         }
     }
 }

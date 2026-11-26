@@ -137,7 +137,8 @@ class RichTransformation(
         BlockType.H3 -> SpanStyle(fontSize = style.fontSizeSp.sp, fontWeight = FontWeight.SemiBold, fontFamily = style.serif)
         BlockType.QUOTE -> SpanStyle(color = style.quoteColor, fontStyle = FontStyle.Italic)
         BlockType.TASK -> if (p.checked) SpanStyle(color = style.doneColor, textDecoration = TextDecoration.LineThrough) else null
-        BlockType.CODE -> SpanStyle(fontFamily = FontFamily.Monospace, fontSize = (style.fontSizeSp * 0.92f).sp, background = style.codeBg)
+        // the box behind a code block is painted by the screen (GitHub-style), so no per-character background here
+        BlockType.CODE -> SpanStyle(fontFamily = FontFamily.Monospace, fontSize = (style.fontSizeSp * 0.92f).sp)
         else -> null
     }
 
