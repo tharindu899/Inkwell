@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,7 +43,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -79,8 +85,10 @@ import kotlinx.coroutines.delay
  *   tags / notebook rows (display only), word / char count + saved indicator,
  *   2 s auto-save, flush on pause / leave, delete confirm.
  * Part 2: rich body (RichDoc) + formatting toolbar (marks, headings, lists, quote, align, indent, undo/redo).
- * Coming next: checklists + markdown shortcuts, tags & notebook pickers, code blocks / tables /
- * checklists, images + drawing, markdown source mode, export.
+ * Part 3: checklists (tap a box), nested + collapsible lists (tap a chevron), markdown shortcuts + toggle,
+ *   Enter / Backspace list behaviour, basic code blocks.
+ * Coming next: tags & notebook pickers, code-block tools / tables / links, images + drawing,
+ *   markdown source mode, export.
  */
 @Composable
 fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
@@ -133,6 +141,8 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             accent = c.accent,
             highlightBg = Color(0xFFFFE49A).copy(alpha = 0.45f),
             serif = Ink.serif,
+            doneColor = c.text3,
+            codeBg = c.text3.copy(alpha = 0.16f),
         )
     }
 
@@ -148,6 +158,8 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     val transformation = if (ctl.bodyEditable) {
         remember(ctl.doc, richStyle) { RichTransformation(ctl.doc, richStyle) }
     } else null
+    val transformationNow by rememberUpdatedState(transformation)
+    val tapPadPx = with(LocalDensity.current) { 8.dp.toPx() }
 
     // Keep the caret (plus a margin, so sub/superscript lines are never cut) inside the visible body.
     LaunchedEffect(ctl.body.selection, ctl.body.text, layoutRes, viewportH) {
@@ -236,7 +248,29 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                         .fillMaxWidth()
                         .heightIn(min = 240.dp)
                         .focusRequester(bodyFocus)
-                        .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp),
+                        .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp)
+                        // Tap on a checklist box / collapse chevron: handled here (before the text field sees the
+                        // tap), so it toggles without moving the caret or opening the keyboard.
+                        .pointerInput(ctl) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                val lay = layoutRes
+                                val tr = transformationNow
+                                if (lay == null || tr == null) return@awaitEachGesture
+                                val hit = hitListControl(lay, tr, down.position, tapPadPx) ?: return@awaitEachGesture
+                                val slop = viewConfiguration.touchSlop
+                                while (true) {
+                                    val ev = awaitPointerEvent(PointerEventPass.Initial)
+                                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                                    if (!ch.pressed) {
+                                        ch.consume()
+                                        if (hit.chevron) ctl.toggleCollapse(hit.para) else ctl.toggleChecked(hit.para)
+                                        return@awaitEachGesture
+                                    }
+                                    if ((ch.position - down.position).getDistance() > slop) return@awaitEachGesture
+                                }
+                            }
+                        },
                     readOnly = ctl.readMode || !ctl.bodyEditable,
                     textStyle = TextStyle(
                         color = c.text1,
@@ -284,6 +318,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     onAlign = ctl::setAlign,
                     onIndent = ctl::changeIndent,
                     onClear = ctl::clearFormat,
+                    onMarkdown = ctl::toggleMarkdown,
                     scroll = toolbarScroll,
                 )
             }
@@ -397,6 +432,33 @@ private fun TopIconButton(
 // Body helpers
 // ─────────────────────────────────────────────
 
+/** A tap target inside the list prefix: the collapse chevron or the checklist box of paragraph [para]. */
+private class ListHit(val para: Int, val chevron: Boolean)
+
+/**
+ * Which chevron / checkbox glyph (if any) is under [pos]. [pos] is in the text layout's own coordinates.
+ * Only the first line of a paragraph carries glyphs, so wrapped lines never hit.
+ */
+private fun hitListControl(lay: TextLayoutResult, tr: RichTransformation, pos: Offset, pad: Float): ListHit? {
+    if (pos.y < 0f || pos.y > lay.size.height.toFloat()) return null
+    val shownLen = lay.layoutInput.text.length
+    val line = lay.getLineForVerticalPosition(pos.y)
+    val para = tr.layout.paraAtTransformed(lay.getLineStart(line))
+    var best: ListHit? = null
+    var bestDist = Float.MAX_VALUE
+    fun consider(offset: Int, chevron: Boolean) {
+        if (offset < 0 || offset >= shownLen) return
+        val r = lay.getBoundingBox(offset)
+        if (pos.y < r.top || pos.y > r.bottom) return
+        if (pos.x < r.left - pad || pos.x > r.right + pad) return
+        val d = kotlin.math.abs(pos.x - (r.left + r.right) / 2f)
+        if (d < bestDist) { bestDist = d; best = ListHit(para, chevron) }
+    }
+    consider(tr.layout.chevronOffset(para), chevron = true)
+    consider(tr.layout.boxOffset(para), chevron = false)
+    return best
+}
+
 /** Shown above the body of notes that use rich formatting the Part 1 editor can't write back yet. */
 @Composable
 private fun RichNoteBanner() {
@@ -414,7 +476,7 @@ private fun RichNoteBanner() {
     ) {
         FaIcon(R.drawable.ic_fa_circle_info, tint = c.accent, size = 14.dp)
         InkText(
-            "This note has tables, code, links, images or a checklist. Those blocks arrive in the next " +
+            "This note has tables, links, images or inline code. Those blocks arrive in the next " +
                 "editor parts — until then the body stays read-only and untouched (title, pin and delete work).",
             size = 12.sp,
             color = c.text2,

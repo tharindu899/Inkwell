@@ -3,8 +3,9 @@ package com.inkwell.notes.editor
 /**
  * Stored note HTML (`content`) ⇄ [RichDoc], plus the markdown / preview text derived from it.
  *
- * Part 2 understands: `p div br h1–h6 ul ol li blockquote strong/b em/i u s/strike/del sup sub mark span`
- * with `style="text-align:…; margin-left:…px"`. Anything else (tables, code blocks, checklists, images,
+ * Understands: `p div br h1–h6 ul ol li (nested) blockquote pre/code strong/b em/i u s/strike/del sup sub mark span label`
+ * with `style="text-align:…; margin-left:…px"`, the web checklist markup (`ul.check-list`, `li[data-checked]`,
+ * `span.check-box`, `span.check-text`) and `li[data-collapsed]`. Anything else (tables, inline code, images,
  * links, hr …) makes [parse] return null — the editor then shows the note read-only instead of
  * flattening it. Later parts extend this list.
  */
@@ -21,11 +22,25 @@ object HtmlCodec {
         return Parser(html).run()
     }
 
-    private val ALLOWED_ATTRS = setOf("style", "dir", "lang", "spellcheck", "align")
+    private val ALLOWED_ATTRS = setOf(
+        "style", "dir", "lang", "spellcheck", "align",
+        "data-checked", "data-collapsed", "data-check-label", "data-type",
+        "role", "aria-checked", "aria-readonly", "tabindex", "contenteditable",
+    )
+    private val SAFE_CLASSES = setOf(
+        "check-list", "check-box", "check-text", "li-collapsible", "li-collapsed", "code-scroll", "ed-code",
+    )
+    private val LANG_CLASS = Regex("^language-[a-z0-9_-]+$", RegexOption.IGNORE_CASE)
     private val ATTR_RE = Regex("""([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?""")
     private val WS_RE = Regex("\\s+")
 
-    private class Elem(val name: String, val align: Align?, val indent: Int?)
+    private class Elem(
+        val name: String,
+        val align: Align?,
+        val indent: Int?,
+        val checked: Boolean = false,
+        val collapsed: Boolean = false,
+    )
 
     private class Parser(private val src: String) {
         private val texts = ArrayList<String>()
@@ -41,6 +56,8 @@ object HtmlCodec {
         private val lists = ArrayList<BlockType>()
         private var quoteDepth = 0
         private var headingLevel = 0
+        private var preDepth = 0
+        private var preStartParas = 0
         private val counts = IntArray(7) // b i u s sup sub mark
 
         fun run(): RichDoc? {
@@ -112,10 +129,26 @@ object HtmlCodec {
         private fun openTag(name: String, attrSrc: String): Boolean {
             var align: Align? = null
             var indent: Int? = null
+            var checked = false
+            var collapsed = false
+            var taskList = false
+            var checkBox = false
             for (m in ATTR_RE.findAll(attrSrc)) {
                 val an = m.groupValues[1].lowercase()
                 val av = m.groupValues[2].ifEmpty { m.groupValues[3].ifEmpty { m.groupValues[4] } }
+                if (an == "class") {
+                    for (cls in av.split(WS_RE).filter { it.isNotEmpty() }) {
+                        if (cls !in SAFE_CLASSES && !LANG_CLASS.matches(cls)) return false
+                        if (cls == "check-list") taskList = true
+                        if (cls == "check-box") checkBox = true
+                        if (cls == "li-collapsed") collapsed = true
+                    }
+                    continue
+                }
                 if (an !in ALLOWED_ATTRS) return false
+                if (an == "data-type" && av == "taskList") taskList = true
+                if ((an == "data-checked" || an == "aria-checked") && av == "true") checked = true
+                if (an == "data-collapsed" && av == "true") collapsed = true
                 if (an == "align") align = alignOf(av)
                 if (an == "style") {
                     for (decl in av.split(';')) {
@@ -133,7 +166,10 @@ object HtmlCodec {
             }
 
             when (name) {
-                "p", "div" -> { closePara(false); elems.add(Elem(name, align, indent)); startPara() }
+                "p", "div" -> {
+                    if (preDepth > 0) { elems.add(Elem(name, null, null)); return true }
+                    closePara(false); elems.add(Elem(name, align, indent)); startPara()
+                }
                 "h1", "h2", "h3", "h4", "h5", "h6" -> {
                     closePara(false)
                     headingLevel = minOf(name[1] - '0', 3)
@@ -142,24 +178,36 @@ object HtmlCodec {
                 }
                 "ul", "ol" -> {
                     closePara(false)
-                    if (lists.isNotEmpty()) return false // nested lists arrive with Part 3
-                    lists.add(if (name == "ul") BlockType.UL else BlockType.OL)
+                    lists.add(if (name == "ol") BlockType.OL else if (taskList) BlockType.TASK else BlockType.UL)
                     elems.add(Elem(name, align, indent))
                 }
                 "li" -> {
                     closePara(false)
                     if (lists.isEmpty()) lists.add(BlockType.UL) // stray <li>
-                    elems.add(Elem(name, align, indent))
+                    elems.add(Elem(name, align, indent, checked, collapsed))
                     startPara()
                 }
+                "label" -> elems.add(Elem(name, null, null))
                 "blockquote" -> {
                     closePara(false)
                     quoteDepth++
                     elems.add(Elem(name, align, indent))
                 }
+                "pre" -> {
+                    closePara(false)
+                    preDepth++
+                    preStartParas = paras.size
+                    elems.add(Elem(name, align, indent))
+                    startPara()
+                }
+                "code" -> {
+                    if (preDepth == 0) return false // inline code arrives with Part 5
+                    elems.add(Elem(name, null, null))
+                }
                 "br" -> {
                     if (!open) startPara()
                     commit()
+                    if (preDepth > 0) startPara()
                 }
                 "strong", "b" -> { counts[0]++; elems.add(Elem("b", null, null)) }
                 "em", "i" -> { counts[1]++; elems.add(Elem("i", null, null)) }
@@ -168,7 +216,10 @@ object HtmlCodec {
                 "sup" -> { counts[4]++; elems.add(Elem("sup", null, null)) }
                 "sub" -> { counts[5]++; elems.add(Elem("sub", null, null)) }
                 "mark" -> { counts[6]++; elems.add(Elem("mark", null, null)) }
-                "span" -> elems.add(Elem("span", align, indent))
+                "span" -> {
+                    elems.add(Elem("span", align, indent))
+                    if (checkBox && open && cur.type == BlockType.TASK) cur = cur.copy(checked = checked)
+                }
                 else -> return false
             }
             return true
@@ -188,7 +239,19 @@ object HtmlCodec {
             while (elems.size > idx) elems.removeAt(elems.lastIndex)
 
             when (key) {
-                "p", "div", "li" -> if (open) commit()
+                "p", "div" -> if (open && preDepth == 0) commit()
+                "li" -> if (open) commit()
+                "pre" -> {
+                    if (open) { if (curText.isNotEmpty()) commit() else open = false }
+                    if (paras.size == preStartParas) { // empty block → keep one empty code line
+                        cur = Para(BlockType.CODE)
+                        curText.setLength(0)
+                        curMarks.clear()
+                        open = true
+                        commit()
+                    }
+                    if (preDepth > 0) preDepth--
+                }
                 "h1", "h2", "h3", "h4", "h5", "h6" -> { if (open) commit(); headingLevel = 0 }
                 "ul", "ol" -> { closePara(false); if (lists.isNotEmpty()) lists.removeAt(lists.lastIndex) }
                 "blockquote" -> { closePara(false); if (quoteDepth > 0) quoteDepth-- }
@@ -204,7 +267,7 @@ object HtmlCodec {
         }
 
         private val SUPPORTED_CLOSE = setOf(
-            "p", "div", "li", "ul", "ol", "blockquote", "span", "b", "strong", "i", "em", "u", "s",
+            "p", "div", "li", "ul", "ol", "blockquote", "span", "label", "pre", "code", "b", "strong", "i", "em", "u", "s",
             "strike", "del", "sup", "sub", "mark", "h1", "h2", "h3", "h4", "h5", "h6", "br",
         )
 
@@ -221,16 +284,26 @@ object HtmlCodec {
         }
 
         private fun startPara() {
-            val inLi = elems.any { it.name == "li" }
+            val liElem = elems.lastOrNull { it.name == "li" }
+            val inLi = liElem != null
             val type = when {
+                preDepth > 0 -> BlockType.CODE
                 inLi && lists.isNotEmpty() -> lists.last()
                 headingLevel > 0 -> when (headingLevel) { 1 -> BlockType.H1; 2 -> BlockType.H2; else -> BlockType.H3 }
                 quoteDepth > 0 -> BlockType.QUOTE
                 else -> BlockType.P
             }
             val align = elems.lastOrNull { it.align != null }?.align ?: Align.Start
-            val indent = elems.lastOrNull { it.indent != null }?.indent ?: 0
-            cur = Para(type, align, indent)
+            val margin = elems.lastOrNull { it.indent != null }?.indent ?: 0
+            // list items: nesting level (+ any Part-2 style margin); everything else: margin step
+            val indent = if (type.isList) (lists.size - 1 + margin).coerceIn(0, RichDoc.MAX_INDENT) else margin
+            cur = Para(
+                type = type,
+                align = align,
+                indent = indent,
+                checked = type == BlockType.TASK && liElem?.checked == true,
+                collapsed = type.isList && liElem?.collapsed == true,
+            )
             curText.setLength(0)
             curMarks.clear()
             open = true
@@ -239,7 +312,7 @@ object HtmlCodec {
         private fun commit() {
             if (!open) return
             val t = curText.toString()
-            val trimmed = t.trimEnd()
+            val trimmed = if (cur.type == BlockType.CODE) t else t.trimEnd()
             texts.add(trimmed)
             markLists.add(IntArray(trimmed.length) { curMarks[it] })
             paras.add(cur)
@@ -251,8 +324,22 @@ object HtmlCodec {
             if (force || curText.isNotEmpty()) commit() else open = false
         }
 
+        private fun codeText(raw: String) {
+            // whitespace between <pre> and <code> is layout, not code
+            if (elems.none { it.name == "code" } && raw.isBlank()) return
+            val s = decode(raw).replace("\u200B", "")
+            for (ch in s) {
+                if (!open) startPara()
+                if (ch == '\r') continue
+                if (ch == '\n') { commit(); startPara(); continue }
+                curText.append(ch)
+                curMarks.add(0)
+            }
+        }
+
         private fun text(raw: String) {
             if (raw.isEmpty()) return
+            if (preDepth > 0) { codeText(raw); return }
             var s = decode(raw).replace(WS_RE, " ")
             if (!open) {
                 if (s.isBlank()) return // whitespace between tags
@@ -320,15 +407,16 @@ object HtmlCodec {
         while (i < doc.paraCount) {
             val p = doc.paras[i]
             if (p.type.isList) {
-                val tag = if (p.type == BlockType.UL) "ul" else "ol"
-                out.append('<').append(tag).append('>')
-                while (i < doc.paraCount && doc.paras[i].type == p.type) {
-                    out.append("<li").append(styleAttr(doc.paras[i])).append('>')
-                    out.append(inlineHtml(doc, i))
-                    out.append("</li>")
+                i = listRun(doc, i, out)
+                continue
+            }
+            if (p.type == BlockType.CODE) {
+                val lines = ArrayList<String>()
+                while (i < doc.paraCount && doc.paras[i].type == BlockType.CODE) {
+                    lines.add(doc.text.substring(doc.starts[i], doc.paraEnd(i)))
                     i++
                 }
-                out.append("</").append(tag).append('>')
+                out.append("<pre><code>").append(escape(lines.joinToString("\n"))).append("</code></pre>")
                 continue
             }
             val tag = when (p.type) {
@@ -338,7 +426,7 @@ object HtmlCodec {
                 BlockType.QUOTE -> "blockquote"
                 else -> "p"
             }
-            out.append('<').append(tag).append(styleAttr(p)).append('>')
+            out.append('<').append(tag).append(styleAttr(p, margin = true)).append('>')
             out.append(inlineHtml(doc, i))
             out.append("</").append(tag).append('>')
             i++
@@ -346,14 +434,63 @@ object HtmlCodec {
         return out.toString()
     }
 
-    private fun styleAttr(p: Para): String {
+    /** Writes the run of list items starting at [from] as (nested) `<ul>` / `<ol>`; returns the index after it. */
+    private fun listRun(doc: RichDoc, from: Int, out: StringBuilder): Int {
+        val open = ArrayList<BlockType>() // list type per open nesting level
+        var i = from
+        while (i < doc.paraCount && doc.paras[i].type.isList) {
+            val p = doc.paras[i]
+            val level = p.indent.coerceIn(0, open.size) // RichDoc keeps this ≤ depth, clamp anyway
+            while (open.size > level + 1) {
+                out.append("</li></").append(listTag(open.removeAt(open.lastIndex))).append('>')
+            }
+            if (open.size == level + 1) {
+                out.append("</li>")
+                if (open[level] != p.type) {
+                    out.append("</").append(listTag(open[level])).append('>')
+                    open[level] = p.type
+                    out.append(listOpen(p.type))
+                }
+            } else {
+                open.add(p.type)
+                out.append(listOpen(p.type))
+            }
+            out.append("<li")
+            if (p.type == BlockType.TASK) out.append(" data-checked=\"").append(p.checked).append('"')
+            if (p.collapsed && doc.hasChildren(i)) out.append(" data-collapsed=\"true\"")
+            out.append(styleAttr(p, margin = false)).append('>')
+            if (p.type == BlockType.TASK) {
+                out.append("<label data-check-label=\"true\"><span class=\"check-box\" contenteditable=\"false\" role=\"checkbox\" ")
+                    .append("aria-checked=\"").append(p.checked).append("\" data-checked=\"").append(p.checked)
+                    .append("\" tabindex=\"-1\"></span><span class=\"check-text\">")
+                    .append(inlineHtml(doc, i)).append("</span></label>")
+            } else {
+                out.append(inlineHtml(doc, i))
+            }
+            i++
+        }
+        while (open.isNotEmpty()) {
+            out.append("</li></").append(listTag(open.removeAt(open.lastIndex))).append('>')
+        }
+        return i
+    }
+
+    private fun listTag(t: BlockType) = if (t == BlockType.OL) "ol" else "ul"
+
+    private fun listOpen(t: BlockType): String = when (t) {
+        BlockType.OL -> "<ol>"
+        BlockType.TASK -> "<ul class=\"check-list\" data-type=\"taskList\">"
+        else -> "<ul>"
+    }
+
+    private fun styleAttr(p: Para, margin: Boolean): String {
         val parts = ArrayList<String>()
         when (p.align) {
             Align.Center -> parts.add("text-align:center")
             Align.End -> parts.add("text-align:right")
             Align.Start -> {}
         }
-        if (p.indent > 0) parts.add("margin-left:${p.indent * INDENT_PX}px")
+        if (margin && p.indent > 0) parts.add("margin-left:${p.indent * INDENT_PX}px")
         return if (parts.isEmpty()) "" else " style=\"${parts.joinToString(";")}\""
     }
 
@@ -405,15 +542,30 @@ object HtmlCodec {
 
     fun toMarkdown(doc: RichDoc): String {
         val sb = StringBuilder()
-        var olCount = 0
+        val nums = doc.olNumbers
         var prevType: BlockType? = null
         var wrote = false
-        for (i in 0 until doc.paraCount) {
+        var i = 0
+        while (i < doc.paraCount) {
             val p = doc.paras[i]
             val s = doc.starts[i]
             val e = doc.paraEnd(i)
+
+            if (p.type == BlockType.CODE) {
+                val lines = ArrayList<String>()
+                while (i < doc.paraCount && doc.paras[i].type == BlockType.CODE) {
+                    lines.add(doc.text.substring(doc.starts[i], doc.paraEnd(i)))
+                    i++
+                }
+                if (wrote) sb.append("\n\n")
+                sb.append("```\n").append(lines.joinToString("\n")).append("\n```")
+                wrote = true
+                prevType = BlockType.CODE
+                continue
+            }
+            i++
+
             if (s == e) { prevType = null; continue } // blank lines aren't content in markdown
-            olCount = if (p.type == BlockType.OL) (if (prevType == BlockType.OL) olCount + 1 else 1) else 0
 
             val inline = StringBuilder()
             forRuns(doc, s, e) { a, b, m ->
@@ -426,17 +578,20 @@ object HtmlCodec {
                 if (m and Mark.SUB != 0) t = "<sub>$t</sub>"
                 inline.append(t)
             }
+            val k = i - 1
             val prefix = when (p.type) {
                 BlockType.H1 -> "# "
                 BlockType.H2 -> "## "
                 BlockType.H3 -> "### "
                 BlockType.UL -> "- "
-                BlockType.OL -> "$olCount. "
+                BlockType.OL -> "${nums[k]}. "
+                BlockType.TASK -> if (p.checked) "- [x] " else "- [ ] "
                 BlockType.QUOTE -> "> "
-                BlockType.P -> ""
+                else -> ""
             }
-            if (wrote) sb.append(if (p.type.isList && prevType == p.type) "\n" else "\n\n")
-            sb.append(prefix).append(inline)
+            val lead = if (p.type.isList) "  ".repeat(p.indent) else ""
+            if (wrote) sb.append(if (p.type.isList && prevType?.isList == true) "\n" else "\n\n")
+            sb.append(lead).append(prefix).append(inline)
             wrote = true
             prevType = p.type
         }

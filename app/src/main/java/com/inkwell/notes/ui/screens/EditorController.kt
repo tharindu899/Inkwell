@@ -35,10 +35,13 @@ import com.inkwell.notes.util.normalizeTagInput
  *  - flush on pause / leave → [flush]
  *  - 2 s debounced auto-save → driven by [edits] from the screen (not while Reading mode is on)
  *
+ * Part 3: checklists (tap a box), nested + collapsible lists, markdown shortcuts (toggle persisted as the
+ * `markdownMode` pref, same key as Settings and the web app), Enter / Backspace list behaviour (in [RichDoc.edit]).
+ *
  * Part 2: the body is a [RichDoc] (text + inline marks + per-line block attributes). The text field
  * edits `body.text`; every change is fed through [RichDoc.edit] so formatting follows the text.
- * A note whose stored HTML uses something [HtmlCodec] can't represent yet (tables, code blocks,
- * checklists, images, links …) is shown read-only ([bodyEditable] = false) and its `content` /
+ * A note whose stored HTML uses something [HtmlCodec] can't represent yet (tables, inline code,
+ * images, links …) is shown read-only ([bodyEditable] = false) and its `content` /
  * `markdown` are never rewritten, so opening + pinning + retitling such a note can't flatten it.
  */
 @Stable
@@ -70,6 +73,10 @@ class EditorController(private val context: Context, route: Route.Editor) {
     var bodyEditable by mutableStateOf(true)
         private set
 
+    /** Markdown shortcuts (`# `, `- `, `1. `, `[] `, `> `, ``` ```) on / off — `markdownMode` pref, default on. */
+    var markdownShortcuts by mutableStateOf(AppPrefs.getPref(context, "markdownMode", true))
+        private set
+
     /** Typing formatting chosen with a collapsed caret (e.g. Bold toggled, nothing selected yet). */
     private var pending by mutableStateOf<Int?>(null)
 
@@ -95,6 +102,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
                 align = para.align,
                 canUndo = undoStack.isNotEmpty(),
                 canRedo = redoStack.isNotEmpty(),
+                markdown = markdownShortcuts,
             )
         }
 
@@ -193,8 +201,11 @@ class EditorController(private val context: Context, route: Route.Editor) {
             body = v
             return
         }
-        recordBefore(KIND_TYPING)
-        val result = doc.edit(v.text, pending)
+        val caret = if (v.selection.collapsed) v.selection.start else null
+        val result = doc.edit(v.text, pending, markdownShortcuts, caret)
+        // A rewritten edit (shortcut conversion, leaving a list …) is its own undo step, so Undo takes just that back.
+        recordBefore(if (result.caret != null) KIND_FORMAT else KIND_TYPING)
+        if (result.caret != null) pending = null
         doc = result.doc
         body = if (result.doc.text == v.text) {
             v
@@ -234,6 +245,46 @@ class EditorController(private val context: Context, route: Route.Editor) {
     fun setAlign(align: Align) = format { it.setAlign(align, body.selection.min, body.selection.max) }
 
     fun changeIndent(delta: Int) = format { it.changeIndent(delta, body.selection.min, body.selection.max) }
+
+    // ─── lists (Part 3) ──────────────────────
+
+    /** Tap on a checklist box. */
+    fun toggleChecked(para: Int) {
+        if (!canFormat) return
+        recordBefore(KIND_FORMAT)
+        doc = doc.toggleChecked(para)
+        markDirty()
+    }
+
+    /**
+     * Tap on a collapse chevron. Works in Reading mode too (it only changes what is shown); the open / closed
+     * state is saved with the note like the web `data-collapsed`.
+     */
+    fun toggleCollapse(para: Int) {
+        if (!bodyEditable || !doc.hasChildren(para)) return
+        val collapsing = !doc.paras[para].collapsed
+        doc = doc.toggleCollapse(para)
+        if (collapsing) {
+            // keep the caret / selection out of the items that just disappeared
+            val lo = doc.starts[para + 1]
+            val hi = doc.paraEnd(doc.subtreeEnd(para))
+            val anchor = doc.paraEnd(para)
+            fun fix(o: Int) = if (o in lo..hi) anchor else o
+            val sel = body.selection
+            body = body.copy(selection = TextRange(fix(sel.start), fix(sel.end)))
+        }
+        historyVersion++
+        if (!readMode) markDirty()
+    }
+
+    fun toggleMarkdown() {
+        markdownShortcuts = !markdownShortcuts
+        AppPrefs.setPref(context, "markdownMode", markdownShortcuts)
+        showToast(
+            if (markdownShortcuts) "Markdown shortcuts on" else "Markdown shortcuts off",
+            R.drawable.ic_fa_code,
+        )
+    }
 
     fun clearFormat() {
         if (!canFormat) return

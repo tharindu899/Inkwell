@@ -26,45 +26,26 @@ class RichStyle(
     val accent: Color,
     val highlightBg: Color,
     val serif: FontFamily,
+    /** Text colour of a ticked checklist item. */
+    val doneColor: Color,
+    /** Background behind code-block lines. */
+    val codeBg: Color,
 )
 
 /**
  * Draws a [RichDoc] inside a plain `BasicTextField`: the field keeps editing the raw text, this
- * transformation paints marks (bold, italic …), block looks (headings, quotes, centred text) and
- * adds the list markers / indentation as a non-editable prefix in front of each paragraph.
- * The offset mapping keeps the caret and selection on the real text, never on the prefix.
+ * transformation paints marks (bold, italic …), block looks (headings, quotes, code, centred text) and
+ * adds the list markers / checkboxes / collapse chevrons / indentation as a non-editable prefix in front
+ * of each paragraph. Items hidden inside a collapsed list item are left out of the shown text.
+ * The offset mapping ([RichLayout]) keeps the caret and selection on the real text, never on the prefix.
  */
 class RichTransformation(
     private val doc: RichDoc,
     private val style: RichStyle,
 ) : VisualTransformation {
 
-    private val n = doc.paraCount
-    private val prefixes: Array<String> = Array(n) { "" }
-    /** cum[i] = total prefix length of paragraphs 0..i */
-    private val cum = IntArray(n)
-    private val tStart = IntArray(n)
-
-    init {
-        var olCount = 0
-        var prev: BlockType? = null
-        var total = 0
-        for (i in 0 until n) {
-            val p = doc.paras[i]
-            olCount = if (p.type == BlockType.OL) (if (prev == BlockType.OL) olCount + 1 else 1) else 0
-            val marker = when (p.type) {
-                BlockType.UL -> "•  "
-                BlockType.OL -> "$olCount.  "
-                BlockType.QUOTE -> "▎ "
-                else -> ""
-            }
-            prefixes[i] = "    ".repeat(p.indent) + marker
-            tStart[i] = doc.starts[i] + total
-            total += prefixes[i].length
-            cum[i] = total
-            prev = p.type
-        }
-    }
+    /** Prefix / hidden-paragraph geometry; also used by the screen to hit-test checkbox and chevron taps. */
+    val layout = RichLayout(doc)
 
     override fun filter(text: AnnotatedString): TransformedText {
         // The field and the document are updated together; if they ever disagree, show the raw text.
@@ -73,7 +54,11 @@ class RichTransformation(
     }
 
     private fun build(): AnnotatedString = buildAnnotatedString {
+        val n = doc.paraCount
+        var lastShown = n - 1
+        while (lastShown > 0 && doc.hidden[lastShown]) lastShown--
         for (i in 0 until n) {
+            if (doc.hidden[i]) continue
             val p = doc.paras[i]
             val s = doc.starts[i]
             val e = doc.paraEnd(i)
@@ -97,37 +82,43 @@ class RichTransformation(
                 pushStyle(ParagraphStyle(textAlign = align ?: TextAlign.Unspecified, lineHeight = lh))
             }
 
-            val prefix = prefixes[i]
+            val prefix = layout.prefixes[i]
             if (prefix.isNotEmpty()) {
-                pushStyle(SpanStyle(color = style.accent, fontWeight = FontWeight.Bold))
+                pushStyle(SpanStyle(color = if (p.type == BlockType.TASK && p.checked) style.doneColor else style.accent, fontWeight = FontWeight.Bold))
                 append(prefix)
                 pop()
             }
 
-            val block = blockSpan(p.type)
+            val block = blockSpan(p)
             if (block != null) pushStyle(block)
-            var a = s
-            while (a < e) {
-                var b = a + 1
-                while (b < e && doc.marks[b] == doc.marks[a]) b++
-                val span = markSpan(doc.marks[a])
-                if (span != null) pushStyle(span)
-                append(doc.text.substring(a, b))
-                if (span != null) pop()
-                a = b
+            if (p.type == BlockType.CODE) {
+                append(doc.text.substring(s, e))
+            } else {
+                var a = s
+                while (a < e) {
+                    var b = a + 1
+                    while (b < e && doc.marks[b] == doc.marks[a]) b++
+                    val span = markSpan(doc.marks[a])
+                    if (span != null) pushStyle(span)
+                    append(doc.text.substring(a, b))
+                    if (span != null) pop()
+                    a = b
+                }
             }
-            if (i < n - 1) append("\n")
+            if (i < lastShown) append("\n")
             if (block != null) pop()
 
             if (needsParagraphStyle) pop()
         }
     }
 
-    private fun blockSpan(type: BlockType): SpanStyle? = when (type) {
+    private fun blockSpan(p: Para): SpanStyle? = when (p.type) {
         BlockType.H1 -> SpanStyle(fontSize = (style.fontSizeSp * 1.4f).sp, fontWeight = FontWeight.Bold, fontFamily = style.serif)
         BlockType.H2 -> SpanStyle(fontSize = (style.fontSizeSp * 1.15f).sp, fontWeight = FontWeight.SemiBold, fontFamily = style.serif)
         BlockType.H3 -> SpanStyle(fontSize = style.fontSizeSp.sp, fontWeight = FontWeight.SemiBold, fontFamily = style.serif)
         BlockType.QUOTE -> SpanStyle(color = style.quoteColor, fontStyle = FontStyle.Italic)
+        BlockType.TASK -> if (p.checked) SpanStyle(color = style.doneColor, textDecoration = TextDecoration.LineThrough) else null
+        BlockType.CODE -> SpanStyle(fontFamily = FontFamily.Monospace, fontSize = (style.fontSizeSp * 0.92f).sp, background = style.codeBg)
         else -> null
     }
 
@@ -152,26 +143,11 @@ class RichTransformation(
         )
     }
 
-    /** Caret mapping (real text ⇄ text with list / indent prefixes), used to keep the caret on screen. */
+    /** Caret mapping (real text ⇄ shown text), used to keep the caret on screen. */
     val offsetMapping: OffsetMapping get() = mapping
 
     private val mapping = object : OffsetMapping {
-        override fun originalToTransformed(offset: Int): Int {
-            val o = offset.coerceIn(0, doc.text.length)
-            return o + cum[doc.paraIndexAt(o)]
-        }
-
-        override fun transformedToOriginal(offset: Int): Int {
-            // last paragraph whose prefix starts at or before [offset]
-            var lo = 0
-            var hi = n - 1
-            while (lo < hi) {
-                val mid = (lo + hi + 1) ushr 1
-                if (tStart[mid] <= offset) lo = mid else hi = mid - 1
-            }
-            val prefixEnd = tStart[lo] + prefixes[lo].length
-            val o = if (offset < prefixEnd) doc.starts[lo] else offset - cum[lo]
-            return o.coerceIn(0, doc.text.length)
-        }
+        override fun originalToTransformed(offset: Int): Int = layout.originalToTransformed(offset)
+        override fun transformedToOriginal(offset: Int): Int = layout.transformedToOriginal(offset)
     }
 }

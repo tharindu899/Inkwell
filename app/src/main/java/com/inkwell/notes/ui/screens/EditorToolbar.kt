@@ -51,6 +51,7 @@ class ToolbarState(
     val align: Align = Align.Start,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
+    val markdown: Boolean = true,
 )
 
 /** Which glyph a button draws. */
@@ -68,13 +69,15 @@ private sealed interface Glyph {
     data object Clear : Glyph
     data object Bullets : Glyph
     data object Numbers : Glyph
+    data object Checklist : Glyph
+    data object Markdown : Glyph
     data object Quote : Glyph
     data class AlignLines(val align: Align) : Glyph
     data class IndentArrow(val forward: Boolean) : Glyph
 }
 
 /**
- * Port of `.editor-toolbar` (Part 2 tools): history · inline · blocks · lists · align · extras · clear.
+ * Port of `.editor-toolbar` (Parts 2–3): history · markdown · inline · blocks · lists (bullets, numbers, checklist, quote) · align · extras · clear.
  * Tables, links, images, code, date/time and the toolbar customiser arrive in later parts.
  *
  * Buttons are plain taps (no focus), so the text field keeps its focus and selection while you format.
@@ -89,6 +92,7 @@ fun EditorToolbar(
     onAlign: (Align) -> Unit,
     onIndent: (Int) -> Unit,
     onClear: () -> Unit,
+    onMarkdown: () -> Unit = {},
     scroll: ScrollState = rememberScrollState(),
 ) {
     val c = Ink.colors
@@ -106,6 +110,8 @@ fun EditorToolbar(
             ToolButton(Glyph.Undo, enabled = state.canUndo, onClick = onUndo)
             ToolButton(Glyph.Redo, enabled = state.canRedo, onClick = onRedo)
             Sep()
+            ToolButton(Glyph.Markdown, on = state.markdown, onClick = onMarkdown)
+            Sep()
             ToolButton(Glyph.Bold, on = state.marks and Mark.BOLD != 0) { onMark(Mark.BOLD) }
             ToolButton(Glyph.Italic, on = state.marks and Mark.ITALIC != 0) { onMark(Mark.ITALIC) }
             ToolButton(Glyph.Underline, on = state.marks and Mark.UNDERLINE != 0) { onMark(Mark.UNDERLINE) }
@@ -118,6 +124,7 @@ fun EditorToolbar(
             Sep()
             ToolButton(Glyph.Bullets, on = state.block == BlockType.UL) { onBlock(BlockType.UL) }
             ToolButton(Glyph.Numbers, on = state.block == BlockType.OL) { onBlock(BlockType.OL) }
+            ToolButton(Glyph.Checklist, on = state.block == BlockType.TASK) { onBlock(BlockType.TASK) }
             ToolButton(Glyph.Quote, on = state.block == BlockType.QUOTE) { onBlock(BlockType.QUOTE) }
             Sep()
             ToolButton(Glyph.AlignLines(Align.Start), on = state.align == Align.Start) { onAlign(Align.Start) }
@@ -186,6 +193,17 @@ private fun GlyphView(glyph: Glyph, tint: Color) {
         Glyph.Italic -> Txt("I", tint, 15, FontWeight.Normal, italic = true)
         Glyph.Underline -> Txt("U", tint, 14, FontWeight.Bold, deco = TextDecoration.Underline)
         Glyph.Strike -> Txt("S", tint, 14, FontWeight.Bold, deco = TextDecoration.LineThrough)
+        Glyph.Markdown -> Txt("M↓", tint, 12, FontWeight.ExtraBold)
+        Glyph.Checklist -> Canvas(Modifier.size(16.dp)) {
+            val w = size.width
+            val sw = 1.8.dp.toPx()
+            drawRoundRect(tint, topLeft = Offset(sw / 2, sw / 2), size = androidx.compose.ui.geometry.Size(w - sw, w - sw),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+            val tick = Path().apply {
+                moveTo(w * 0.26f, w * 0.52f); lineTo(w * 0.44f, w * 0.70f); lineTo(w * 0.76f, w * 0.32f)
+            }
+            drawPath(tick, tint, style = androidx.compose.ui.graphics.drawscope.Stroke(sw, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        }
         Glyph.Quote -> Txt("“", tint, 22, FontWeight.Bold)
         Glyph.Highlight -> Box(
             Modifier.clip(RoundedCornerShape(3.dp)).background(Color(0xFFFFE49A).copy(alpha = 0.75f)).padding(horizontal = 4.dp),
