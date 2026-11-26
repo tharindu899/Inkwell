@@ -28,9 +28,55 @@ class RichStyle(
     val serif: FontFamily,
     /** Text colour of a ticked checklist item. */
     val doneColor: Color,
-    /** Background behind code-block lines. */
+    /** Fill of the code-block card (drawn behind the lines by the screen). */
     val codeBg: Color,
-)
+    /** Text colour inside code blocks. */
+    val codeFg: Color,
+    /** Inline `code`: background + text colour. */
+    val inlineCodeBg: Color,
+    val inlineCodeFg: Color,
+    /** Links (accent, underlined). */
+    val linkColor: Color,
+) {
+    /** Inline look of one character's mark Int (flags + link id); null = plain. Also used for table cells. */
+    fun markSpan(m: Int): SpanStyle? {
+        if (m == 0) return null
+        val flags = Mark.flags(m)
+        val isLink = Mark.linkId(m) != 0
+        val isCode = flags and Mark.CODE != 0
+        val deco = buildList {
+            if (flags and Mark.UNDERLINE != 0 || isLink) add(TextDecoration.Underline)
+            if (flags and Mark.STRIKE != 0) add(TextDecoration.LineThrough)
+        }
+        val baseline = when {
+            flags and Mark.SUP != 0 -> BaselineShift.Superscript
+            flags and Mark.SUB != 0 -> BaselineShift.Subscript
+            else -> null
+        }
+        return SpanStyle(
+            color = when {
+                isCode -> inlineCodeFg
+                isLink -> linkColor
+                else -> Color.Unspecified
+            },
+            fontWeight = if (flags and Mark.BOLD != 0) FontWeight.Bold else null,
+            fontStyle = if (flags and Mark.ITALIC != 0) FontStyle.Italic else null,
+            fontFamily = if (isCode) FontFamily.Monospace else null,
+            textDecoration = if (deco.isEmpty()) null else TextDecoration.combine(deco),
+            baselineShift = baseline,
+            fontSize = when {
+                baseline != null -> (fontSizeSp * 0.75f).sp
+                isCode -> (fontSizeSp * 0.92f).sp
+                else -> TextUnit.Unspecified
+            },
+            background = when {
+                isCode -> inlineCodeBg
+                flags and Mark.HIGHLIGHT != 0 -> highlightBg
+                else -> Color.Unspecified
+            },
+        )
+    }
+}
 
 /**
  * Draws a [RichDoc] inside a plain `BasicTextField`: the field keeps editing the raw text, this
@@ -42,10 +88,12 @@ class RichStyle(
 class RichTransformation(
     val doc: RichDoc,
     private val style: RichStyle,
+    /** Lines of blank space reserved for table paragraph k (the screen measures the table and feeds this back). */
+    objectLines: (Int) -> Int = { 1 },
 ) : VisualTransformation {
 
     /** Prefix / hidden-paragraph geometry; also used by the screen to hit-test checkbox and chevron taps. */
-    val layout = RichLayout(doc)
+    val layout = RichLayout(doc, objectLines)
 
     override fun filter(text: AnnotatedString): TransformedText {
         // The field and the document are updated together; if they ever disagree, show the raw text.
@@ -91,14 +139,19 @@ class RichTransformation(
 
             val block = blockSpan(p)
             if (block != null) pushStyle(block)
-            if (p.type == BlockType.CODE) {
+            if (p.type.isObject) {
+                // The placeholder is invisible: the screen draws the divider / lays the table over these lines.
+                pushStyle(SpanStyle(color = Color.Transparent))
+                append(OBJ)
+                pop()
+            } else if (p.type == BlockType.CODE) {
                 append(doc.text.substring(s, e))
             } else {
                 var a = s
                 while (a < e) {
                     var b = a + 1
                     while (b < e && doc.marks[b] == doc.marks[a]) b++
-                    val span = markSpan(doc.marks[a])
+                    val span = style.markSpan(doc.marks[a])
                     if (span != null) pushStyle(span)
                     append(doc.text.substring(a, b))
                     if (span != null) pop()
@@ -118,29 +171,8 @@ class RichTransformation(
         BlockType.H3 -> SpanStyle(fontSize = style.fontSizeSp.sp, fontWeight = FontWeight.SemiBold, fontFamily = style.serif)
         BlockType.QUOTE -> SpanStyle(color = style.quoteColor, fontStyle = FontStyle.Italic)
         BlockType.TASK -> if (p.checked) SpanStyle(color = style.doneColor, textDecoration = TextDecoration.LineThrough) else null
-        BlockType.CODE -> SpanStyle(fontFamily = FontFamily.Monospace, fontSize = (style.fontSizeSp * 0.92f).sp, background = style.codeBg)
+        BlockType.CODE -> SpanStyle(fontFamily = FontFamily.Monospace, fontSize = (style.fontSizeSp * 0.92f).sp, color = style.codeFg)
         else -> null
-    }
-
-    private fun markSpan(m: Int): SpanStyle? {
-        if (m == 0) return null
-        val deco = buildList {
-            if (m and Mark.UNDERLINE != 0) add(TextDecoration.Underline)
-            if (m and Mark.STRIKE != 0) add(TextDecoration.LineThrough)
-        }
-        val baseline = when {
-            m and Mark.SUP != 0 -> BaselineShift.Superscript
-            m and Mark.SUB != 0 -> BaselineShift.Subscript
-            else -> null
-        }
-        return SpanStyle(
-            fontWeight = if (m and Mark.BOLD != 0) FontWeight.Bold else null,
-            fontStyle = if (m and Mark.ITALIC != 0) FontStyle.Italic else null,
-            textDecoration = if (deco.isEmpty()) null else TextDecoration.combine(deco),
-            baselineShift = baseline,
-            fontSize = if (baseline != null) (style.fontSizeSp * 0.75f).sp else TextUnit.Unspecified,
-            background = if (m and Mark.HIGHLIGHT != 0) style.highlightBg else Color.Unspecified,
-        )
     }
 
     /** Caret mapping (real text ⇄ shown text), used to keep the caret on screen. */

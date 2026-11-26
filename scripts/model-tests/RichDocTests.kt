@@ -38,7 +38,7 @@ fun main() {
     check("code html", HtmlCodec.toHtml(code) == "<p>hi</p><pre><code>a &lt; b\n\n  c</code></pre><p>after</p>", HtmlCodec.toHtml(code))
     val emptyCode = HtmlCodec.parse("<pre><code></code></pre>")!!
     check("empty code", emptyCode.paras.size == 1 && emptyCode.paras[0].type == BlockType.CODE)
-    check("inline code still unsupported", HtmlCodec.parse("<p><code>x</code></p>") == null)
+    check("inline code supported (Part 5)", HtmlCodec.parse("<p><code>x</code></p>")?.marks?.get(0) == Mark.CODE)
     check("unknown class rejected", HtmlCodec.parse("<p class=\"foo\">x</p>") == null)
 
     // shortcuts

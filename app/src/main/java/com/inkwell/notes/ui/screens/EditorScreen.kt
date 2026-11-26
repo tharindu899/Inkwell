@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
@@ -34,6 +36,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
@@ -53,6 +56,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntOffset
+import android.content.Intent
+import android.net.Uri
+import com.inkwell.notes.editor.BlockType
+import com.inkwell.notes.editor.LinkTable
+import com.inkwell.notes.editor.Mark
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -134,6 +143,8 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
         }
     }
 
+    BackHandler(enabled = ctl.linkDraft != null) { ctl.closeLink() }
+    BackHandler(enabled = ctl.tableEdit != null) { ctl.closeCell() }
     BackHandler(enabled = ctl.deleteConfirmOpen) { ctl.dismissDelete() }
     BackHandler(enabled = ctl.nbCreateOpen) { ctl.closeCreateNotebook() }
     BackHandler(enabled = ctl.tagManageOpen) { ctl.closeTagManager() }
@@ -158,7 +169,11 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             highlightBg = Color(0xFFFFE49A).copy(alpha = 0.45f),
             serif = Ink.serif,
             doneColor = c.text3,
-            codeBg = c.text3.copy(alpha = 0.16f),
+            codeBg = Color(0xFF1C1A17),
+            codeFg = Color(0xFFD9F7C7),
+            inlineCodeBg = c.text3.copy(alpha = 0.16f),
+            inlineCodeFg = c.accent,
+            linkColor = c.accent,
         )
     }
 
@@ -171,8 +186,20 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     val bodyScroll = rememberScrollState()
     var viewportH by remember { mutableIntStateOf(0) }
     var layoutRes by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // Tables are Compose overlays: each one reports its height, and the text field reserves that many blank lines.
+    val tableHeights = remember { mutableStateMapOf<Int, Int>() }
+    val lineHpx = with(LocalDensity.current) { (fontSp * 1.72f).sp.toPx() }
+    val marginPx = with(LocalDensity.current) { 12.dp.toPx() }
+    val objLines: List<Int> = if (ctl.bodyEditable) {
+        ctl.doc.paras.mapIndexed { k, p ->
+            if (p.type == BlockType.TABLE) {
+                val h = tableHeights[k]
+                if (h == null) 4 else kotlin.math.ceil((h + marginPx) / lineHpx).toInt().coerceAtLeast(2)
+            } else 1
+        }
+    } else emptyList()
     val transformation = if (ctl.bodyEditable) {
-        remember(ctl.doc, richStyle) { RichTransformation(ctl.doc, richStyle) }
+        remember(ctl.doc, richStyle, objLines) { RichTransformation(ctl.doc, richStyle) { k -> objLines.getOrElse(k) { 1 } } }
     } else null
     val transformationNow by rememberUpdatedState(transformation)
     val tapPadPx = with(LocalDensity.current) { 8.dp.toPx() }
@@ -259,6 +286,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             ) {
                 if (!ctl.bodyEditable) RichNoteBanner()
 
+                Box(Modifier.fillMaxWidth()) {
                 BasicTextField(
                     value = ctl.body,
                     onValueChange = ctl::onBodyChange,
@@ -272,7 +300,30 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                             val lay = layoutRes
                             val tr = transformationNow
                             if (lay != null && tr != null) {
+                                drawBlockDecor(lay, tr, c.borderHi, Color(0xFF1C1A17), Color.White.copy(alpha = 0.12f))
                                 drawListControls(lay, tr, fontPx, c.accent, c.text3, tickColor)
+                            }
+                        }
+                        // Reading mode: tapping a link opens it.
+                        .pointerInput(ctl.readMode) {
+                            if (!ctl.readMode) return@pointerInput
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                val lay = layoutRes
+                                val tr = transformationNow
+                                if (lay == null || tr == null) return@awaitEachGesture
+                                val url = linkAt(lay, tr, down.position) ?: return@awaitEachGesture
+                                val slop = viewConfiguration.touchSlop
+                                while (true) {
+                                    val ev = awaitPointerEvent(PointerEventPass.Initial)
+                                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                                    if (!ch.pressed) {
+                                        ch.consume()
+                                        openUrl(context, url)
+                                        return@awaitEachGesture
+                                    }
+                                    if ((ch.position - down.position).getDistance() > slop) return@awaitEachGesture
+                                }
                             }
                         }
                         // Tap on a checklist box / collapse chevron: handled here (before the text field sees the
@@ -323,6 +374,56 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                         }
                     },
                 )
+
+                // ── Part 5 overlays: tables + code-block buttons, positioned from the text layout ──
+                val lay = layoutRes
+                val tr = transformationNow
+                if (lay != null && tr != null && ctl.bodyEditable) {
+                    val shown = lay.layoutInput.text.length
+                    val doc = tr.doc
+                    for (k in 0 until doc.paraCount) {
+                        val p = doc.paras[k]
+                        val ps = tr.layout.prefixStart(k)
+                        if (ps < 0 || ps > shown) continue
+                        val table = p.table
+                        if (p.type == BlockType.TABLE && table != null) {
+                            TableOverlay(
+                                table = table,
+                                style = richStyle,
+                                editable = !ctl.readMode,
+                                onCell = { r, cc -> ctl.openCell(k, r, cc) },
+                                modifier = Modifier
+                                    .padding(start = 20.dp, end = 20.dp)
+                                    .offset {
+                                        val l = layoutRes
+                                        val y = if (l == null) 0f else l.getLineTop(l.getLineForOffset(ps.coerceAtMost(maxOf(0, l.layoutInput.text.length - 1))))
+                                        IntOffset(0, (y + with(density) { 8.dp.toPx() + 6.dp.toPx() }).toInt())
+                                    }
+                                    .onSizeChanged { sz -> if (tableHeights[k] != sz.height) tableHeights[k] = sz.height },
+                            )
+                        } else if (tr.layout.isCodeHeader(k)) {
+                            val blockId = k
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 20.dp, end = 28.dp)
+                                    .offset {
+                                        val l = layoutRes
+                                        val y = if (l == null) 0f else l.getLineTop(l.getLineForOffset(ps.coerceAtMost(maxOf(0, l.layoutInput.text.length - 1))))
+                                        IntOffset(0, (y + with(density) { 8.dp.toPx() + 4.dp.toPx() }).toInt())
+                                    },
+                                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
+                            ) {
+                                CodeChip("Copy") { ctl.copyCode(blockId) }
+                                if (!ctl.readMode) {
+                                    CodeChip("Bottom") { ctl.jumpBelowCode(blockId) }
+                                    CodeChip("Delete", DeleteRed) { ctl.deleteCode(blockId) }
+                                }
+                            }
+                        }
+                    }
+                }
+                }
             }
 
             // ── bottom panel: tags, notebook, counts ──
@@ -345,6 +446,12 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     onIndent = ctl::changeIndent,
                     onClear = ctl::clearFormat,
                     onMarkdown = ctl::toggleMarkdown,
+                    onTable = ctl::insertTable,
+                    onDateTime = ctl::insertDateTime,
+                    onLink = ctl::openLink,
+                    onHr = ctl::insertHr,
+                    onCode = ctl::toggleInlineCode,
+                    onCodeBlock = ctl::toggleCodeBlock,
                     scroll = toolbarScroll,
                 )
             }
@@ -360,6 +467,23 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     ctl.confirmDelete()
                     onBack()
                 },
+            )
+        }
+
+        // ── Part 5: link dialog, table cell sheet ──
+        ctl.linkDraft?.let { d ->
+            LinkModal(draft = d, onSubmit = ctl::submitLink, onRemove = ctl::removeLink, onClose = ctl::closeLink)
+        }
+        val te = ctl.tableEdit
+        val tbl = ctl.tableForEdit
+        if (te != null && tbl != null) {
+            TableCellSheet(
+                table = tbl, row = te.row, col = te.col, text = ctl.cellText(),
+                onText = ctl::onCellText,
+                onRowAbove = ctl::rowAbove, onRowBelow = ctl::rowBelow, onDeleteRow = ctl::deleteRow,
+                onColLeft = ctl::colLeft, onColRight = ctl::colRight, onDeleteCol = ctl::deleteCol,
+                onToggleHeader = ctl::toggleHeader, onDeleteTable = ctl::deleteTable,
+                onClose = ctl::closeCell,
             )
         }
 
@@ -589,8 +713,8 @@ private fun RichNoteBanner() {
     ) {
         FaIcon(R.drawable.ic_fa_circle_info, tint = c.accent, size = 14.dp)
         InkText(
-            "This note has tables, links, images or inline code. Those blocks arrive in the next " +
-                "editor parts — until then the body stays read-only and untouched (title, pin and delete work).",
+            "This note has images or markup the editor can't write back yet. Images arrive in the next " +
+                "editor part — until then the body stays read-only and untouched (title, pin and delete work).",
             size = 12.sp,
             color = c.text2,
             lineHeight = 17.sp,
@@ -694,5 +818,91 @@ private fun EditorFooter(words: Int, chars: Int, saved: Boolean) {
                 color = if (saved) c.success else c.accent,
             )
         }
+    }
+}
+
+// ─────────────────────────────────────────────
+// Part 5 helpers
+// ─────────────────────────────────────────────
+
+/** Small pill on a code block's header line. */
+@Composable
+private fun CodeChip(label: String, color: Color = Color(0xFFD9F7C7), onClick: () -> Unit) {
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        Modifier
+            .height(24.dp)
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.10f))
+            .tap(onClick)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        InkText(label, size = 11.sp, weight = FontWeight.Bold, color = color, maxLines = 1)
+    }
+}
+
+/** Divider lines and code-block cards, painted behind the text over the lines RichLayout reserved. */
+private fun DrawScope.drawBlockDecor(
+    lay: TextLayoutResult,
+    tr: RichTransformation,
+    ruleColor: Color,
+    cardColor: Color,
+    cardBorder: Color,
+) {
+    val shown = lay.layoutInput.text.length
+    if (shown == 0) return
+    val doc = tr.doc
+    fun lineOf(t: Int) = lay.getLineForOffset(t.coerceIn(0, shown))
+    var k = 0
+    while (k < doc.paraCount) {
+        val p = doc.paras[k]
+        val ps = tr.layout.prefixStart(k)
+        if (ps >= 0 && p.type == BlockType.HR) {
+            val line = lineOf(ps)
+            val y = (lay.getLineTop(line) + lay.getLineBottom(line)) / 2f
+            drawLine(ruleColor, Offset(0f, y), Offset(size.width, y), 2.dp.toPx(), StrokeCap.Round)
+        } else if (ps >= 0 && tr.layout.isCodeHeader(k)) {
+            var last = k
+            while (last + 1 < doc.paraCount && doc.paras[last + 1].type == BlockType.CODE) last++
+            val endT = tr.layout.textStart(last) + (doc.paraEnd(last) - doc.starts[last])
+            val top = lay.getLineTop(lineOf(ps))
+            val bottom = lay.getLineBottom(lineOf(endT))
+            val pad = 8.dp.toPx()
+            val tl = Offset(-pad, top)
+            val sz = Size(size.width + pad * 2, bottom - top + 4.dp.toPx())
+            drawRoundRect(cardColor, tl, sz, CornerRadius(12.dp.toPx()))
+            drawRoundRect(cardBorder, tl, sz, CornerRadius(12.dp.toPx()), style = Stroke(1.dp.toPx()))
+            k = last
+        }
+        k++
+    }
+}
+
+/** The link under [pos] (text-layout coordinates), if any. */
+private fun linkAt(lay: TextLayoutResult, tr: RichTransformation, pos: Offset): String? {
+    val doc = tr.doc
+    val shown = lay.layoutInput.text.length
+    if (pos.y < 0f || pos.y > lay.size.height.toFloat()) return null
+    val t = lay.getOffsetForPosition(pos)
+    for (ti in intArrayOf(t - 1, t)) {
+        if (ti < 0 || ti >= shown) continue
+        val r = lay.getBoundingBox(ti)
+        if (pos.x < r.left || pos.x > r.right || pos.y < r.top || pos.y > r.bottom) continue
+        val o = tr.layout.transformedToOriginal(ti)
+        if (o !in 0 until doc.text.length || doc.text[o] == '\n') continue
+        val id = Mark.linkId(doc.marks[o])
+        if (id != 0) return LinkTable.urlOf(id)
+    }
+    return null
+}
+
+/** Opens http(s) / mailto / tel links in the matching app; anything else is ignored. */
+private fun openUrl(context: android.content.Context, url: String) {
+    val u = url.trim()
+    val ok = listOf("http://", "https://", "mailto:", "tel:").any { u.startsWith(it, ignoreCase = true) }
+    if (!ok) return
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }

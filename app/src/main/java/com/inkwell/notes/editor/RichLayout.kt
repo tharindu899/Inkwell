@@ -7,13 +7,19 @@ package com.inkwell.notes.editor
  *
  * Chevrons and checkboxes are blank slots here; the screen paints them as vector shapes.
  * Shown text = visible paragraphs joined by `'\n'`, each as `prefix + text`.
+ *
+ * Part 5: an object paragraph (divider / table) is shown as `(lines − 1) × '\n'` + [OBJ], i.e. it owns
+ * [objectLines] text lines of blank space that the screen draws the divider / overlays the table on; the first
+ * line of every code block gets one blank "header" line that carries the Copy / Bottom / Delete buttons.
  */
-class RichLayout(private val doc: RichDoc) {
+class RichLayout(private val doc: RichDoc, private val objectLines: (Int) -> Int = { 1 }) {
     private val n = doc.paraCount
     private val hidden = doc.hidden
     private val nums = doc.olNumbers
 
     val prefixes: Array<String> = Array(n) { "" }
+
+    private val codeHeader = BooleanArray(n)
 
     /** Char index of the collapse chevron inside [prefixes] (−1 = none). */
     private val chevronIdx = IntArray(n) { -1 }
@@ -35,6 +41,16 @@ class RichLayout(private val doc: RichDoc) {
     init {
         for (k in 0 until n) {
             val p = doc.paras[k]
+            if (p.type.isObject) {
+                val lines = if (p.type == BlockType.HR) 1 else objectLines(k).coerceIn(1, 400)
+                prefixes[k] = "\n".repeat(lines - 1)
+                continue
+            }
+            if (p.type == BlockType.CODE && (k == 0 || doc.paras[k - 1].type != BlockType.CODE)) {
+                codeHeader[k] = true
+                prefixes[k] = "\n"
+                continue
+            }
             val sb = StringBuilder("    ".repeat(p.indent))
             if (p.type.isList && doc.hasChildren(k)) {
                 chevronIdx[k] = sb.length
@@ -117,6 +133,9 @@ class RichLayout(private val doc: RichDoc) {
 
     /** Shown offset of the real text of paragraph [k] (−1 when hidden). */
     fun textStart(k: Int): Int = tTextStart[k]
+
+    /** True when paragraph [k] is the first line of a code block (its prefix is the blank header line). */
+    fun isCodeHeader(k: Int): Boolean = codeHeader[k]
 
     /** Shown offset of the collapse chevron glyph of [k], or −1. */
     fun chevronOffset(k: Int): Int = if (tPrefixStart[k] >= 0 && chevronIdx[k] >= 0) tPrefixStart[k] + chevronIdx[k] else -1

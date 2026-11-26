@@ -1,5 +1,7 @@
 package com.inkwell.notes.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.os.SystemClock
 import androidx.compose.runtime.Stable
@@ -17,8 +19,13 @@ import com.inkwell.notes.data.model.Notebook
 import com.inkwell.notes.editor.Align
 import com.inkwell.notes.editor.BlockType
 import com.inkwell.notes.editor.HtmlCodec
+import com.inkwell.notes.editor.LinkTable
 import com.inkwell.notes.editor.Mark
+import com.inkwell.notes.editor.MarkdownCodec
+import com.inkwell.notes.editor.OBJ
+import com.inkwell.notes.editor.Para
 import com.inkwell.notes.editor.RichDoc
+import com.inkwell.notes.editor.TableData
 import com.inkwell.notes.ui.Route
 import com.inkwell.notes.ui.components.ToastState
 import com.inkwell.notes.util.Iso
@@ -26,6 +33,21 @@ import com.inkwell.notes.util.countWords
 import com.inkwell.notes.util.genId
 import com.inkwell.notes.util.normalizeTagInput
 import java.text.Collator
+import java.text.DateFormat
+import java.util.Date
+
+/** The table cell the "Edit cell" sheet is open on (paragraph index of the table + row / column). */
+class TableEdit(val para: Int, val row: Int, val col: Int)
+
+/** The link dialog: [start]..[end] is the text it applies to (empty range = insert at the caret). */
+class LinkDraft(
+    val text: String,
+    val url: String,
+    val start: Int,
+    val end: Int,
+    /** An existing link is being edited (shows "Remove"). */
+    val editing: Boolean,
+)
 
 /**
  * State + save logic of the Editor page (the non-visual half of `pages/Editor.jsx`).
@@ -85,6 +107,13 @@ class EditorController(private val context: Context, route: Route.Editor) {
     /** Typing formatting chosen with a collapsed caret (e.g. Bold toggled, nothing selected yet). */
     private var pending by mutableStateOf<Int?>(null)
 
+    /** Part 5: the open table-cell sheet / link dialog (null = closed). Both are cleared by undo / redo. */
+    var tableEdit by mutableStateOf<TableEdit?>(null)
+        private set
+
+    var linkDraft by mutableStateOf<LinkDraft?>(null)
+        private set
+
     private class Snap(val doc: RichDoc, val selection: TextRange)
 
     private val undoStack = ArrayList<Snap>()
@@ -103,6 +132,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
             val para = doc.paraAt(sel.min)
             return ToolbarState(
                 marks = pending ?: doc.marksAt(sel.min, sel.max),
+                link = doc.linkIdAt(sel.min) != 0,
                 block = para.type,
                 align = para.align,
                 canUndo = undoStack.isNotEmpty(),
@@ -161,8 +191,8 @@ class EditorController(private val context: Context, route: Route.Editor) {
     val isNew: Boolean = route.id == null
     val autosaveEnabled: Boolean = AppPrefs.getPref(context, "autosave", true)
 
-    val wordCount: Int get() = countWords(body.text)
-    val charCount: Int get() = body.text.length
+    val wordCount: Int get() = if (bodyEditable) countWords(doc.countText) else countWords(body.text)
+    val charCount: Int get() = if (bodyEditable) doc.charCount else body.text.length
 
     private var dirty = false
     private var persisted = false
@@ -227,15 +257,59 @@ class EditorController(private val context: Context, route: Route.Editor) {
         if (changed) markDirty()
     }
 
-    fun onBodyChange(v: TextFieldValue) {
+    fun onBodyChange(v0: TextFieldValue) {
         if (readMode || !bodyEditable) return
+        // Windows line endings from the clipboard never enter the document.
+        val v = if ('\r' in v0.text) stripCr(v0) else v0
         if (v.text == body.text) {
             // Caret / selection / IME-composition change only. Moving the caret drops a pending format.
             if (v.selection != body.selection) pending = null
-            body = v
+            // A caret can't rest on a divider / table line: move it to the nearest real paragraph.
+            val sel = v.selection
+            if (sel.collapsed && doc.objectParaAt(sel.start) >= 0) {
+                val forward = sel.start >= body.selection.start
+                val to = doc.escapeObject(sel.start, forward)
+                body = v.copy(selection = TextRange(to))
+            } else {
+                body = v
+            }
             return
         }
         val caret = if (v.selection.collapsed) v.selection.start else null
+        val d = doc.diffFor(v.text, caret)
+        val inserted = v.text.substring(d.start, d.insEnd)
+
+        // The object placeholder can't be typed or pasted.
+        if (OBJ in inserted) {
+            val cleanIns = inserted.replace(OBJ.toString(), "")
+            val removed = inserted.length - cleanIns.length
+            val t = v.text.substring(0, d.start) + cleanIns + v.text.substring(d.insEnd)
+            val fix = { o: Int -> if (o >= d.insEnd) o - removed else minOf(o, d.start + cleanIns.length) }
+            onBodyChange(TextFieldValue(t, TextRange(fix(v.selection.start), fix(v.selection.end))))
+            return
+        }
+
+        // Paste: markdown / HTML source / code get turned into real blocks (web `handlePaste`).
+        if (markdownShortcuts && inserted.length >= 2 && ('\n' in inserted || inserted.length >= 6)) {
+            val frag = when {
+                MarkdownCodec.looksLikeHtmlSource(inserted) -> HtmlCodec.parseLenient(inserted)
+                MarkdownCodec.looksLikeCode(inserted) -> MarkdownCodec.codeFragment(inserted)
+                MarkdownCodec.looksLikeMarkdown(inserted) -> MarkdownCodec.parse(inserted)
+                else -> null
+            }
+            if (frag != null) {
+                val (nd, at) = doc.replaceWithFragment(d.start, d.removedEnd, frag)
+                if (nd !== doc) {
+                    recordBefore(KIND_FORMAT)
+                    pending = null
+                    doc = nd
+                    body = TextFieldValue(nd.text, TextRange(at.coerceIn(0, nd.text.length)))
+                    markDirty()
+                    return
+                }
+            }
+        }
+
         val result = doc.edit(v.text, pending, markdownShortcuts, caret)
         // A rewritten edit (shortcut conversion, leaving a list …) is its own undo step, so Undo takes just that back.
         recordBefore(if (result.caret != null) KIND_FORMAT else KIND_TYPING)
@@ -248,6 +322,19 @@ class EditorController(private val context: Context, route: Route.Editor) {
             TextFieldValue(result.doc.text, TextRange((result.caret ?: v.selection.start).coerceIn(0, result.doc.text.length)))
         }
         markDirty()
+    }
+
+    private fun stripCr(v: TextFieldValue): TextFieldValue {
+        val sb = StringBuilder(v.text.length)
+        var s = v.selection.start
+        var e = v.selection.end
+        for (i in v.text.indices) {
+            if (v.text[i] == '\r') {
+                if (i < v.selection.start) s--
+                if (i < v.selection.end) e--
+            } else sb.append(v.text[i])
+        }
+        return TextFieldValue(sb.toString(), TextRange(s.coerceAtLeast(0), e.coerceAtLeast(0)))
     }
 
     // ─── formatting (toolbar) ────────────────
@@ -279,6 +366,241 @@ class EditorController(private val context: Context, route: Route.Editor) {
     fun setAlign(align: Align) = format { it.setAlign(align, body.selection.min, body.selection.max) }
 
     fun changeIndent(delta: Int) = format { it.changeIndent(delta, body.selection.min, body.selection.max) }
+
+    // ─── code, links, inserts (Part 5) ───────
+
+    /** Selects / moves the caret after a structural edit. */
+    private fun place(newDoc: RichDoc, selection: TextRange) {
+        doc = newDoc
+        val len = newDoc.text.length
+        body = TextFieldValue(newDoc.text, TextRange(selection.start.coerceIn(0, len), selection.end.coerceIn(0, len)))
+        pending = null
+        markDirty()
+    }
+
+    /** Toolbar "Code": wraps the selection in inline code, or unwraps when the caret is already inside code. */
+    fun toggleInlineCode() {
+        if (!canFormat) return
+        val sel = body.selection
+        if (doc.paraAt(sel.min).type == BlockType.CODE) return
+        if (sel.collapsed) {
+            val run = doc.markRun(Mark.CODE, sel.start)
+            recordBefore(KIND_FORMAT)
+            if (run != null) {
+                doc = doc.clearMark(Mark.CODE, run.first, run.second)
+                pending = null
+                markDirty()
+            } else {
+                // Nothing selected: drop in a selected "code" placeholder to type over.
+                place(doc.insertInline(sel.start, sel.start, "code", Mark.CODE), TextRange(sel.start, sel.start + 4))
+            }
+            return
+        }
+        recordBefore(KIND_FORMAT)
+        val all = doc.marksAt(sel.min, sel.max) and Mark.CODE != 0
+        doc = if (all) doc.clearMark(Mark.CODE, sel.min, sel.max) else doc.toggleMark(Mark.CODE, sel.min, sel.max)
+        markDirty()
+    }
+
+    /** Toolbar "Code block": turns the selected lines into a code block (again = back to paragraphs). */
+    fun toggleCodeBlock() {
+        if (!canFormat) return
+        recordBefore(KIND_FORMAT)
+        doc = doc.setBlock(BlockType.CODE, body.selection.min, body.selection.max).withParagraphAfterCode()
+        markDirty()
+    }
+
+    /** Copy chip of a code block (works in Reading mode too). */
+    fun copyCode(para: Int) {
+        val text = doc.codeBlockText(para)
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        runCatching { cm?.setPrimaryClip(ClipData.newPlainText("code", text)) }
+        showToast("Code copied", R.drawable.ic_fa_check)
+    }
+
+    /** "Bottom" chip: caret to the paragraph under the block. */
+    fun jumpBelowCode(para: Int) {
+        if (!canFormat) return
+        val (nd, at) = doc.exitCodeBlock(para)
+        if (nd !== doc) {
+            recordBefore(KIND_FORMAT)
+            place(nd, TextRange(at))
+        } else {
+            body = body.copy(selection = TextRange(at))
+        }
+    }
+
+    /** "Delete" chip: removes the whole block. */
+    fun deleteCode(para: Int) {
+        if (!canFormat) return
+        val (nd, at) = doc.deleteCodeBlock(para)
+        recordBefore(KIND_FORMAT)
+        place(nd, TextRange(at))
+    }
+
+    fun insertHr() {
+        if (!canFormat) return
+        recordBefore(KIND_FORMAT)
+        val (nd, at) = doc.insertObject(body.selection.max, Para(type = BlockType.HR))
+        place(nd, TextRange(at))
+    }
+
+    fun insertTable() {
+        if (!canFormat) return
+        recordBefore(KIND_FORMAT)
+        val (nd, at) = doc.insertObject(body.selection.max, Para(type = BlockType.TABLE, table = TableData.blank()))
+        place(nd, TextRange(at))
+    }
+
+    /** Date + time at the caret, in the phone's own format. */
+    fun insertDateTime() {
+        if (!canFormat) return
+        val s = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date())
+        val sel = body.selection
+        recordBefore(KIND_FORMAT)
+        place(doc.insertInline(sel.min, sel.max, s), TextRange(sel.min + s.length))
+    }
+
+    // ── link dialog ──
+
+    fun openLink() {
+        if (!canFormat) return
+        val sel = body.selection
+        if (doc.paraAt(sel.min).type == BlockType.CODE) return
+        if (sel.collapsed) {
+            val span = doc.linkSpan(sel.start)
+            linkDraft = if (span != null) {
+                LinkDraft(
+                    doc.text.substring(span.first, span.second),
+                    LinkTable.urlOf(doc.linkIdAt(sel.start)).orEmpty(),
+                    span.first,
+                    span.second,
+                    editing = true,
+                )
+            } else {
+                LinkDraft("", "", sel.start, sel.start, editing = false)
+            }
+        } else {
+            val txt = doc.text.substring(sel.min, sel.max).replace("\n", " ").replace(OBJ.toString(), "")
+            val existing = LinkTable.urlOf(doc.linkIdAt((sel.min + 1).coerceAtMost(doc.text.length)))
+            linkDraft = LinkDraft(txt, existing.orEmpty(), sel.min, sel.max, editing = existing != null)
+        }
+    }
+
+    fun closeLink() {
+        linkDraft = null
+    }
+
+    /** Dialog "Insert" / "Save": [rawText] is what the link reads as, [rawUrl] where it goes. */
+    fun submitLink(rawText: String, rawUrl: String) {
+        val draft = linkDraft ?: return
+        val url = normalizeUrl(rawUrl)
+        if (url.isEmpty()) {
+            showToast("Enter a link address", R.drawable.ic_fa_circle_exclamation)
+            return
+        }
+        val label = rawText.trim().replace("\n", " ").replace(OBJ.toString(), "").ifEmpty { url }
+        recordBefore(KIND_FORMAT)
+        val unchanged = draft.end > draft.start && label == doc.text.substring(draft.start, draft.end)
+        if (unchanged) {
+            doc = doc.setLink(draft.start, draft.end, url)
+            markDirty()
+        } else {
+            val nd = doc.insertInline(draft.start, draft.end, label, 0, LinkTable.idOf(url))
+            place(nd, TextRange(draft.start + label.length))
+        }
+        linkDraft = null
+    }
+
+    fun removeLink() {
+        val draft = linkDraft ?: return
+        recordBefore(KIND_FORMAT)
+        doc = doc.setLink(draft.start, draft.end, null)
+        markDirty()
+        linkDraft = null
+    }
+
+    private fun normalizeUrl(raw: String): String {
+        val u = raw.trim()
+        if (u.isEmpty() || ' ' in u) return ""
+        if (Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:").containsMatchIn(u) || u.startsWith("#")) return u
+        if ('@' in u && '/' !in u) return "mailto:$u"
+        return "https://$u"
+    }
+
+    // ── table cells ──
+
+    fun openCell(para: Int, row: Int, col: Int) {
+        if (!canFormat) return
+        if (doc.paras.getOrNull(para)?.table == null) return
+        tableEdit = TableEdit(para, row, col)
+    }
+
+    fun closeCell() {
+        tableEdit = null
+    }
+
+    /** The text of the cell being edited. */
+    fun cellText(): String {
+        val e = tableEdit ?: return ""
+        return doc.paras.getOrNull(e.para)?.table?.cell(e.row, e.col)?.text.orEmpty()
+    }
+
+    fun onCellText(raw: String) {
+        val e = tableEdit ?: return
+        val t = doc.paras.getOrNull(e.para)?.table ?: return
+        val clean = raw.replace("\n", " ").replace(OBJ.toString(), "")
+        val nt = t.withCell(e.row, e.col, clean)
+        if (nt === t) return
+        recordBefore(KIND_TYPING)
+        doc = doc.setTable(e.para, nt)
+        markDirty()
+    }
+
+    val tableForEdit: TableData? get() = tableEdit?.let { doc.paras.getOrNull(it.para)?.table }
+
+    /** Row / column buttons of the cell sheet. [op] returns the new table and the cell to keep editing. */
+    private fun tableOp(op: (TableData, TableEdit) -> Pair<TableData, TableEdit>) {
+        val e = tableEdit ?: return
+        val t = doc.paras.getOrNull(e.para)?.table ?: return
+        val (nt, ne) = op(t, e)
+        if (nt === t) return
+        recordBefore(KIND_FORMAT)
+        doc = doc.setTable(e.para, nt)
+        tableEdit = TableEdit(
+            e.para,
+            ne.row.coerceIn(0, nt.rowCount - 1),
+            ne.col.coerceIn(0, nt.colCount - 1),
+        )
+        markDirty()
+    }
+
+    fun rowAbove() = tableOp { t, e ->
+        val at = if (t.header) maxOf(1, e.row) else e.row
+        t.addRow(at) to TableEdit(e.para, at, e.col)
+    }
+
+    fun rowBelow() = tableOp { t, e -> t.addRow(e.row + 1) to TableEdit(e.para, e.row + 1, e.col) }
+
+    fun deleteRow() = tableOp { t, e -> t.removeRow(e.row) to e }
+
+    fun colLeft() = tableOp { t, e -> t.addCol(e.col) to TableEdit(e.para, e.row, e.col) }
+
+    fun colRight() = tableOp { t, e -> t.addCol(e.col + 1) to TableEdit(e.para, e.row, e.col + 1) }
+
+    fun deleteCol() = tableOp { t, e -> t.removeCol(e.col) to e }
+
+    fun toggleHeader() = tableOp { t, e -> t.withHeader(!t.header) to e }
+
+    fun deleteTable() {
+        val e = tableEdit ?: return
+        if (doc.paras.getOrNull(e.para)?.table == null) return
+        recordBefore(KIND_FORMAT)
+        val nd = doc.removeParaAt(e.para)
+        val at = nd.escapeObject(nd.starts[e.para.coerceIn(0, nd.paraCount - 1)], forward = true)
+        tableEdit = null
+        place(nd, TextRange(at))
+    }
 
     // ─── lists (Part 3) ──────────────────────
 
@@ -365,6 +687,8 @@ class EditorController(private val context: Context, route: Route.Editor) {
         val len = s.doc.text.length
         body = TextFieldValue(s.doc.text, TextRange(s.selection.start.coerceIn(0, len), s.selection.end.coerceIn(0, len)))
         pending = null
+        tableEdit = null
+        linkDraft = null
         lastKind = 0
         historyVersion++
         markDirty()
@@ -587,7 +911,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
             title = finalTitle,
             content = html,
             markdown = if (rich) HtmlCodec.toMarkdown(doc) else note.markdown,
-            wordCount = if (rich) countWords(text) else note.wordCount,
+            wordCount = if (rich) countWords(doc.countText) else note.wordCount,
             updatedAt = Iso.now(),
         )
         try {

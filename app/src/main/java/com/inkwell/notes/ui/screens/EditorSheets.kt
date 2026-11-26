@@ -49,14 +49,20 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.inkwell.notes.R
 import com.inkwell.notes.data.model.Notebook
+import com.inkwell.notes.editor.TableData
+import com.inkwell.notes.ui.components.DeleteRed
+import com.inkwell.notes.ui.components.onAccent
 import com.inkwell.notes.ui.components.ContextSheet
 import com.inkwell.notes.ui.components.FaIcon
 import com.inkwell.notes.ui.components.InkText
@@ -382,5 +388,214 @@ private fun TagButton(label: String, bg: Color, textColor: Color, border: Color,
         contentAlignment = Alignment.Center,
     ) {
         InkText(label, size = 14.sp, weight = FontWeight.Black, color = textColor)
+    }
+}
+
+// ─────────────────────────────────────────────
+// Part 5 — link dialog + table cell sheet
+// ─────────────────────────────────────────────
+
+/** One labelled single-line field used by the Part 5 dialogs. */
+@Composable
+private fun SheetField(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    imeAction: ImeAction = ImeAction.Next,
+    onAction: () -> Unit = {},
+) {
+    val c = Ink.colors
+    val shape = RoundedCornerShape(12.dp)
+    var focused by remember { mutableStateOf(false) }
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        textStyle = TextStyle(color = c.text1, fontSize = 13.sp, fontFamily = Ink.sans),
+        cursorBrush = SolidColor(c.accent),
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+        keyboardActions = KeyboardActions(onNext = { onAction() }, onDone = { onAction() }),
+        modifier = modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+        decorationBox = { inner ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 40.dp)
+                    .clip(shape)
+                    .background(c.bgCard)
+                    .border(1.5.dp, if (focused) c.accent else c.border, shape)
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (value.text.isEmpty()) InkText(placeholder, size = 13.sp, color = c.text3)
+                inner()
+            }
+        },
+    )
+}
+
+/** Bottom card shell shared by the Part 5 dialogs: scrim, rides above the keyboard, swallows taps. */
+@Composable
+private fun BottomCard(onClose: () -> Unit, content: @Composable () -> Unit) {
+    val c = Ink.colors
+    val cardShape = RoundedCornerShape(22.dp)
+    val keyboard = LocalSoftwareKeyboardController.current
+    DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.44f))
+            .tap(onClose)
+            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
+            .padding(start = 13.dp, end = 13.dp, bottom = 14.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            Modifier
+                .widthIn(max = 360.dp)
+                .fillMaxWidth()
+                .clip(cardShape)
+                .background(c.bg)
+                .border(1.dp, c.border, cardShape)
+                .tap { /* swallow taps so the scrim doesn't dismiss */ }
+                .verticalScroll(rememberScrollState())
+                .padding(18.dp),
+        ) { content() }
+    }
+}
+
+/**
+ * Link dialog (`.link-modal`): Text + URL. "Insert" / "Save" links the selected text (or inserts the text),
+ * "Remove" is shown when an existing link is being edited.
+ */
+@Composable
+fun LinkModal(
+    draft: LinkDraft,
+    onSubmit: (text: String, url: String) -> Unit,
+    onRemove: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val c = Ink.colors
+    var text by remember(draft) { mutableStateOf(TextFieldValue(draft.text, TextRange(draft.text.length))) }
+    var url by remember(draft) { mutableStateOf(TextFieldValue(draft.url, TextRange(draft.url.length))) }
+    val urlFocus = remember { FocusRequester() }
+    val textFocus = remember { FocusRequester() }
+    LaunchedEffect(draft) {
+        runCatching { if (draft.text.isEmpty()) textFocus.requestFocus() else urlFocus.requestFocus() }
+    }
+
+    BottomCard(onClose) {
+        InkText(if (draft.editing) "Edit link" else "Insert link", family = Ink.serif, size = 20.sp, weight = FontWeight.Bold, lineHeight = 24.sp)
+        Spacer(Modifier.height(12.dp))
+        TagLabel("Text")
+        Spacer(Modifier.height(7.dp))
+        SheetField(text, { text = it }, "Link text", Modifier.focusRequester(textFocus), onAction = { runCatching { urlFocus.requestFocus() } })
+        Spacer(Modifier.height(14.dp))
+        TagLabel("URL")
+        Spacer(Modifier.height(7.dp))
+        SheetField(
+            url, { url = it }, "https://example.com", Modifier.focusRequester(urlFocus),
+            keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done,
+            onAction = { onSubmit(text.text, url.text) },
+        )
+        Spacer(Modifier.height(14.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (draft.editing) TagButton("Remove", c.bgCard, DeleteRed, c.border, Modifier.weight(1f), onRemove)
+            TagButton("Cancel", c.bgCard, c.text2, c.border, Modifier.weight(1f), onClose)
+            TagButton(if (draft.editing) "Save" else "Insert", c.accent, onAccent(), c.accent, Modifier.weight(1f)) {
+                onSubmit(text.text, url.text)
+            }
+        }
+    }
+}
+
+/** Compact action chip of the table sheet. */
+@Composable
+private fun CellAction(label: String, color: Color, onClick: () -> Unit) {
+    val c = Ink.colors
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        Modifier
+            .height(34.dp)
+            .clip(shape)
+            .background(c.bgCard)
+            .border(1.dp, c.border, shape)
+            .tap(onClick)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        InkText(label, size = 12.sp, weight = FontWeight.ExtraBold, color = color, maxLines = 1)
+    }
+}
+
+/**
+ * Table cell sheet: edit the cell text, add / delete rows and columns, toggle the header row, delete the table.
+ * (The table itself is drawn by [TableOverlay]; tapping a cell opens this.)
+ */
+@Composable
+fun TableCellSheet(
+    table: TableData,
+    row: Int,
+    col: Int,
+    text: String,
+    onText: (String) -> Unit,
+    onRowAbove: () -> Unit,
+    onRowBelow: () -> Unit,
+    onDeleteRow: () -> Unit,
+    onColLeft: () -> Unit,
+    onColRight: () -> Unit,
+    onDeleteCol: () -> Unit,
+    onToggleHeader: () -> Unit,
+    onDeleteTable: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val c = Ink.colors
+    var tf by remember(row, col, table.rowCount, table.colCount) { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    BottomCard(onClose) {
+        InkText("Edit cell", family = Ink.serif, size = 20.sp, weight = FontWeight.Bold, lineHeight = 24.sp)
+        Spacer(Modifier.height(4.dp))
+        InkText(
+            "Row ${row + 1} of ${table.rowCount} · Column ${col + 1} of ${table.colCount}" +
+                if (table.header && row == 0) " · header" else "",
+            size = 12.sp,
+            color = c.text2,
+        )
+        Spacer(Modifier.height(12.dp))
+        SheetField(
+            tf,
+            { tf = it; onText(it.text) },
+            "Cell text",
+            Modifier.focusRequester(focus),
+            imeAction = ImeAction.Done,
+            onAction = onClose,
+        )
+        Spacer(Modifier.height(14.dp))
+        TagLabel("Rows")
+        Spacer(Modifier.height(7.dp))
+        ChipRow {
+            CellAction("Add above", c.text1, onRowAbove)
+            CellAction("Add below", c.text1, onRowBelow)
+            if (table.rowCount > 1) CellAction("Delete row", DeleteRed, onDeleteRow)
+        }
+        Spacer(Modifier.height(12.dp))
+        TagLabel("Columns")
+        Spacer(Modifier.height(7.dp))
+        ChipRow {
+            CellAction("Add left", c.text1, onColLeft)
+            CellAction("Add right", c.text1, onColRight)
+            if (table.colCount > 1) CellAction("Delete column", DeleteRed, onDeleteCol)
+        }
+        Spacer(Modifier.height(12.dp))
+        ChipRow {
+            CellAction(if (table.header) "Header row: on" else "Header row: off", c.accent, onToggleHeader)
+            CellAction("Delete table", DeleteRed, onDeleteTable)
+        }
+        Spacer(Modifier.height(14.dp))
+        TagButton("Done", c.accent, onAccent(), c.accent, Modifier.fillMaxWidth(), onClose)
     }
 }
