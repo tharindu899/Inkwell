@@ -5,6 +5,7 @@ package com.inkwell.notes.editor
  * paragraph gets (indent, collapse chevron, bullet / number / checkbox / quote bar), which paragraphs are
  * hidden inside collapsed items, and the offset mapping between the real text and the shown text.
  *
+ * Chevrons and checkboxes are blank slots here; the screen paints them as vector shapes.
  * Shown text = visible paragraphs joined by `'\n'`, each as `prefix + text`.
  */
 class RichLayout(private val doc: RichDoc) {
@@ -37,12 +38,12 @@ class RichLayout(private val doc: RichDoc) {
             val sb = StringBuilder("    ".repeat(p.indent))
             if (p.type.isList && doc.hasChildren(k)) {
                 chevronIdx[k] = sb.length
-                sb.append(if (p.collapsed) "▸ " else "▾ ")
+                sb.append(CHEVRON_SLOT) // the screen draws the triangle here
             }
             when (p.type) {
                 BlockType.UL -> sb.append("•  ")
                 BlockType.OL -> sb.append(nums[k]).append(".  ")
-                BlockType.TASK -> { boxIdx[k] = sb.length; sb.append(if (p.checked) "☑  " else "☐  ") }
+                BlockType.TASK -> { boxIdx[k] = sb.length; sb.append(BOX_SLOT) } // the screen draws the box here
                 BlockType.QUOTE -> sb.append("▎ ")
                 else -> {}
             }
@@ -85,6 +86,14 @@ class RichLayout(private val doc: RichDoc) {
             for (x in 0..len) t2o[tTextStart[k] + x] = s + x
             // the '\n' index is tTextStart + len, covered above; the next prefix starts one later
         }
+    }
+
+    companion object {
+        /** Blank space reserved for the collapse chevron (1 em) — drawn on a Canvas by the editor screen. */
+        const val CHEVRON_SLOT = "\u2003"
+
+        /** Blank space reserved for the checkbox (1.5 em) — drawn on a Canvas by the editor screen. */
+        const val BOX_SLOT = "\u2003\u2002"
     }
 
     fun originalToTransformed(offset: Int): Int = o2t[offset.coerceIn(0, doc.text.length)]

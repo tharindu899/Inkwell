@@ -40,7 +40,7 @@ class RichStyle(
  * The offset mapping ([RichLayout]) keeps the caret and selection on the real text, never on the prefix.
  */
 class RichTransformation(
-    private val doc: RichDoc,
+    val doc: RichDoc,
     private val style: RichStyle,
 ) : VisualTransformation {
 
@@ -84,7 +84,7 @@ class RichTransformation(
 
             val prefix = layout.prefixes[i]
             if (prefix.isNotEmpty()) {
-                pushStyle(SpanStyle(color = if (p.type == BlockType.TASK && p.checked) style.doneColor else style.accent, fontWeight = FontWeight.Bold))
+                pushStyle(SpanStyle(color = style.accent, fontWeight = FontWeight.Bold))
                 append(prefix)
                 pop()
             }

@@ -40,6 +40,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -160,6 +168,8 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     } else null
     val transformationNow by rememberUpdatedState(transformation)
     val tapPadPx = with(LocalDensity.current) { 8.dp.toPx() }
+    val tickColor = onAccent()
+    val fontPx = with(LocalDensity.current) { fontSp.sp.toPx() }
 
     // Keep the caret (plus a margin, so sub/superscript lines are never cut) inside the visible body.
     LaunchedEffect(ctl.body.selection, ctl.body.text, layoutRes, viewportH) {
@@ -249,6 +259,14 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                         .heightIn(min = 240.dp)
                         .focusRequester(bodyFocus)
                         .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp)
+                        // Checkbox + chevron shapes are painted into the blank slots RichLayout reserves.
+                        .drawBehind {
+                            val lay = layoutRes
+                            val tr = transformationNow
+                            if (lay != null && tr != null) {
+                                drawListControls(lay, tr, fontPx, c.accent, c.text3, tickColor)
+                            }
+                        }
                         // Tap on a checklist box / collapse chevron: handled here (before the text field sees the
                         // tap), so it toggles without moving the caret or opening the keyboard.
                         .pointerInput(ctl) {
@@ -431,6 +449,58 @@ private fun TopIconButton(
 // ─────────────────────────────────────────────
 // Body helpers
 // ─────────────────────────────────────────────
+
+/** Paints the checklist boxes and collapse chevrons (Canvas, no font glyphs) over the slots reserved in the text. */
+private fun DrawScope.drawListControls(
+    lay: TextLayoutResult,
+    tr: RichTransformation,
+    fontPx: Float,
+    accent: Color,
+    outline: Color,
+    tick: Color,
+) {
+    val shownLen = lay.layoutInput.text.length
+    val doc = tr.doc
+    for (k in 0 until doc.paraCount) {
+        val p = doc.paras[k]
+        val ci = tr.layout.chevronOffset(k)
+        if (ci in 0 until shownLen) {
+            val r = lay.getBoundingBox(ci)
+            val cx = (r.left + r.right) / 2f
+            val cy = (r.top + r.bottom) / 2f
+            val h = fontPx * 0.22f
+            val path = Path().apply {
+                if (p.collapsed) { // ▸
+                    moveTo(cx - h * 0.6f, cy - h); lineTo(cx + h, cy); lineTo(cx - h * 0.6f, cy + h)
+                } else { // ▾
+                    moveTo(cx - h, cy - h * 0.6f); lineTo(cx + h, cy - h * 0.6f); lineTo(cx, cy + h)
+                }
+                close()
+            }
+            drawPath(path, accent)
+        }
+        val bi = tr.layout.boxOffset(k)
+        if (bi in 0 until shownLen) {
+            val r = lay.getBoundingBox(bi)
+            val side = fontPx * 0.95f
+            val left = r.left + (r.right - r.left - side) / 2f
+            val top = (r.top + r.bottom) / 2f - side / 2f
+            val sw = (fontPx * 0.11f).coerceAtLeast(1.5f)
+            val radius = CornerRadius(side * 0.26f)
+            if (p.checked) {
+                drawRoundRect(accent, Offset(left, top), Size(side, side), radius)
+                val t = Path().apply {
+                    moveTo(left + side * 0.25f, top + side * 0.54f)
+                    lineTo(left + side * 0.43f, top + side * 0.72f)
+                    lineTo(left + side * 0.76f, top + side * 0.32f)
+                }
+                drawPath(t, tick, style = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            } else {
+                drawRoundRect(outline, Offset(left + sw / 2, top + sw / 2), Size(side - sw, side - sw), radius, style = Stroke(sw))
+            }
+        }
+    }
+}
 
 /** A tap target inside the list prefix: the collapse chevron or the checklist box of paragraph [para]. */
 private class ListHit(val para: Int, val chevron: Boolean)
