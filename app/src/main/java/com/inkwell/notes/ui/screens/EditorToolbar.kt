@@ -79,6 +79,8 @@ private sealed interface Glyph {
     data object DateTime : Glyph
     data object Link : Glyph
     data object Hr : Glyph
+    data object Photo : Glyph
+    data object Draw : Glyph
     data object InlineCode : Glyph
     data object CodeBlock : Glyph
     data class AlignLines(val align: Align) : Glyph
@@ -106,6 +108,8 @@ fun EditorToolbar(
     onDateTime: () -> Unit = {},
     onLink: () -> Unit = {},
     onHr: () -> Unit = {},
+    onPhoto: () -> Unit = {},
+    onDraw: () -> Unit = {},
     onCode: () -> Unit = {},
     onCodeBlock: () -> Unit = {},
     scroll: ScrollState = rememberScrollState(),
@@ -155,6 +159,8 @@ fun EditorToolbar(
             ToolButton(Glyph.Sub, on = state.marks and Mark.SUB != 0) { onMark(Mark.SUB) }
             Sep()
             ToolButton(Glyph.Link, on = state.link, onClick = onLink)
+            ToolButton(Glyph.Photo, onClick = onPhoto)
+            ToolButton(Glyph.Draw, onClick = onDraw)
             ToolButton(Glyph.Hr, onClick = onHr)
             ToolButton(Glyph.InlineCode, on = state.marks and Mark.CODE != 0, onClick = onCode)
             ToolButton(Glyph.CodeBlock, on = state.block == BlockType.CODE, onClick = onCodeBlock)
@@ -240,6 +246,16 @@ private fun GlyphView(glyph: Glyph, tint: Color) {
                 drawRoundRect(tint, Offset(w * 0.0f, h * 0.35f), sz, r, style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
                 drawRoundRect(tint, Offset(w * 0.44f, h * 0.35f), sz, r, style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
             }
+        }
+        Glyph.Photo -> FaIcon(R.drawable.ic_fa_image, tint = tint, size = 14.dp)
+        Glyph.Draw -> Canvas(Modifier.size(16.dp)) {
+            val w = size.width
+            val sw = 1.8.dp.toPx()
+            // pencil: body along the diagonal, tip at the bottom left
+            drawLine(tint, Offset(w * 0.78f, w * 0.12f), Offset(w * 0.2f, w * 0.7f), sw * 1.8f, StrokeCap.Round)
+            drawLine(tint, Offset(w * 0.2f, w * 0.7f), Offset(w * 0.1f, w * 0.9f), sw, StrokeCap.Round)
+            drawLine(tint, Offset(w * 0.1f, w * 0.9f), Offset(w * 0.3f, w * 0.8f), sw, StrokeCap.Round)
+            drawLine(tint.copy(alpha = 0.6f), Offset(w * 0.5f, w * 0.92f), Offset(w * 0.95f, w * 0.92f), sw, StrokeCap.Round)
         }
         Glyph.Hr -> Canvas(Modifier.size(16.dp)) {
             val w = size.width

@@ -37,6 +37,8 @@ sealed interface Route {
         val id: String? = null,
         val notebookId: String? = null,
         val tag: String? = null,
+        /** Starter for a new note: "image" | "voice" | "checklist" (web `?type=`). */
+        val type: String? = null,
     ) : Route
 }
 

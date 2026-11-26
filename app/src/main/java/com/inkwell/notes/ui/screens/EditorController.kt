@@ -19,6 +19,7 @@ import com.inkwell.notes.data.model.Notebook
 import com.inkwell.notes.editor.Align
 import com.inkwell.notes.editor.BlockType
 import com.inkwell.notes.editor.HtmlCodec
+import com.inkwell.notes.editor.ImageData
 import com.inkwell.notes.editor.LinkTable
 import com.inkwell.notes.editor.Mark
 import com.inkwell.notes.editor.MarkdownCodec
@@ -112,6 +113,13 @@ class EditorController(private val context: Context, route: Route.Editor) {
         private set
 
     var linkDraft by mutableStateOf<LinkDraft?>(null)
+        private set
+
+    /** Part 6: the image paragraph whose handles are showing, and the drawing dialog. */
+    var selectedImage by mutableStateOf<Int?>(null)
+        private set
+
+    var drawOpen by mutableStateOf(false)
         private set
 
     private class Snap(val doc: RichDoc, val selection: TextRange)
@@ -219,6 +227,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
                     notebookName = nb?.name.orEmpty(),
                     notebookColor = nb?.color.orEmpty(),
                     tags = if (tag.isEmpty()) emptyList() else listOf(tag),
+                    content = starterHtml(route.type),
                     createdAt = now,
                     updatedAt = now,
                 ),
@@ -259,6 +268,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
 
     fun onBodyChange(v0: TextFieldValue) {
         if (readMode || !bodyEditable) return
+        selectedImage = null
         // Windows line endings from the clipboard never enter the document.
         val v = if ('\r' in v0.text) stripCr(v0) else v0
         if (v.text == body.text) {
@@ -528,6 +538,62 @@ class EditorController(private val context: Context, route: Route.Editor) {
         return "https://$u"
     }
 
+    // ── images + drawing (Part 6) ──
+
+    fun selectImage(para: Int) {
+        if (doc.paras.getOrNull(para)?.image == null) return
+        selectedImage = if (selectedImage == para) null else para
+    }
+
+    /** A picked photo (data URL) or a finished sketch lands below the caret's line, like the web figure. */
+    fun insertImage(src: String, alt: String, drawing: Boolean) {
+        if (!canFormat) return
+        recordBefore(KIND_FORMAT)
+        val (nd, at) = doc.insertObject(body.selection.max, Para(type = BlockType.IMAGE, image = ImageData(src, alt.ifBlank { if (drawing) "Drawing" else "Photo" }, drawing)))
+        place(nd, TextRange(at))
+        selectedImage = null
+        showToast(if (drawing) "Drawing added" else "Photo added", if (drawing) R.drawable.ic_fa_check else R.drawable.ic_fa_image)
+    }
+
+    fun photoFailed() {
+        showToast("Could not add photo", R.drawable.ic_fa_circle_exclamation)
+    }
+
+    /** Size / position changed by the handles (committed on release). */
+    fun commitImage(para: Int, image: ImageData) {
+        if (!canFormat || doc.paras.getOrNull(para)?.image == image) return
+        recordBefore(KIND_FORMAT)
+        doc = doc.setImage(para, image)
+        markDirty()
+    }
+
+    fun deleteImage(para: Int) {
+        if (!canFormat || doc.paras.getOrNull(para)?.image == null) return
+        recordBefore(KIND_FORMAT)
+        val nd = doc.removeParaAt(para)
+        val at = nd.escapeObject(nd.starts[para.coerceIn(0, nd.paraCount - 1)], forward = true)
+        selectedImage = null
+        place(nd, TextRange(at))
+        showToast("Media deleted", R.drawable.ic_fa_trash_can)
+    }
+
+    fun openDraw() {
+        if (!canFormat) return
+        drawOpen = true
+    }
+
+    fun closeDraw() {
+        drawOpen = false
+    }
+
+    /** Web `?type=checklist|image|voice` starters. */
+    private fun starterHtml(type: String?): String = when (type) {
+        "checklist" -> "<ul class=\"check-list\" data-type=\"taskList\"><li data-checked=\"false\"><label><span class=\"check-box\" role=\"checkbox\" tabindex=\"-1\" contenteditable=\"false\" data-checked=\"false\" aria-checked=\"false\"></span> <span class=\"check-text\">New task</span></label></li></ul>"
+        "image" -> "<p>Image note</p><p><br></p>"
+        "voice" -> "<p>Voice note</p><blockquote>Record or paste your voice note text here.</blockquote>"
+        else -> ""
+    }
+
     // ── table cells ──
 
     fun openCell(para: Int, row: Int, col: Int) {
@@ -689,6 +755,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
         pending = null
         tableEdit = null
         linkDraft = null
+        selectedImage = null
         lastKind = 0
         historyVersion++
         markDirty()

@@ -82,6 +82,7 @@ fun AllNotesScreen(
     onSearch: () -> Unit,
     onOpenNote: (String) -> Unit = {},
     onNewNote: (String?) -> Unit = {},
+    onNewTyped: (String) -> Unit = {},
     vm: HomeViewModel = viewModel(),
     avm: AllNotesViewModel = viewModel(),
 ) {
@@ -175,6 +176,7 @@ fun AllNotesScreen(
             vm = vm,
             onNewNote = { onNewNote(null) },
             onSearch = onSearch,
+            onNewTyped = onNewTyped,
             onManageTags = avm::openManage,
             onNotebookCreated = { onNavTab(NavTab.Notebooks) },
             onTagCreated = { onNewNote(it) },

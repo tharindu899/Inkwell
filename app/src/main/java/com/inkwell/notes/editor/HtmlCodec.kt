@@ -52,6 +52,7 @@ object HtmlCodec {
     private val LANG_CLASS = Regex("^language-[a-z0-9_-]+$", RegexOption.IGNORE_CASE)
     private val ATTR_RE = Regex("""([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?""")
     private val WS_RE = Regex("\\s+")
+    private val PLACEHOLDER_RE = Regex("""class\s*=\s*["'][^"']*\bimage-placeholder\b""")
 
     private class Elem(
         val name: String,
@@ -95,6 +96,7 @@ object HtmlCodec {
         private var tbl: TableBuilder? = null
         private var tableNest = 0
         private var cellOpen = false
+        private var fig: FigBuilder? = null
 
         fun run(): RichDoc? {
             var pos = 0
@@ -184,6 +186,8 @@ object HtmlCodec {
                 if (name in INLINEISH) name = "span"
                 if (name == "kbd") name = "code"
             }
+            // The web "Image note" starter placeholder: nothing to keep, drop it with its content.
+            if (name == "div" && PLACEHOLDER_RE.containsMatchIn(attrSrc)) { skipTo = "div"; return true }
             var align: Align? = null
             var indent: Int? = null
             var checked = false
@@ -191,9 +195,37 @@ object HtmlCodec {
             var taskList = false
             var checkBox = false
             var href: String? = null
+            var imgSrc = ""
+            var imgAlt = ""
+            var mediaDrawing: Boolean? = null
+            var figW: Int? = null
+            var figX = 0
+            var figY = 0
             for (m in ATTR_RE.findAll(attrSrc)) {
                 val an = m.groupValues[1].lowercase()
                 val av = m.groupValues[2].ifEmpty { m.groupValues[3].ifEmpty { m.groupValues[4] } }
+                if (name == "figure" || name == "img") {
+                    when (an) {
+                        "src" -> imgSrc = decode(av)
+                        "alt" -> imgAlt = decode(av)
+                        "data-media" -> mediaDrawing = av.trim().equals("drawing", true)
+                        "width" -> av.trim().removeSuffix("px").toDoubleOrNull()?.let { figW = it.toInt() }
+                        "style" -> for (decl in av.split(';')) {
+                            val kv = decl.split(':', limit = 2)
+                            if (kv.size != 2) continue
+                            val px = kv[1].trim().lowercase().removeSuffix("px").trim().toDoubleOrNull() ?: continue
+                            when (kv[0].trim().lowercase()) {
+                                "width" -> figW = px.toInt()
+                                "margin-left" -> figX = px.toInt()
+                                "margin-top" -> figY = px.toInt()
+                            }
+                        }
+                        "class", "loading", "draggable", "contenteditable", "height", "decoding", "crossorigin",
+                        "referrerpolicy", "srcset", "sizes", "title" -> {}
+                        else -> if (!lenient) return false
+                    }
+                    continue
+                }
                 if (name == "a" && an == "href") { href = decode(av); continue }
                 if (name == "a" && (an == "target" || an == "rel" || an == "title")) continue
                 if ((name == "td" || name == "th") && (an == "colspan" || an == "rowspan")) {
@@ -308,11 +340,42 @@ object HtmlCodec {
                     elems.add(Elem("span", align, indent))
                     if (checkBox && open && cur.type == BlockType.TASK) cur = cur.copy(checked = checked)
                 }
-                "img" -> return lenient // images arrive with Part 6; pasted ones are dropped
+                "figure" -> {
+                    if (!lenient && (lists.isNotEmpty() || quoteDepth > 0 || preDepth > 0)) return false
+                    closePara(false)
+                    val dr = mediaDrawing ?: false
+                    fig = FigBuilder(dr, figW, figX, figY)
+                    elems.add(Elem("figure", null, null))
+                }
+                "img" -> {
+                    if (preDepth > 0) return true
+                    if (!lenient && (lists.isNotEmpty() || quoteDepth > 0)) return false
+                    val s = imgSrc.trim()
+                    if (!ImageData.isSupportedSrc(s)) return lenient // relative / odd sources: unsupported (strict) or dropped
+                    val f = fig
+                    if (f != null) {
+                        f.src = s
+                        f.alt = imgAlt
+                        if (mediaDrawing != null) f.drawing = mediaDrawing!!
+                    } else {
+                        closePara(false)
+                        val dr = mediaDrawing ?: ImageData.looksLikeDrawing(imgAlt)
+                        addObject(Para(type = BlockType.IMAGE, image = makeImage(s, imgAlt, dr, figW, figX, figY)))
+                    }
+                }
                 else -> return lenient // unknown tag: ignored in lenient mode, unsupported otherwise
             }
             return true
         }
+
+        private class FigBuilder(var drawing: Boolean, val w: Int?, val x: Int, val y: Int) {
+            var src = ""
+            var alt = ""
+        }
+
+        private fun makeImage(src: String, alt: String, drawing: Boolean, w: Int?, x: Int, y: Int): ImageData =
+            ImageData(src, alt.ifBlank { "image" }, drawing, (w ?: ImageData.defaultWidth(drawing)).coerceIn(ImageData.MIN_WIDTH, ImageData.MAX_WIDTH))
+                .withOffset(x, y)
 
         private fun addObject(p: Para) {
             texts.add(OBJ.toString())
@@ -473,6 +536,14 @@ object HtmlCodec {
             }
 
             when (key) {
+                "figure" -> {
+                    val f = fig
+                    fig = null
+                    if (f != null && f.src.isNotEmpty()) {
+                        closePara(false)
+                        addObject(Para(type = BlockType.IMAGE, image = makeImage(f.src, f.alt, f.drawing, f.w, f.x, f.y)))
+                    }
+                }
                 "p", "div" -> if (open && preDepth == 0) commit()
                 "li" -> if (open) commit()
                 "pre" -> {
@@ -495,7 +566,7 @@ object HtmlCodec {
 
         private val SUPPORTED_CLOSE = setOf(
             "p", "div", "li", "ul", "ol", "blockquote", "span", "label", "pre", "code", "b", "strong", "i", "em", "u", "s",
-            "strike", "del", "sup", "sub", "mark", "h1", "h2", "h3", "h4", "h5", "h6", "br", "hr", "a",
+            "strike", "del", "sup", "sub", "mark", "h1", "h2", "h3", "h4", "h5", "h6", "br", "hr", "a", "figure",
             "table", "thead", "tbody", "tfoot", "tr", "td", "th", "colgroup", "col",
         )
 
@@ -655,6 +726,11 @@ object HtmlCodec {
                 i++
                 continue
             }
+            if (p.type == BlockType.IMAGE) {
+                p.image?.let { out.append(imageHtml(it)) }
+                i++
+                continue
+            }
             if (p.type == BlockType.CODE) {
                 val lines = ArrayList<String>()
                 while (i < doc.paraCount && doc.paras[i].type == BlockType.CODE) {
@@ -806,6 +882,17 @@ object HtmlCodec {
         return sb.append("</table>").toString()
     }
 
+    /** The web figure markup (`ensureMediaControls` adds its buttons at runtime, they're never saved). */
+    private fun imageHtml(im: ImageData): String {
+        val cls = if (im.drawing) "drawing-figure" else "photo-figure"
+        val media = if (im.drawing) "drawing" else "image"
+        val style = "width:${im.width}px" +
+            (if (im.x > 0) ";margin-left:${im.x}px" else "") +
+            (if (im.y > 0) ";margin-top:${im.y}px" else "")
+        return "<figure class=\"editor-figure $cls\" contenteditable=\"false\" data-media=\"$media\" style=\"$style\">" +
+            "<img src=\"${escapeAttr(im.src)}\" alt=\"${escapeAttr(im.alt)}\" class=\"editor-inline-image\" loading=\"lazy\"></figure>"
+    }
+
     private fun escapeAttr(s: String): String = escape(s).replace("\"", "&quot;")
 
     private fun escape(s: String): String =
@@ -845,6 +932,16 @@ object HtmlCodec {
                 sb.append("---")
                 wrote = true
                 prevType = BlockType.HR
+                continue
+            }
+            if (p.type == BlockType.IMAGE) {
+                val im = p.image
+                if (im != null) {
+                    if (wrote) sb.append("\n\n")
+                    sb.append("![").append(im.alt.replace("]", "\\]")).append("](").append(im.src).append(")")
+                    wrote = true
+                    prevType = BlockType.IMAGE
+                }
                 continue
             }
             if (p.type == BlockType.TABLE) {

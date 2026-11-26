@@ -54,6 +54,8 @@ object MarkdownCodec {
     private val TASK = Regex("""^(\s*)[-*+]\s+\[([ xX])\]\s+(.*)$""")
     private val UL = Regex("""^(\s*)[-*+]\s+(.*)$""")
     private val OL = Regex("""^(\s*)\d+[.)]\s+(.*)$""")
+    private val IMG_LINE = Regex("""^\s*!\[([^\]]*)\]\(\s*(\S+?)(?:\s+"[^"]*")?\s*\)\s*$""")
+    private val LINKED_IMG_LINE = Regex("""^\s*\[!\[([^\]]*)\]\(\s*(\S+?)\s*\)\]\([^)]*\)\s*$""")
     private val TABLE_SEP = Regex("""^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$""")
 
     fun parse(markdown: String): RichDoc {
@@ -115,6 +117,15 @@ object MarkdownCodec {
                 val fixed = rows.map { r -> if (r.size > cols) r.take(cols) else r }
                 add(OBJ.toString(), IntArray(1), Para(BlockType.TABLE, table = TableData(fixed, header = true)))
                 indentStack.clear()
+                continue
+            }
+
+            val imgLine = IMG_LINE.matchEntire(line) ?: LINKED_IMG_LINE.matchEntire(line)
+            val image = imgLine?.let { ImageData.fromMarkdown(it.groupValues[1], it.groupValues[2]) }
+            if (image != null) {
+                add(OBJ.toString(), IntArray(1), Para(BlockType.IMAGE, image = image))
+                indentStack.clear()
+                i++
                 continue
             }
 

@@ -94,6 +94,8 @@ fun HomeScreen(
     onOpenNote: (String) -> Unit = {},
     /** FAB / Create-New → Editor (`/editor?new=1[&tag=..]`). */
     onNewNote: (tag: String?) -> Unit = {},
+    /** Create-New starters → Editor (`/editor?new=1&type=image|voice|checklist`). */
+    onNewTyped: (String) -> Unit = {},
     vm: HomeViewModel = viewModel(),
 ) {
     val c = Ink.colors
@@ -307,6 +309,7 @@ fun HomeScreen(
             showFab = !state.selectMode, // {!selectMode && <Fab />}
             onNewNote = { onNewNote(null) },
             onSearch = onSearch,
+            onNewTyped = onNewTyped,
             onNotebookCreated = { onNavTab(NavTab.Notebooks) },
             onTagCreated = { onNewNote(it) },
         )

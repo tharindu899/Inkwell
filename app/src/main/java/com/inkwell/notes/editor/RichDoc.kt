@@ -30,14 +30,17 @@ enum class BlockType {
     HR,
 
     /** Table. Object paragraph: its text is exactly [OBJ], the cells live in [Para.table]. */
-    TABLE;
+    TABLE,
+
+    /** Photo or drawing. Object paragraph: its text is exactly [OBJ], the picture lives in [Para.image]. */
+    IMAGE;
 
     /** Bullet, numbered and checklist items — they nest by [Para.indent]. */
     val isList: Boolean get() = this == UL || this == OL || this == TASK
     val isHeading: Boolean get() = this == H1 || this == H2 || this == H3
 
     /** Paragraphs that are not text lines but a drawn object (divider, table). The caret never sits inside one. */
-    val isObject: Boolean get() = this == HR || this == TABLE
+    val isObject: Boolean get() = this == HR || this == TABLE || this == IMAGE
 }
 
 enum class Align { Start, Center, End }
@@ -49,6 +52,7 @@ enum class Align { Start, Center, End }
  * [checked]   : checklist items only.
  * [collapsed] : list items only — hides the nested items below this one.
  * [table]     : [BlockType.TABLE] only — the cells.
+ * [image]     : [BlockType.IMAGE] only — the picture.
  */
 data class Para(
     val type: BlockType = BlockType.P,
@@ -57,6 +61,7 @@ data class Para(
     val checked: Boolean = false,
     val collapsed: Boolean = false,
     val table: TableData? = null,
+    val image: ImageData? = null,
 )
 
 /** Result of [RichDoc.edit]. [caret] is set when the edit was rewritten and the caret must move. */
@@ -660,6 +665,12 @@ class RichDoc private constructor(
         }
         val nd = fromChunks(list)
         return nd to nd.starts[caretPara.coerceIn(0, nd.paraCount - 1)]
+    }
+
+    /** New picture settings (size, position) for image paragraph [i]. */
+    fun setImage(i: Int, image: ImageData): RichDoc {
+        if (i !in paras.indices || paras[i].type != BlockType.IMAGE) return this
+        return withPara(i, paras[i].copy(image = image))
     }
 
     /** New cells for table paragraph [i]. */

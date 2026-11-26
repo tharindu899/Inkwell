@@ -26,6 +26,12 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.rememberScrollState
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -143,12 +149,24 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
         }
     }
 
+    BackHandler(enabled = ctl.drawOpen) { ctl.closeDraw() }
     BackHandler(enabled = ctl.linkDraft != null) { ctl.closeLink() }
     BackHandler(enabled = ctl.tableEdit != null) { ctl.closeCell() }
     BackHandler(enabled = ctl.deleteConfirmOpen) { ctl.dismissDelete() }
     BackHandler(enabled = ctl.nbCreateOpen) { ctl.closeCreateNotebook() }
     BackHandler(enabled = ctl.tagManageOpen) { ctl.closeTagManager() }
     BackHandler(enabled = ctl.nbPickerOpen) { ctl.closeNotebookPicker() }
+
+    // Photo picker: the system chooser (no storage permission needed); the picture is scaled + encoded off the main thread.
+    val scope = rememberCoroutineScope()
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val url = withContext(Dispatchers.IO) { com.inkwell.notes.util.ImageIo.uriToDataUrl(context, uri) }
+                if (url != null) ctl.insertImage(url, "Photo", drawing = false) else ctl.photoFailed()
+            }
+        }
+    }
 
     val titleFocus = remember { FocusRequester() }
     val bodyFocus = remember { FocusRequester() }
@@ -192,9 +210,9 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     val marginPx = with(LocalDensity.current) { 12.dp.toPx() }
     val objLines: List<Int> = if (ctl.bodyEditable) {
         ctl.doc.paras.mapIndexed { k, p ->
-            if (p.type == BlockType.TABLE) {
+            if (p.type == BlockType.TABLE || p.type == BlockType.IMAGE) {
                 val h = tableHeights[k]
-                if (h == null) 4 else kotlin.math.ceil((h + marginPx) / lineHpx).toInt().coerceAtLeast(2)
+                if (h == null) (if (p.type == BlockType.IMAGE) 6 else 4) else kotlin.math.ceil((h + marginPx) / lineHpx).toInt().coerceAtLeast(2)
             } else 1
         }
     } else emptyList()
@@ -401,6 +419,23 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                                     }
                                     .onSizeChanged { sz -> if (tableHeights[k] != sz.height) tableHeights[k] = sz.height },
                             )
+                        } else if (p.type == BlockType.IMAGE && p.image != null) {
+                            ImageOverlay(
+                                image = p.image,
+                                selected = ctl.selectedImage == k && !ctl.readMode,
+                                editable = !ctl.readMode,
+                                onSelect = { ctl.selectImage(k) },
+                                onCommit = { ctl.commitImage(k, it) },
+                                onDelete = { ctl.deleteImage(k) },
+                                modifier = Modifier
+                                    .padding(start = 20.dp, end = 20.dp)
+                                    .offset {
+                                        val l = layoutRes
+                                        val y = if (l == null) 0f else l.getLineTop(l.getLineForOffset(ps.coerceAtMost(maxOf(0, l.layoutInput.text.length - 1))))
+                                        IntOffset(0, (y + with(density) { 8.dp.toPx() + 6.dp.toPx() }).toInt())
+                                    }
+                                    .onSizeChanged { sz -> if (tableHeights[k] != sz.height) tableHeights[k] = sz.height },
+                            )
                         } else if (tr.layout.isCodeHeader(k)) {
                             val blockId = k
                             Row(
@@ -450,6 +485,8 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     onDateTime = ctl::insertDateTime,
                     onLink = ctl::openLink,
                     onHr = ctl::insertHr,
+                    onPhoto = { pickPhoto.launch("image/*") },
+                    onDraw = ctl::openDraw,
                     onCode = ctl::toggleInlineCode,
                     onCodeBlock = ctl::toggleCodeBlock,
                     scroll = toolbarScroll,
@@ -467,6 +504,17 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     ctl.confirmDelete()
                     onBack()
                 },
+            )
+        }
+
+        // ── Part 6: drawing dialog ──
+        if (ctl.drawOpen) {
+            DrawModal(
+                onInsert = { url ->
+                    ctl.closeDraw()
+                    ctl.insertImage(url, "Drawing", drawing = true)
+                },
+                onClose = ctl::closeDraw,
             )
         }
 
@@ -713,8 +761,8 @@ private fun RichNoteBanner() {
     ) {
         FaIcon(R.drawable.ic_fa_circle_info, tint = c.accent, size = 14.dp)
         InkText(
-            "This note has images or markup the editor can't write back yet. Images arrive in the next " +
-                "editor part — until then the body stays read-only and untouched (title, pin and delete work).",
+            "This note uses markup the editor can't write back yet (for example merged table cells or " +
+                "relative image paths), so the body stays read-only and untouched (title, pin and delete work).",
             size = 12.sp,
             color = c.text2,
             lineHeight = 17.sp,

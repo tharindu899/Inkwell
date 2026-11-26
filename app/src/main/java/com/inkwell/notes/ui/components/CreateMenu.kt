@@ -57,6 +57,8 @@ fun CreateMenu(
     onNewTag: () -> Unit,
     onSearch: () -> Unit,
     onManageTags: (() -> Unit)? = null,
+    /** Starter notes: "image" | "voice" | "checklist". */
+    onNewTyped: ((String) -> Unit)? = null,
 ) {
     val c = Ink.colors
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -67,6 +69,11 @@ fun CreateMenu(
         add(DialItem(R.drawable.ic_fa_folder_plus, MenuBlue, Color.White, onNewNotebook))
         add(DialItem(R.drawable.ic_fa_tag, MenuGreen, Color.White, onNewTag))
         add(DialItem(R.drawable.ic_fa_magnifying_glass, MenuPurple, Color.White, onSearch))
+        if (onNewTyped != null) {
+            add(DialItem(R.drawable.ic_fa_image, MenuBlue, Color.White) { onNewTyped("image") })
+            add(DialItem(R.drawable.ic_fa_microphone, MenuPurple, Color.White) { onNewTyped("voice") })
+            add(DialItem(R.drawable.ic_fa_square_check, MenuGreen, Color.White) { onNewTyped("checklist") })
+        }
         if (onManageTags != null) {
             add(DialItem(R.drawable.ic_fa_tags, c.bgElevated, c.text1, onManageTags))
         }

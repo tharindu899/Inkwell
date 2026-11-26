@@ -92,6 +92,7 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                         onSettings = { nav.push(Route.Settings) },
                         onOpenNote = { id -> nav.push(Route.Editor(id = id)) },
                         onNewNote = { tag -> nav.push(Route.Editor(tag = tag)) },
+                        onNewTyped = { t -> nav.push(Route.Editor(type = t)) },
                     )
                     is Route.AllNotes -> AllNotesScreen(
                         openManageTags = route.manageTags,
@@ -100,6 +101,7 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                         onSearch = { nav.push(Route.Search) },
                         onOpenNote = { id -> nav.push(Route.Editor(id = id)) },
                         onNewNote = { tag -> nav.push(Route.Editor(tag = tag)) },
+                        onNewTyped = { t -> nav.push(Route.Editor(type = t)) },
                     )
                     Route.Notebooks -> NotebooksScreen(
                         onBack = { nav.back() },
