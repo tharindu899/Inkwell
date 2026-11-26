@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -165,6 +166,7 @@ private fun CreateNotebookButton(onClick: () -> Unit) {
  * input removes the last tag) and "Saved tags" quick chips. Both chip rows scroll sideways like the web's
  * v45 compact layout. Rides above the keyboard.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun TagManageModal(
     tags: List<String>,
