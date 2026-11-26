@@ -12,7 +12,6 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.BaselineShift
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.TextUnit
@@ -31,12 +30,6 @@ class RichStyle(
     val doneColor: Color,
     /** Background behind code-block lines. */
     val codeBg: Color,
-    /** Colour of links (underlined). */
-    val linkColor: Color,
-    /** Background behind inline `code`. */
-    val inlineCodeBg: Color,
-    /** `LocalDensity.fontScale` — lets dp-sized blocks (tables) reserve the right height in sp. */
-    val fontScale: Float,
 )
 
 /**
@@ -63,9 +56,9 @@ class RichTransformation(
     private fun build(): AnnotatedString = buildAnnotatedString {
         val n = doc.paraCount
         var lastShown = n - 1
-        while (lastShown > 0 && layout.isHidden(lastShown)) lastShown--
+        while (lastShown > 0 && doc.hidden[lastShown]) lastShown--
         for (i in 0 until n) {
-            if (layout.isHidden(i)) continue
+            if (doc.hidden[i]) continue
             val p = doc.paras[i]
             val s = doc.starts[i]
             val e = doc.paraEnd(i)
@@ -81,29 +74,12 @@ class RichTransformation(
                 BlockType.H3 -> 1.0f
                 else -> 0f
             }
-            val codeFirst = layout.isCodeFirst(i)
-            val isObject = p.type.isObject || codeFirst
-            val needsParagraphStyle = align != null || headingScale > 0f || isObject
+            val needsParagraphStyle = align != null || headingScale > 0f
             if (needsParagraphStyle) {
-                if (isObject) {
-                    // Divider / table / code block: one tall, untrimmed line — the screen paints the block into that space.
-                    val dp = when {
-                        codeFirst -> codeHeightDp(layout.codeLines(i))
-                        p.type == BlockType.TABLE -> tableHeightDp(p.table?.rowCount ?: 1)
-                        else -> HR_HEIGHT_DP
-                    }
-                    pushStyle(
-                        ParagraphStyle(
-                            lineHeight = (dp / style.fontScale).sp,
-                            lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
-                        ),
-                    )
-                } else {
-                    val lh: TextUnit = if (headingScale > 0f) {
-                        (style.fontSizeSp * headingScale * 1.4f).sp
-                    } else TextUnit.Unspecified
-                    pushStyle(ParagraphStyle(textAlign = align ?: TextAlign.Unspecified, lineHeight = lh))
-                }
+                val lh: TextUnit = if (headingScale > 0f) {
+                    (style.fontSizeSp * headingScale * 1.4f).sp
+                } else TextUnit.Unspecified
+                pushStyle(ParagraphStyle(textAlign = align ?: TextAlign.Unspecified, lineHeight = lh))
             }
 
             val prefix = layout.prefixes[i]
@@ -113,11 +89,9 @@ class RichTransformation(
                 pop()
             }
 
-            val block = if (codeFirst) null else blockSpan(p)
+            val block = blockSpan(p)
             if (block != null) pushStyle(block)
-            if (codeFirst) {
-                // nothing: the code lives in the code block painted over the slot (and in its own editor)
-            } else if (p.type == BlockType.CODE) {
+            if (p.type == BlockType.CODE) {
                 append(doc.text.substring(s, e))
             } else {
                 var a = s
@@ -144,17 +118,14 @@ class RichTransformation(
         BlockType.H3 -> SpanStyle(fontSize = style.fontSizeSp.sp, fontWeight = FontWeight.SemiBold, fontFamily = style.serif)
         BlockType.QUOTE -> SpanStyle(color = style.quoteColor, fontStyle = FontStyle.Italic)
         BlockType.TASK -> if (p.checked) SpanStyle(color = style.doneColor, textDecoration = TextDecoration.LineThrough) else null
-        // the box behind a code block is painted by the screen (GitHub-style), so no per-character background here
-        BlockType.CODE -> SpanStyle(fontFamily = FontFamily.Monospace, fontSize = (style.fontSizeSp * 0.92f).sp)
+        BlockType.CODE -> SpanStyle(fontFamily = FontFamily.Monospace, fontSize = (style.fontSizeSp * 0.92f).sp, background = style.codeBg)
         else -> null
     }
 
     private fun markSpan(m: Int): SpanStyle? {
         if (m == 0) return null
-        val isLink = Mark.linkId(m) != 0
-        val isCode = m and Mark.CODE != 0
         val deco = buildList {
-            if (m and Mark.UNDERLINE != 0 || isLink) add(TextDecoration.Underline)
+            if (m and Mark.UNDERLINE != 0) add(TextDecoration.Underline)
             if (m and Mark.STRIKE != 0) add(TextDecoration.LineThrough)
         }
         val baseline = when {
@@ -168,32 +139,8 @@ class RichTransformation(
             textDecoration = if (deco.isEmpty()) null else TextDecoration.combine(deco),
             baselineShift = baseline,
             fontSize = if (baseline != null) (style.fontSizeSp * 0.75f).sp else TextUnit.Unspecified,
-            background = when {
-                m and Mark.HIGHLIGHT != 0 -> style.highlightBg
-                isCode -> style.inlineCodeBg
-                else -> Color.Unspecified
-            },
-            color = if (isLink) style.linkColor else Color.Unspecified,
-            fontFamily = if (isCode) FontFamily.Monospace else null,
+            background = if (m and Mark.HIGHLIGHT != 0) style.highlightBg else Color.Unspecified,
         )
-    }
-
-    companion object {
-        /** Height of the line a divider is drawn into. */
-        const val HR_HEIGHT_DP = 28f
-
-        /** One table row (the overlay table uses the same number) + vertical breathing room. */
-        const val TABLE_ROW_DP = 40f
-        const val TABLE_PAD_DP = 8f
-
-        fun tableHeightDp(rows: Int): Float = rows.coerceAtLeast(1) * TABLE_ROW_DP + 2 * TABLE_PAD_DP
-
-        /** One code line (the block draws the same number) · padding inside the box · gap above / below the box. */
-        const val CODE_LINE_DP = 20f
-        const val CODE_PAD_DP = 10f
-        const val CODE_MARGIN_DP = 4f
-
-        fun codeHeightDp(lines: Int): Float = lines.coerceAtLeast(1) * CODE_LINE_DP + 2 * CODE_PAD_DP + 2 * CODE_MARGIN_DP
     }
 
     /** Caret mapping (real text ⇄ shown text), used to keep the caret on screen. */

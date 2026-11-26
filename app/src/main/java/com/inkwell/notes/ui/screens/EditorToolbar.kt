@@ -3,7 +3,6 @@ package com.inkwell.notes.ui.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,7 +29,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -54,10 +52,6 @@ class ToolbarState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val markdown: Boolean = true,
-    /** Caret / selection sits on a link (the link button then removes it). */
-    val inLink: Boolean = false,
-    /** Caret is inside a code block (shows the Copy / Bottom / Delete bar). */
-    val inCodeBlock: Boolean = false,
 )
 
 /** Which glyph a button draws. */
@@ -73,12 +67,6 @@ private sealed interface Glyph {
     data object Sub : Glyph
     data object Highlight : Glyph
     data object Clear : Glyph
-    data object InlineCode : Glyph
-    data object CodeBlock : Glyph
-    data object Link : Glyph
-    data object Table : Glyph
-    data object Divider : Glyph
-    data object DateTime : Glyph
     data object Bullets : Glyph
     data object Numbers : Glyph
     data object Checklist : Glyph
@@ -89,8 +77,8 @@ private sealed interface Glyph {
 }
 
 /**
- * Port of `.editor-toolbar` (Parts 2–5): history · markdown · inline · blocks · lists (bullets, numbers, checklist, quote) · align · extras ·
- * inserts (inline code, code block, link, table, divider, date/time) · clear. Images and the toolbar customiser arrive in later parts.
+ * Port of `.editor-toolbar` (Parts 2–3): history · markdown · inline · blocks · lists (bullets, numbers, checklist, quote) · align · extras · clear.
+ * Tables, links, images, code, date/time and the toolbar customiser arrive in later parts.
  *
  * Buttons are plain taps (no focus), so the text field keeps its focus and selection while you format.
  */
@@ -105,12 +93,6 @@ fun EditorToolbar(
     onIndent: (Int) -> Unit,
     onClear: () -> Unit,
     onMarkdown: () -> Unit = {},
-    onInlineCode: () -> Unit = {},
-    onCodeBlock: () -> Unit = {},
-    onLink: () -> Unit = {},
-    onTable: () -> Unit = {},
-    onDivider: () -> Unit = {},
-    onDateTime: () -> Unit = {},
     scroll: ScrollState = rememberScrollState(),
 ) {
     val c = Ink.colors
@@ -154,13 +136,6 @@ fun EditorToolbar(
             ToolButton(Glyph.Highlight, on = state.marks and Mark.HIGHLIGHT != 0) { onMark(Mark.HIGHLIGHT) }
             ToolButton(Glyph.Sup, on = state.marks and Mark.SUP != 0) { onMark(Mark.SUP) }
             ToolButton(Glyph.Sub, on = state.marks and Mark.SUB != 0) { onMark(Mark.SUB) }
-            Sep()
-            ToolButton(Glyph.InlineCode, on = state.marks and Mark.CODE != 0, onClick = onInlineCode)
-            ToolButton(Glyph.CodeBlock, on = state.block == BlockType.CODE, onClick = onCodeBlock)
-            ToolButton(Glyph.Link, on = state.inLink, onClick = onLink)
-            ToolButton(Glyph.Table, onClick = onTable)
-            ToolButton(Glyph.Divider, onClick = onDivider)
-            ToolButton(Glyph.DateTime, onClick = onDateTime)
             Sep()
             ToolButton(Glyph.Clear, onClick = onClear)
         }
@@ -236,31 +211,6 @@ private fun GlyphView(glyph: Glyph, tint: Color) {
         Glyph.Sup -> ScriptGlyph(tint, sup = true)
         Glyph.Sub -> ScriptGlyph(tint, sup = false)
         Glyph.Clear -> ClearGlyph(tint)
-        Glyph.InlineCode -> BasicText(
-            "`x`",
-            style = TextStyle(color = tint, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace),
-        )
-        Glyph.CodeBlock -> FaIcon(R.drawable.ic_fa_code, tint = tint, size = 14.dp)
-        Glyph.Table -> FaIcon(R.drawable.ic_fa_table_cells_large, tint = tint, size = 15.dp)
-        Glyph.DateTime -> FaIcon(R.drawable.ic_fa_clock, tint = tint, size = 14.dp)
-        Glyph.Divider -> Canvas(Modifier.size(16.dp)) {
-            val w = size.width
-            val h = size.height
-            val sw = 1.8.dp.toPx()
-            drawLine(tint, Offset(w * 0.02f, h * 0.5f), Offset(w * 0.98f, h * 0.5f), sw * 1.2f, StrokeCap.Round)
-            drawLine(tint.copy(alpha = 0.5f), Offset(w * 0.2f, h * 0.18f), Offset(w * 0.8f, h * 0.18f), sw, StrokeCap.Round)
-            drawLine(tint.copy(alpha = 0.5f), Offset(w * 0.2f, h * 0.82f), Offset(w * 0.8f, h * 0.82f), sw, StrokeCap.Round)
-        }
-        Glyph.Link -> Canvas(Modifier.size(17.dp)) {
-            // two interlocked pills = a chain link
-            val w = size.width
-            val h = size.height
-            val sw = 1.8.dp.toPx()
-            val pill = androidx.compose.ui.geometry.Size(w * 0.58f, h * 0.34f)
-            val r = androidx.compose.ui.geometry.CornerRadius(h * 0.17f)
-            drawRoundRect(tint, topLeft = Offset(w * 0.02f, h * 0.33f), size = pill, cornerRadius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
-            drawRoundRect(tint, topLeft = Offset(w * 0.40f, h * 0.33f), size = pill, cornerRadius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
-        }
         Glyph.Bullets -> Canvas(Modifier.size(16.dp)) {
             val w = size.width
             val sw = 1.8.dp.toPx()
