@@ -45,7 +45,6 @@ class RichLayout(private val doc: RichDoc) {
                 BlockType.OL -> sb.append(nums[k]).append(".  ")
                 BlockType.TASK -> { boxIdx[k] = sb.length; sb.append(BOX_SLOT) } // the screen draws the box here
                 BlockType.QUOTE -> sb.append("▎ ")
-                BlockType.HR -> sb.append(HR_SLOT) // the screen draws the rule across this line
                 else -> {}
             }
             prefixes[k] = sb.toString()
@@ -95,9 +94,6 @@ class RichLayout(private val doc: RichDoc) {
 
         /** Blank space reserved for the checkbox (1.5 em) — drawn on a Canvas by the editor screen. */
         const val BOX_SLOT = "\u2003\u2002"
-
-        /** One blank em so an empty divider paragraph keeps a line to draw on. */
-        const val HR_SLOT = "\u2003"
     }
 
     fun originalToTransformed(offset: Int): Int = o2t[offset.coerceIn(0, doc.text.length)]

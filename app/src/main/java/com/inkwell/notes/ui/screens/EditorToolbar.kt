@@ -25,7 +25,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -53,8 +52,6 @@ class ToolbarState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val markdown: Boolean = true,
-    /** The caret / selection is on a link (the link button then removes it). */
-    val inLink: Boolean = false,
 )
 
 /** Which glyph a button draws. */
@@ -74,12 +71,6 @@ private sealed interface Glyph {
     data object Numbers : Glyph
     data object Checklist : Glyph
     data object Markdown : Glyph
-    data object InlineCode : Glyph
-    data object CodeBlock : Glyph
-    data object Link : Glyph
-    data object Divider : Glyph
-    data object Table : Glyph
-    data object DateTime : Glyph
     data object Quote : Glyph
     data class AlignLines(val align: Align) : Glyph
     data class IndentArrow(val forward: Boolean) : Glyph
@@ -87,8 +78,7 @@ private sealed interface Glyph {
 
 /**
  * Port of `.editor-toolbar` (Parts 2–3): history · markdown · inline · blocks · lists (bullets, numbers, checklist, quote) · align · extras · clear.
- * Part 5 adds inline code, code block, link, divider, table and date/time. Images, drawing and the toolbar
- * customiser arrive in later parts.
+ * Tables, links, images, code, date/time and the toolbar customiser arrive in later parts.
  *
  * Buttons are plain taps (no focus), so the text field keeps its focus and selection while you format.
  */
@@ -103,10 +93,6 @@ fun EditorToolbar(
     onIndent: (Int) -> Unit,
     onClear: () -> Unit,
     onMarkdown: () -> Unit = {},
-    onLink: () -> Unit = {},
-    onDivider: () -> Unit = {},
-    onTable: () -> Unit = {},
-    onDateTime: () -> Unit = {},
     scroll: ScrollState = rememberScrollState(),
 ) {
     val c = Ink.colors
@@ -150,13 +136,6 @@ fun EditorToolbar(
             ToolButton(Glyph.Highlight, on = state.marks and Mark.HIGHLIGHT != 0) { onMark(Mark.HIGHLIGHT) }
             ToolButton(Glyph.Sup, on = state.marks and Mark.SUP != 0) { onMark(Mark.SUP) }
             ToolButton(Glyph.Sub, on = state.marks and Mark.SUB != 0) { onMark(Mark.SUB) }
-            Sep()
-            ToolButton(Glyph.InlineCode, on = state.marks and Mark.CODE != 0) { onMark(Mark.CODE) }
-            ToolButton(Glyph.CodeBlock, on = state.block == BlockType.CODE) { onBlock(BlockType.CODE) }
-            ToolButton(Glyph.Link, on = state.inLink, onClick = onLink)
-            ToolButton(Glyph.Divider, onClick = onDivider)
-            ToolButton(Glyph.Table, onClick = onTable)
-            ToolButton(Glyph.DateTime, onClick = onDateTime)
             Sep()
             ToolButton(Glyph.Clear, onClick = onClear)
         }
@@ -215,28 +194,6 @@ private fun GlyphView(glyph: Glyph, tint: Color) {
         Glyph.Underline -> Txt("U", tint, 14, FontWeight.Bold, deco = TextDecoration.Underline)
         Glyph.Strike -> Txt("S", tint, 14, FontWeight.Bold, deco = TextDecoration.LineThrough)
         Glyph.Markdown -> Txt("M↓", tint, 12, FontWeight.ExtraBold)
-        Glyph.InlineCode -> FaIcon(R.drawable.ic_fa_code, tint = tint, size = 14.dp)
-        Glyph.CodeBlock -> Txt("{ }", tint, 13, FontWeight.ExtraBold)
-        Glyph.Table -> FaIcon(R.drawable.ic_fa_table_cells_large, tint = tint, size = 14.dp)
-        Glyph.DateTime -> FaIcon(R.drawable.ic_fa_clock, tint = tint, size = 14.dp)
-        Glyph.Divider -> Canvas(Modifier.size(16.dp)) {
-            val w = size.width
-            val sw = 1.8.dp.toPx()
-            drawLine(tint, Offset(sw / 2, size.height * 0.5f), Offset(w - sw / 2, size.height * 0.5f), sw * 1.2f, StrokeCap.Round)
-            drawLine(tint, Offset(w * 0.3f, size.height * 0.16f), Offset(w * 0.7f, size.height * 0.16f), sw * 0.8f, StrokeCap.Round)
-            drawLine(tint, Offset(w * 0.3f, size.height * 0.84f), Offset(w * 0.7f, size.height * 0.84f), sw * 0.8f, StrokeCap.Round)
-        }
-        Glyph.Link -> Canvas(Modifier.size(16.dp)) {
-            val w = size.width
-            val sw = 1.8.dp.toPx()
-            rotate(-45f, pivot = center) {
-                val link = androidx.compose.ui.geometry.Size(w * 0.58f, w * 0.32f)
-                val radius = androidx.compose.ui.geometry.CornerRadius(w * 0.16f)
-                val stroke = androidx.compose.ui.graphics.drawscope.Stroke(sw)
-                drawRoundRect(tint, topLeft = Offset(w * 0.0f, w * 0.34f), size = link, cornerRadius = radius, style = stroke)
-                drawRoundRect(tint, topLeft = Offset(w * 0.42f, w * 0.34f), size = link, cornerRadius = radius, style = stroke)
-            }
-        }
         Glyph.Checklist -> Canvas(Modifier.size(16.dp)) {
             val w = size.width
             val sw = 1.8.dp.toPx()

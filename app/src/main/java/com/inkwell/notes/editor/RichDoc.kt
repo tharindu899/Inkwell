@@ -9,53 +9,15 @@ object Mark {
     const val SUP = 16
     const val SUB = 32
     const val HIGHLIGHT = 64
-    const val CODE = 128
-
-    /** Bits 0–7 of a mark Int are the formatting flags above; bits 8+ hold the link id (0 = no link, see [LinkTable]). */
-    const val FORMAT_MASK = 0xFF
-    const val LINK_SHIFT = 8
-
-    fun linkId(m: Int): Int = m ushr LINK_SHIFT
-    fun withLink(m: Int, id: Int): Int = (m and FORMAT_MASK) or (id shl LINK_SHIFT)
-}
-
-/**
- * Interns link URLs so a character's link fits in the spare bits of its mark Int. Ids are never reused, so undo /
- * redo snapshots stay valid; the table only grows by one entry per distinct URL typed in this process.
- */
-object LinkTable {
-    private val urls = ArrayList<String>()
-    private val ids = HashMap<String, Int>()
-
-    @Synchronized
-    fun idFor(url: String): Int = ids.getOrPut(url) {
-        urls.add(url)
-        urls.size // ids start at 1
-    }
-
-    @Synchronized
-    fun urlOf(id: Int): String? = if (id in 1..urls.size) urls[id - 1] else null
 }
 
 enum class BlockType {
-    P, H1, H2, H3, UL, OL, TASK, QUOTE, CODE,
-
-    /** Divider: an empty paragraph the screen draws as a rule. */
-    HR,
-
-    /** One table row: cells separated by `'\t'`. Edited through the table editor, never by typing structure. */
-    TABLE;
+    P, H1, H2, H3, UL, OL, TASK, QUOTE, CODE;
 
     /** Bullet, numbered and checklist items — they nest by [Para.indent]. */
     val isList: Boolean get() = this == UL || this == OL || this == TASK
     val isHeading: Boolean get() = this == H1 || this == H2 || this == H3
-
-    /** Blocks that block-format buttons (headings, lists, align, indent, clear format) leave alone. */
-    val isAtomic: Boolean get() = this == HR || this == TABLE
 }
-
-/** One paragraph on its way into a document (used by paste, divider, table and code-block operations). */
-class Block(val text: String, val marks: IntArray, val para: Para)
 
 enum class Align { Start, Center, End }
 
@@ -256,22 +218,6 @@ class RichDoc private constructor(
         val inserted = newText.substring(p, insEnd)
         val i = paraIndexAt(p)
 
-        // Table rows: typing inside a cell is fine, but cell separators and row breaks are only changed by the
-        // table editor, so any edit that would add / remove them is refused (the field snaps back).
-        val tableTouched = (i..paraIndexAt(removedEnd)).any { paras[it].type == BlockType.TABLE }
-        if (tableTouched) {
-            val structural = removed.any { it == '\n' || it == '\t' } || inserted.any { it == '\n' || it == '\t' }
-            if (structural) {
-                val onlyInsertedBreaks = removed.none { it == '\n' || it == '\t' } && paras[i].type == BlockType.TABLE
-                if (onlyInsertedBreaks && inserted != "\n") {
-                    // pasted text with line breaks / tabs inside a cell → flatten to spaces
-                    val clean = inserted.replace('\n', ' ').replace('\t', ' ')
-                    return edit(text.substring(0, p) + clean + text.substring(removedEnd), typingMarks, false, null)
-                }
-                return EditResult(this, caret = if (removed.isEmpty()) p else removedEnd.coerceAtMost(oldLen))
-            }
-        }
-
         // Backspace at the start of a line.
         if (removed == "\n" && inserted.isEmpty()) {
             val j = i + 1
@@ -356,14 +302,7 @@ class RichDoc private constructor(
 
         val newParas = ArrayList(paras)
         if (removedNl > 0) {
-            if (paras[i].type == BlockType.HR && removed == "\n") {
-                newParas.removeAt(i) // Backspace on the line under a divider removes the divider
-            } else {
-                repeat(removedNl) { if (i + 1 < newParas.size) newParas.removeAt(i + 1) }
-            }
-        }
-        if (insertedNl == 0 && inserted.isNotEmpty() && paras[i].type == BlockType.HR) {
-            newParas[i] = Para() // typing on a divider line turns it into a normal paragraph
+            repeat(removedNl) { if (i + 1 < newParas.size) newParas.removeAt(i + 1) }
         }
         if (insertedNl > 0) {
             val cur = paras[i]
@@ -403,7 +342,6 @@ class RichDoc private constructor(
     private fun continuation(cur: Para): Para = when {
         cur.type.isHeading -> cur.copy(type = BlockType.P)
         cur.type.isList -> cur.copy(checked = false, collapsed = false)
-        cur.type == BlockType.HR || cur.type == BlockType.TABLE -> Para()
         else -> cur
     }
 
@@ -493,7 +431,6 @@ class RichDoc private constructor(
         val shift = IntArray(n)
         for (k in r) {
             val p = paras[k]
-            if (p.type.isAtomic) continue
             if (!p.type.isList) { shift[k] = delta; continue }
             if (!listsAllowed) continue
             val eff = if (delta < 0 && p.indent == 0) 0 else delta
@@ -518,7 +455,7 @@ class RichDoc private constructor(
         val m = marks.copyOf()
         for (k in a until b) m[k] = 0
         val l = ArrayList(paras)
-        for (k in paraRange(start, end)) if (!l[k].type.isAtomic) l[k] = Para()
+        for (k in paraRange(start, end)) l[k] = Para()
         return RichDoc(text, m, normalize(l))
     }
 
@@ -547,104 +484,9 @@ class RichDoc private constructor(
         return if (changed) RichDoc(text, marks, normalize(l)) else this
     }
 
-    // ─── links (Part 5) ───────────────────────
-
-    /** The link run under a caret / selection as [start, end) offsets, or null when there is no link there. */
-    fun linkSpanAt(start: Int, end: Int): IntRange? {
-        val a = minOf(start, end).coerceIn(0, text.length)
-        val b = maxOf(start, end).coerceIn(0, text.length)
-        val probes: IntProgression = if (a == b) (a - 1)..a else a until b
-        var hit = -1
-        for (k in probes) {
-            if (k in 0 until text.length && text[k] != '\n' && Mark.linkId(marks[k]) != 0) { hit = k; break }
-        }
-        if (hit == -1) return null
-        val id = Mark.linkId(marks[hit])
-        var lo = hit
-        var hi = hit + 1
-        while (lo > 0 && text[lo - 1] != '\n' && Mark.linkId(marks[lo - 1]) == id) lo--
-        while (hi < text.length && text[hi] != '\n' && Mark.linkId(marks[hi]) == id) hi++
-        return lo until hi // inclusive-start range; end offset = last + 1
-    }
-
-    /** URL of the link at [offset] (the character at / before it), or null. */
-    fun urlAt(offset: Int): String? {
-        val span = linkSpanAt(offset, offset) ?: return null
-        return LinkTable.urlOf(Mark.linkId(marks[span.first]))
-    }
-
-    /** Sets ([url] != null) or clears the link over [start, end). */
-    fun setLink(start: Int, end: Int, url: String?): RichDoc {
-        val a = minOf(start, end).coerceIn(0, text.length)
-        val b = maxOf(start, end).coerceIn(0, text.length)
-        if (a == b) return this
-        val id = if (url == null) 0 else LinkTable.idFor(url)
-        val m = marks.copyOf()
-        for (k in a until b) {
-            if (text[k] == '\n') continue
-            m[k] = Mark.withLink(m[k], id)
-        }
-        return RichDoc(text, m, paras)
-    }
-
-    // ─── paragraph-level splicing (Part 5) ────
-
-    private fun blockAt(k: Int): Block =
-        Block(text.substring(starts[k], paraEnd(k)), marks.copyOfRange(starts[k], paraEnd(k)), paras[k])
-
-    /** Replaces paragraphs [from, toExclusive) with [blocks] (use `from == toExclusive` to insert). */
-    fun replaceParas(from: Int, toExclusive: Int, blocks: List<Block>): RichDoc {
-        val f = from.coerceIn(0, paras.size)
-        val t = toExclusive.coerceIn(f, paras.size)
-        val all = ArrayList<Block>()
-        for (k in 0 until f) all.add(blockAt(k))
-        all.addAll(blocks)
-        for (k in t until paras.size) all.add(blockAt(k))
-        if (all.isEmpty()) all.add(Block("", IntArray(0), Para()))
-        return fromBlocks(all)
-    }
-
-    /** Contiguous table rows around paragraph [i], or null when [i] isn't a table row. */
-    fun tableRun(i: Int): IntRange? {
-        if (i !in paras.indices || paras[i].type != BlockType.TABLE) return null
-        var a = i
-        var b = i
-        while (a > 0 && paras[a - 1].type == BlockType.TABLE) a--
-        while (b + 1 < paras.size && paras[b + 1].type == BlockType.TABLE) b++
-        return a..b
-    }
-
-    /** Cell texts of the table rows in [run]. */
-    fun tableRows(run: IntRange): List<List<String>> =
-        run.map { text.substring(starts[it], paraEnd(it)).split('\t') }
-
-    /** Contiguous code lines around paragraph [i], or null when [i] isn't code. */
-    fun codeRun(i: Int): IntRange? {
-        if (i !in paras.indices || paras[i].type != BlockType.CODE) return null
-        var a = i
-        var b = i
-        while (a > 0 && paras[a - 1].type == BlockType.CODE) a--
-        while (b + 1 < paras.size && paras[b + 1].type == BlockType.CODE) b++
-        return a..b
-    }
-
-    /** The text of paragraphs in [run] joined by newlines. */
-    fun textOf(run: IntRange): String = run.joinToString("\n") { text.substring(starts[it], paraEnd(it)) }
-
-    /** Text + marks of paragraph [i], split at [offset] (used by paste). */
-    fun paraBefore(i: Int, offset: Int): Block {
-        val e = offset.coerceIn(starts[i], paraEnd(i))
-        return Block(text.substring(starts[i], e), marks.copyOfRange(starts[i], e), paras[i])
-    }
-
-    fun paraAfter(i: Int, offset: Int): Block {
-        val s0 = offset.coerceIn(starts[i], paraEnd(i))
-        return Block(text.substring(s0, paraEnd(i)), marks.copyOfRange(s0, paraEnd(i)), paras[i])
-    }
-
     private fun mapParas(range: IntRange, f: (Para) -> Para): RichDoc {
         val l = ArrayList(paras)
-        for (k in range) if (!l[k].type.isAtomic) l[k] = f(l[k])
+        for (k in range) l[k] = f(l[k])
         return RichDoc(text, marks, normalize(l))
     }
 
@@ -703,18 +545,5 @@ class RichDoc private constructor(
         }
 
         fun plain(text: String): RichDoc = create(text, IntArray(text.length), emptyList())
-
-        /** Joins [blocks] (one paragraph each) into a document. */
-        fun fromBlocks(blocks: List<Block>): RichDoc {
-            if (blocks.isEmpty()) return EMPTY
-            val sb = StringBuilder()
-            val m = ArrayList<Int>()
-            for ((k, b) in blocks.withIndex()) {
-                if (k > 0) { sb.append('\n'); m.add(0) }
-                sb.append(b.text)
-                for (x in b.marks) m.add(x)
-            }
-            return create(sb.toString(), m.toIntArray(), blocks.map { it.para })
-        }
     }
 }
