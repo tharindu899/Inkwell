@@ -12,6 +12,7 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.BaselineShift
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.TextUnit
@@ -30,6 +31,12 @@ class RichStyle(
     val doneColor: Color,
     /** Background behind code-block lines. */
     val codeBg: Color,
+    /** Colour of links (underlined). */
+    val linkColor: Color,
+    /** Background behind inline `code`. */
+    val inlineCodeBg: Color,
+    /** `LocalDensity.fontScale` — lets dp-sized blocks (tables) reserve the right height in sp. */
+    val fontScale: Float,
 )
 
 /**
@@ -74,12 +81,24 @@ class RichTransformation(
                 BlockType.H3 -> 1.0f
                 else -> 0f
             }
-            val needsParagraphStyle = align != null || headingScale > 0f
+            val isObject = p.type.isObject
+            val needsParagraphStyle = align != null || headingScale > 0f || isObject
             if (needsParagraphStyle) {
-                val lh: TextUnit = if (headingScale > 0f) {
-                    (style.fontSizeSp * headingScale * 1.4f).sp
-                } else TextUnit.Unspecified
-                pushStyle(ParagraphStyle(textAlign = align ?: TextAlign.Unspecified, lineHeight = lh))
+                if (isObject) {
+                    // Divider / table: one tall, untrimmed line — the screen paints the block into that space.
+                    val dp = if (p.type == BlockType.TABLE) tableHeightDp(p.table?.rowCount ?: 1) else HR_HEIGHT_DP
+                    pushStyle(
+                        ParagraphStyle(
+                            lineHeight = (dp / style.fontScale).sp,
+                            lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
+                        ),
+                    )
+                } else {
+                    val lh: TextUnit = if (headingScale > 0f) {
+                        (style.fontSizeSp * headingScale * 1.4f).sp
+                    } else TextUnit.Unspecified
+                    pushStyle(ParagraphStyle(textAlign = align ?: TextAlign.Unspecified, lineHeight = lh))
+                }
             }
 
             val prefix = layout.prefixes[i]
@@ -124,8 +143,10 @@ class RichTransformation(
 
     private fun markSpan(m: Int): SpanStyle? {
         if (m == 0) return null
+        val isLink = Mark.linkId(m) != 0
+        val isCode = m and Mark.CODE != 0
         val deco = buildList {
-            if (m and Mark.UNDERLINE != 0) add(TextDecoration.Underline)
+            if (m and Mark.UNDERLINE != 0 || isLink) add(TextDecoration.Underline)
             if (m and Mark.STRIKE != 0) add(TextDecoration.LineThrough)
         }
         val baseline = when {
@@ -139,8 +160,25 @@ class RichTransformation(
             textDecoration = if (deco.isEmpty()) null else TextDecoration.combine(deco),
             baselineShift = baseline,
             fontSize = if (baseline != null) (style.fontSizeSp * 0.75f).sp else TextUnit.Unspecified,
-            background = if (m and Mark.HIGHLIGHT != 0) style.highlightBg else Color.Unspecified,
+            background = when {
+                m and Mark.HIGHLIGHT != 0 -> style.highlightBg
+                isCode -> style.inlineCodeBg
+                else -> Color.Unspecified
+            },
+            color = if (isLink) style.linkColor else Color.Unspecified,
+            fontFamily = if (isCode) FontFamily.Monospace else null,
         )
+    }
+
+    companion object {
+        /** Height of the line a divider is drawn into. */
+        const val HR_HEIGHT_DP = 28f
+
+        /** One table row (the overlay table uses the same number) + vertical breathing room. */
+        const val TABLE_ROW_DP = 40f
+        const val TABLE_PAD_DP = 8f
+
+        fun tableHeightDp(rows: Int): Float = rows.coerceAtLeast(1) * TABLE_ROW_DP + 2 * TABLE_PAD_DP
     }
 
     /** Caret mapping (real text ⇄ shown text), used to keep the caret on screen. */

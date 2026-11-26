@@ -21,6 +21,9 @@ class RichLayout(private val doc: RichDoc) {
     /** Char index of the checkbox glyph inside [prefixes] (−1 = not a checklist item). */
     private val boxIdx = IntArray(n) { -1 }
 
+    /** Char index of the placeholder of a divider / table line inside [prefixes] (−1 = a normal paragraph). */
+    private val objIdx = IntArray(n) { -1 }
+
     /** Shown offset where the prefix of a paragraph starts (−1 = hidden paragraph). */
     private val tPrefixStart = IntArray(n) { -1 }
     private val tTextStart = IntArray(n) { -1 }
@@ -45,6 +48,8 @@ class RichLayout(private val doc: RichDoc) {
                 BlockType.OL -> sb.append(nums[k]).append(".  ")
                 BlockType.TASK -> { boxIdx[k] = sb.length; sb.append(BOX_SLOT) } // the screen draws the box here
                 BlockType.QUOTE -> sb.append("▎ ")
+                // Divider / table: one blank char that carries the tall line the screen paints the block into.
+                BlockType.HR, BlockType.TABLE -> { objIdx[k] = sb.length; sb.append(OBJECT_SLOT) }
                 else -> {}
             }
             prefixes[k] = sb.toString()
@@ -94,6 +99,9 @@ class RichLayout(private val doc: RichDoc) {
 
         /** Blank space reserved for the checkbox (1.5 em) — drawn on a Canvas by the editor screen. */
         const val BOX_SLOT = "\u2003\u2002"
+
+        /** Placeholder of a divider / table line — the screen paints the block over that line. */
+        const val OBJECT_SLOT = "\u2003"
     }
 
     fun originalToTransformed(offset: Int): Int = o2t[offset.coerceIn(0, doc.text.length)]
@@ -120,6 +128,9 @@ class RichLayout(private val doc: RichDoc) {
 
     /** Shown offset of the collapse chevron glyph of [k], or −1. */
     fun chevronOffset(k: Int): Int = if (tPrefixStart[k] >= 0 && chevronIdx[k] >= 0) tPrefixStart[k] + chevronIdx[k] else -1
+
+    /** Shown offset of the divider / table placeholder of [k], or −1 (not an object, or hidden). */
+    fun objectOffset(k: Int): Int = if (tPrefixStart[k] >= 0 && objIdx[k] >= 0) tPrefixStart[k] + objIdx[k] else -1
 
     /** Shown offset of the checkbox glyph of [k], or −1. */
     fun boxOffset(k: Int): Int = if (tPrefixStart[k] >= 0 && boxIdx[k] >= 0) tPrefixStart[k] + boxIdx[k] else -1

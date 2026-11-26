@@ -1,5 +1,6 @@
 package com.inkwell.notes.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -31,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,6 +53,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,6 +61,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.inkwell.notes.R
 import com.inkwell.notes.data.model.Notebook
+import com.inkwell.notes.editor.TableData
+import com.inkwell.notes.ui.components.DeleteRed
+import com.inkwell.notes.ui.components.onAccent
 import com.inkwell.notes.ui.components.ContextSheet
 import com.inkwell.notes.ui.components.FaIcon
 import com.inkwell.notes.ui.components.InkText
@@ -383,4 +390,240 @@ private fun TagButton(label: String, bg: Color, textColor: Color, border: Color,
     ) {
         InkText(label, size = 14.sp, weight = FontWeight.Black, color = textColor)
     }
+}
+
+// ─────────────────────────────────────────────
+// Part 5 — link popover + table sheet
+// ─────────────────────────────────────────────
+
+/** `.link-popover`: text + URL; Enter on the URL inserts. Rides above the keyboard. */
+@Composable
+fun LinkModal(
+    text: String,
+    url: String,
+    onText: (String) -> Unit,
+    onUrl: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val c = Ink.colors
+    val cardShape = RoundedCornerShape(22.dp)
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    val keyboard = LocalSoftwareKeyboardController.current
+    DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.44f))
+            .tap(onClose)
+            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
+            .padding(start = 13.dp, end = 13.dp, bottom = 14.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            Modifier
+                .widthIn(max = 360.dp)
+                .fillMaxWidth()
+                .clip(cardShape)
+                .background(c.bg)
+                .border(1.dp, c.border, cardShape)
+                .tap { }
+                .padding(18.dp),
+        ) {
+            InkText("Insert link", family = Ink.serif, size = 20.sp, weight = FontWeight.Bold, lineHeight = 24.sp)
+            Spacer(Modifier.height(12.dp))
+            SheetLabel("Text")
+            Spacer(Modifier.height(7.dp))
+            SheetField(text, onText, "Link text (optional)", ImeAction.Next, KeyboardType.Text, null, onSubmit)
+            Spacer(Modifier.height(12.dp))
+            SheetLabel("URL")
+            Spacer(Modifier.height(7.dp))
+            SheetField(url, onUrl, "example.com", ImeAction.Done, KeyboardType.Uri, focus, onSubmit)
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TagButton("Cancel", c.bgCard, c.text2, c.border, Modifier.weight(1f), onClose)
+                TagButton("Insert", c.accent, onAccent(), c.accent, Modifier.weight(1f), onSubmit)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetLabel(text: String) {
+    InkText(text.uppercase(), size = 11.sp, weight = FontWeight.ExtraBold, color = Ink.colors.text3, letterSpacing = 0.88.sp)
+}
+
+@Composable
+private fun SheetField(
+    value: String,
+    onValue: (String) -> Unit,
+    hint: String,
+    ime: ImeAction,
+    keyboardType: KeyboardType,
+    focus: FocusRequester?,
+    onDone: () -> Unit,
+) {
+    val c = Ink.colors
+    val shape = RoundedCornerShape(12.dp)
+    var focused by remember { mutableStateOf(false) }
+    BasicTextField(
+        value = value,
+        onValueChange = onValue,
+        singleLine = true,
+        textStyle = TextStyle(color = c.text1, fontSize = 13.sp, fontFamily = Ink.sans),
+        cursorBrush = SolidColor(c.accent),
+        keyboardOptions = KeyboardOptions(imeAction = ime, keyboardType = keyboardType),
+        keyboardActions = KeyboardActions(onDone = { onDone() }),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (focus != null) Modifier.focusRequester(focus) else Modifier)
+            .onFocusChanged { focused = it.isFocused },
+        decorationBox = { inner ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 40.dp)
+                    .clip(shape)
+                    .background(c.bgCard)
+                    .border(1.5.dp, if (focused) c.accent else c.border, shape)
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (value.isEmpty()) InkText(hint, size = 13.sp, color = c.text3)
+                inner()
+            }
+        },
+    )
+}
+
+/**
+ * Table sheet: every cell is a text field in a grid that scrolls sideways (and up / down). Row / column buttons act on
+ * the cell you last touched. Closing the sheet (Done, scrim, back) hands the edited table back; "Delete table" removes it.
+ */
+@Composable
+fun TableEditModal(
+    initial: TableData,
+    onClose: (TableData) -> Unit,
+    onDelete: () -> Unit,
+) {
+    val c = Ink.colors
+    val cardShape = RoundedCornerShape(22.dp)
+    var draft by remember { mutableStateOf(initial.normalized()) }
+    var row by remember { mutableIntStateOf(0) }
+    var col by remember { mutableIntStateOf(0) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
+    BackHandler { onClose(draft) }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.44f))
+            .tap { onClose(draft) }
+            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
+            .padding(start = 13.dp, end = 13.dp, bottom = 14.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            Modifier
+                .widthIn(max = 520.dp)
+                .fillMaxWidth()
+                .clip(cardShape)
+                .background(c.bg)
+                .border(1.dp, c.border, cardShape)
+                .tap { }
+                .padding(18.dp),
+        ) {
+            InkText("Edit table", family = Ink.serif, size = 20.sp, weight = FontWeight.Bold, lineHeight = 24.sp)
+            Spacer(Modifier.height(4.dp))
+            InkText(
+                "Tap a cell to edit it. Row / column buttons use the cell you touched last.",
+                size = 12.sp,
+                color = c.text2,
+                lineHeight = 17.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 260.dp)
+                    .verticalScroll(rememberScrollState())
+                    .horizontalScroll(rememberScrollState()),
+            ) {
+                for (r in 0 until draft.rowCount) {
+                    Row {
+                        for (cc in 0 until draft.colCount) {
+                            TableCell(
+                                value = draft.cell(r, cc),
+                                header = draft.header && r == 0,
+                                active = r == row && cc == col,
+                                onFocus = { row = r; col = cc },
+                                onValue = { draft = draft.withCell(r, cc, it) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                TableAction("+ Row", c.accent) { draft = draft.addRow(row); row = (row + 1).coerceAtMost(draft.rowCount - 1) }
+                TableAction("+ Column", c.accent) { draft = draft.addColumn(col); col = (col + 1).coerceAtMost(draft.colCount - 1) }
+                TableAction("− Row", c.text2) { draft = draft.removeRow(row); row = row.coerceAtMost(draft.rowCount - 1) }
+                TableAction("− Column", c.text2) { draft = draft.removeColumn(col); col = col.coerceAtMost(draft.colCount - 1) }
+                TableAction(if (draft.header) "Header: on" else "Header: off", c.text2) { draft = draft.copy(header = !draft.header) }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TagButton("Delete table", DeleteRed.copy(alpha = 0.12f), DeleteRed, DeleteRed.copy(alpha = 0.4f), Modifier.weight(1f), onDelete)
+                TagButton("Done", c.accent, onAccent(), c.accent, Modifier.weight(1f)) { onClose(draft) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TableCell(value: String, header: Boolean, active: Boolean, onFocus: () -> Unit, onValue: (String) -> Unit) {
+    val c = Ink.colors
+    BasicTextField(
+        value = value,
+        onValueChange = onValue,
+        singleLine = true,
+        textStyle = TextStyle(
+            color = c.text1,
+            fontSize = 13.sp,
+            fontFamily = Ink.sans,
+            fontWeight = if (header) FontWeight.Bold else FontWeight.Normal,
+        ),
+        cursorBrush = SolidColor(c.accent),
+        modifier = Modifier.onFocusChanged { if (it.isFocused) onFocus() },
+        decorationBox = { inner ->
+            Box(
+                Modifier
+                    .width(124.dp)
+                    .height(40.dp)
+                    .background(if (header) c.accentDim else c.bgCard)
+                    .border(if (active) 1.5.dp else 1.dp, if (active) c.accent else c.border)
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) { inner() }
+        },
+    )
+}
+
+@Composable
+private fun TableAction(label: String, color: Color, onClick: () -> Unit) {
+    val c = Ink.colors
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        Modifier.height(32.dp).clip(shape).background(c.bgCard).border(1.dp, c.border, shape).tap(onClick).padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) { InkText(label, size = 12.sp, weight = FontWeight.ExtraBold, color = color, maxLines = 1) }
 }

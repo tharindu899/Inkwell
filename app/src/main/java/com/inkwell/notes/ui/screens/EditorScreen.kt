@@ -5,6 +5,11 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -59,6 +64,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.text.font.FontFamily
+import com.inkwell.notes.editor.BlockType
+import com.inkwell.notes.editor.TableData
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
@@ -75,6 +85,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.inkwell.notes.R
 import com.inkwell.notes.data.AppPrefs
+import com.inkwell.notes.editor.Mark
 import com.inkwell.notes.editor.RichStyle
 import com.inkwell.notes.editor.RichTransformation
 import com.inkwell.notes.ui.Route
@@ -101,7 +112,9 @@ import kotlinx.coroutines.delay
  *   Enter / Backspace list behaviour, basic code blocks.
  * Part 4: tags row → "Manage tags" modal, notebook row → "Move to Notebook" sheet (+ inline create).
  *   Both rows are tappable; they are hidden in Reading mode like the web (`.read-mode .tags-row`).
- * Coming next: code-block tools / tables / links, images + drawing, markdown source mode, export.
+ * Part 5: inline code, code-block bar (Copy / Bottom / Delete above the toolbar), tables (drawn in the body, edited in a
+ *   sheet; wide tables scroll sideways), link popover (tap a link in Reading mode to open it), divider, date/time, paste.
+ * Coming next: images + drawing, markdown source mode, export.
  */
 @Composable
 fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
@@ -135,6 +148,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     }
 
     BackHandler(enabled = ctl.deleteConfirmOpen) { ctl.dismissDelete() }
+    BackHandler(enabled = ctl.linkOpen) { ctl.closeLink() }
     BackHandler(enabled = ctl.nbCreateOpen) { ctl.closeCreateNotebook() }
     BackHandler(enabled = ctl.tagManageOpen) { ctl.closeTagManager() }
     BackHandler(enabled = ctl.nbPickerOpen) { ctl.closeNotebookPicker() }
@@ -148,7 +162,8 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     val fontSp = remember { AppPrefs.getFontSize(context).sp }
     val serifBody = remember { AppPrefs.getPref(context, "serifBody", false) }
 
-    val richStyle = remember(c, fontSp, serifBody) {
+    val fontScale = LocalDensity.current.fontScale
+    val richStyle = remember(c, fontSp, serifBody, fontScale) {
         RichStyle(
             fontSizeSp = fontSp.toFloat(),
             lineHeightFactor = 1.72f,
@@ -159,6 +174,9 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             serif = Ink.serif,
             doneColor = c.text3,
             codeBg = c.text3.copy(alpha = 0.16f),
+            linkColor = c.accent,
+            inlineCodeBg = c.text3.copy(alpha = 0.2f),
+            fontScale = fontScale,
         )
     }
 
@@ -176,6 +194,9 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     } else null
     val transformationNow by rememberUpdatedState(transformation)
     val tapPadPx = with(LocalDensity.current) { 8.dp.toPx() }
+    val uriHandler = LocalUriHandler.current
+    val padStartPx = with(LocalDensity.current) { 20.dp.roundToPx() }
+    val padTopPx = with(LocalDensity.current) { 8.dp.roundToPx() }
     val tickColor = onAccent()
     val fontPx = with(LocalDensity.current) { fontSp.sp.toPx() }
 
@@ -259,6 +280,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             ) {
                 if (!ctl.bodyEditable) RichNoteBanner()
 
+                Box(Modifier.fillMaxWidth()) {
                 BasicTextField(
                     value = ctl.body,
                     onValueChange = ctl::onBodyChange,
@@ -272,7 +294,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                             val lay = layoutRes
                             val tr = transformationNow
                             if (lay != null && tr != null) {
-                                drawListControls(lay, tr, fontPx, c.accent, c.text3, tickColor)
+                                drawListControls(lay, tr, fontPx, c.accent, c.text3, tickColor, c.borderHi)
                             }
                         }
                         // Tap on a checklist box / collapse chevron: handled here (before the text field sees the
@@ -291,6 +313,34 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                                     if (!ch.pressed) {
                                         ch.consume()
                                         if (hit.chevron) ctl.toggleCollapse(hit.para) else ctl.toggleChecked(hit.para)
+                                        return@awaitEachGesture
+                                    }
+                                    if ((ch.position - down.position).getDistance() > slop) return@awaitEachGesture
+                                }
+                            }
+                        }
+                        // Reading mode: a tap on a link opens it (before the text field sees the tap).
+                        .pointerInput(ctl) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                if (!ctl.readMode) return@awaitEachGesture
+                                val lay = layoutRes
+                                val tr = transformationNow
+                                if (lay == null || tr == null || lay.layoutInput.text.length != tr.layout.length) return@awaitEachGesture
+                                val pos = down.position
+                                if (pos.y < 0f || pos.y > lay.size.height.toFloat()) return@awaitEachGesture
+                                val line = lay.getLineForVerticalPosition(pos.y)
+                                if (pos.x > lay.getLineRight(line) + tapPadPx) return@awaitEachGesture
+                                val t = lay.getOffsetForPosition(pos)
+                                val o = tr.layout.transformedToOriginal(t)
+                                val url = ctl.linkUrlAt(o - 1) ?: ctl.linkUrlAt(o) ?: return@awaitEachGesture
+                                val slop = viewConfiguration.touchSlop
+                                while (true) {
+                                    val ev = awaitPointerEvent(PointerEventPass.Initial)
+                                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                                    if (!ch.pressed) {
+                                        ch.consume()
+                                        runCatching { uriHandler.openUri(url) }
                                         return@awaitEachGesture
                                     }
                                     if ((ch.position - down.position).getDistance() > slop) return@awaitEachGesture
@@ -323,6 +373,33 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                         }
                     },
                 )
+
+                // Tables: the text field only reserves their (tall) line; the real, sideways-scrolling table sits on top.
+                val lay = layoutRes
+                val tr = transformation
+                if (lay != null && tr != null && lay.layoutInput.text.length == tr.layout.length) {
+                    for (k in 0 until ctl.doc.paraCount) {
+                        val para = ctl.doc.paras[k]
+                        val data = para.table
+                        if (para.type != BlockType.TABLE || data == null) continue
+                        val off = tr.layout.objectOffset(k)
+                        if (off < 0 || off >= tr.layout.length) continue
+                        val line = lay.getLineForOffset(off)
+                        val top = lay.getLineTop(line)
+                        val bottom = lay.getLineBottom(line)
+                        androidx.compose.runtime.key(k) {
+                            TableBlock(
+                                data = data,
+                                modifier = Modifier
+                                    .padding(horizontal = 20.dp)
+                                    .offset { IntOffset(0, padTopPx + top.toInt()) }
+                                    .height(with(density) { (bottom - top).toDp() }),
+                                onClick = { ctl.openTable(k) },
+                            )
+                        }
+                    }
+                }
+                }
             }
 
             // ── bottom panel: tags, notebook, counts ──
@@ -332,6 +409,16 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 NotebookRow(name = ctl.notebook?.name, colorHex = ctl.notebook?.color, onClick = ctl::openNotebookPicker)
             }
             EditorFooter(words = ctl.wordCount, chars = ctl.charCount, saved = ctl.saved)
+
+            // ── code block actions (Copy / Bottom / Delete) while the caret is inside a code block ──
+            if (ctl.bodyEditable && ctl.toolbarState.inCodeBlock) {
+                CodeActionsBar(
+                    canDelete = !ctl.readMode,
+                    onCopy = ctl::copyCodeBlock,
+                    onBottom = ctl::codeBlockToBottom,
+                    onDelete = ctl::deleteCodeBlock,
+                )
+            }
 
             // ── formatting toolbar: docked at the bottom, right above the keyboard ──
             if (ctl.bodyEditable && !ctl.readMode) {
@@ -345,6 +432,12 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     onIndent = ctl::changeIndent,
                     onClear = ctl::clearFormat,
                     onMarkdown = ctl::toggleMarkdown,
+                    onInlineCode = { ctl.toggleMark(Mark.CODE) },
+                    onCodeBlock = ctl::toggleCodeBlock,
+                    onLink = ctl::onLinkButton,
+                    onTable = ctl::insertTable,
+                    onDivider = ctl::insertDivider,
+                    onDateTime = ctl::insertDateTime,
                     scroll = toolbarScroll,
                 )
             }
@@ -395,6 +488,26 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 onDismiss = ctl::closeCreateNotebook,
                 onSave = ctl::createNotebookAndMove,
             )
+        }
+
+        // ── Part 5: link popover + table sheet ──
+        if (ctl.linkOpen) {
+            LinkModal(
+                text = ctl.linkText,
+                url = ctl.linkUrl,
+                onText = ctl::onLinkTextChange,
+                onUrl = ctl::onLinkUrlChange,
+                onSubmit = ctl::submitLink,
+                onClose = ctl::closeLink,
+            )
+        }
+        ctl.tableEditing?.let { idx ->
+            val data = ctl.doc.paras.getOrNull(idx)?.table
+            if (data != null) {
+                androidx.compose.runtime.key(idx) {
+                    TableEditModal(initial = data, onClose = ctl::closeTable, onDelete = ctl::deleteTable)
+                }
+            }
         }
 
         // Last, so a toast (e.g. "Notebook name required") is never hidden behind a modal scrim.
@@ -501,11 +614,20 @@ private fun DrawScope.drawListControls(
     accent: Color,
     outline: Color,
     tick: Color,
+    ruleColor: Color,
 ) {
     val shownLen = lay.layoutInput.text.length
     val doc = tr.doc
     for (k in 0 until doc.paraCount) {
         val p = doc.paras[k]
+        if (p.type == BlockType.HR) {
+            val oi = tr.layout.objectOffset(k)
+            if (oi in 0 until shownLen) {
+                val ln = lay.getLineForOffset(oi)
+                val y = (lay.getLineTop(ln) + lay.getLineBottom(ln)) / 2f
+                drawLine(ruleColor, Offset(0f, y), Offset(size.width, y), 2.dp.toPx(), StrokeCap.Round)
+            }
+        }
         val ci = tr.layout.chevronOffset(k)
         if (ci in 0 until shownLen) {
             val r = lay.getBoundingBox(ci)
@@ -589,7 +711,7 @@ private fun RichNoteBanner() {
     ) {
         FaIcon(R.drawable.ic_fa_circle_info, tint = c.accent, size = 14.dp)
         InkText(
-            "This note has tables, links, images or inline code. Those blocks arrive in the next " +
+            "This note has images or table cells with formatting. Those arrive in the next " +
                 "editor parts — until then the body stays read-only and untouched (title, pin and delete work).",
             size = 12.sp,
             color = c.text2,
@@ -693,6 +815,58 @@ private fun EditorFooter(words: Int, chars: Int, saved: Boolean) {
                 weight = FontWeight.Bold,
                 color = if (saved) c.success else c.accent,
             )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
+// Table block (Part 5)
+// ─────────────────────────────────────────────
+
+/**
+ * A table as shown in the body: fixed-height rows, plain-text cells (one line, ellipsis), scrolls sideways when it is wider
+ * than the screen. Tapping it opens the table sheet. Its height matches the line [RichTransformation] reserved for it.
+ */
+@Composable
+private fun TableBlock(data: TableData, modifier: Modifier, onClick: () -> Unit) {
+    val c = Ink.colors
+    val t = data.normalized()
+    val shape = RoundedCornerShape(8.dp)
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val colW = maxOf(110.dp, maxWidth / t.colCount)
+        Column(
+            Modifier
+                .padding(vertical = RichTransformation.TABLE_PAD_DP.dp)
+                .clip(shape)
+                .border(1.dp, c.border, shape)
+                .horizontalScroll(rememberScrollState())
+                .tap(onClick),
+        ) {
+            for (r in 0 until t.rowCount) {
+                val head = t.header && r == 0
+                Row {
+                    for (cc in 0 until t.colCount) {
+                        Box(
+                            Modifier
+                                .width(colW)
+                                .height(RichTransformation.TABLE_ROW_DP.dp)
+                                .background(if (head) c.accentDim else c.bgCard)
+                                .border(0.5.dp, c.border)
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            InkText(
+                                t.cell(r, cc),
+                                size = 13.sp,
+                                weight = if (head) FontWeight.Bold else FontWeight.Normal,
+                                color = c.text1,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
