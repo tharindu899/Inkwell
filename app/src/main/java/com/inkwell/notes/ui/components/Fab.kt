@@ -33,17 +33,21 @@ fun Fab(
     Box(
         modifier
             .shadow(8.dp, CircleShape, ambientColor = c.accentGlow, spotColor = c.accentGlow)
-            .size(48.dp)
+            .size(fabSize())
             .clip(CircleShape)
-            .background(if (open) c.text1 else c.accent)
+            .background(if (open) c.text1 else c.fab)
             .tap(onClick),
         contentAlignment = Alignment.Center,
     ) {
         FaIcon(
             if (open) R.drawable.ic_fa_xmark else icon,
-            tint = if (open) c.bg else onAccent(),
+            tint = if (open) c.bg else c.onFab,
             size = 20.dp,
             modifier = Modifier.rotate(rotation),
         )
     }
 }
+
+/** FAB diameter: bigger in the Lime theme. */
+@Composable
+fun fabSize() = if (Ink.colors.isLime) 56.dp else 48.dp

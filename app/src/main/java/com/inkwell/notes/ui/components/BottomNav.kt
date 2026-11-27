@@ -37,6 +37,10 @@ enum class NavTab(val label: String, @DrawableRes val icon: Int) {
 @Composable
 fun BottomNav(active: NavTab?, onSelect: (NavTab) -> Unit, modifier: Modifier = Modifier) {
     val c = Ink.colors
+    if (c.isLime) {
+        LimeBottomNav(active, onSelect, modifier)
+        return
+    }
     Box(
         modifier
             .fillMaxWidth()
@@ -70,6 +74,41 @@ fun BottomNav(active: NavTab?, onSelect: (NavTab) -> Unit, modifier: Modifier = 
                     Spacer(
                         Modifier.size(4.dp).alpha(if (on) 1f else 0f).clip(CircleShape).background(c.accent),
                     )
+                }
+            }
+        }
+    }
+}
+
+/** Lime theme: ink-black pill floating inside the same 62dp strip, lime active icon + dot. */
+@Composable
+private fun LimeBottomNav(active: NavTab?, onSelect: (NavTab) -> Unit, modifier: Modifier) {
+    val c = Ink.colors
+    Box(
+        modifier
+            .fillMaxWidth()
+            .background(c.bg)
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(27.dp))
+                .background(c.text1),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NavTab.entries.forEach { tab ->
+                val on = tab == active
+                Column(
+                    Modifier.weight(1f).height(54.dp).tap { onSelect(tab) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                ) {
+                    FaIcon(tab.icon, tint = if (on) c.hero else androidx.compose.ui.graphics.Color(0xFFC9C9C0), size = 20.dp)
+                    Spacer(Modifier.size(5.dp).alpha(if (on) 1f else 0f).clip(CircleShape).background(c.hero))
                 }
             }
         }

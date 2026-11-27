@@ -16,11 +16,12 @@ import androidx.compose.ui.unit.dp
 enum class ThemeMode(val key: String) {
     Dark("dark"),
     Light("light"),
-    Github("github");
+    Github("github"),
+    Lime("lime");
 
     companion object {
         /** `iw_theme` value → mode. Unknown / missing → dark (same as the web app). */
-        fun fromKey(key: String?): ThemeMode = entries.firstOrNull { it.key == key } ?: Dark
+        fun fromKey(key: String?): ThemeMode = entries.firstOrNull { it.key == key } ?: Lime
     }
 }
 
@@ -44,6 +45,12 @@ data class InkwellColors(
     /** --sh-sm shadow colour */
     val shadowSm: Color,
     val isDark: Boolean,
+    /** Lime theme tokens (other themes map them to their old look). */
+    val hero: Color,
+    val onHero: Color,
+    val fab: Color,
+    val onFab: Color,
+    val isLime: Boolean = false,
 )
 
 private val DarkColors = InkwellColors(
@@ -64,6 +71,7 @@ private val DarkColors = InkwellColors(
     info = Color(0xFF6090E0),
     shadowSm = Color.Black.copy(alpha = 0.38f),
     isDark = true,
+    hero = Color(0xFF0B0B12), onHero = Color(0xFFEAE6DD), fab = Color(0xFFC9A96E), onFab = Color(0xFF1A1408),
 )
 
 private val LightColors = InkwellColors(
@@ -84,6 +92,7 @@ private val LightColors = InkwellColors(
     info = Color(0xFF2980B9),
     shadowSm = Color.Black.copy(alpha = 0.07f),
     isDark = false,
+    hero = Color(0xFFF7F5F0), onHero = Color(0xFF1C1828), fab = Color(0xFF7A5228), onFab = Color.White,
 )
 
 private val GithubColors = InkwellColors(
@@ -104,9 +113,39 @@ private val GithubColors = InkwellColors(
     info = Color(0xFF2F81F7),
     shadowSm = Color(0xFF010409).copy(alpha = 0.35f),
     isDark = true,
+    hero = Color(0xFF0D1117), onHero = Color(0xFFE6EDF3), fab = Color(0xFF2F81F7), onFab = Color.White,
 )
 
-private val LocalInkwellColors = staticCompositionLocalOf { DarkColors }
+/** Lime: cream paper, ink-black text, lime hero blocks, floating dark nav pill. */
+private val LimeColors = InkwellColors(
+    bg = Color(0xFFF4F3EC),
+    bgCard = Color(0xFFFFFFFF),
+    bgElevated = Color(0xFFE9E8DF),
+    bgInput = Color(0xFFFFFFFF),
+    text1 = Color(0xFF111111),
+    text2 = Color(0xFF4A4A44),
+    text3 = Color(0xFF85857B),
+    accent = Color(0xFF111111),
+    accentDim = Color(0xFF111111).copy(alpha = 0.08f),
+    accentGlow = Color(0xFF111111).copy(alpha = 0.18f),
+    border = Color(0xFF111111).copy(alpha = 0.12f),
+    borderHi = Color(0xFF111111),
+    danger = Color(0xFFD6453D),
+    success = Color(0xFF2E8B57),
+    info = Color(0xFF3A6FD8),
+    shadowSm = Color.Black.copy(alpha = 0.08f),
+    isDark = false,
+    hero = Color(0xFFDCF36B),
+    onHero = Color(0xFF111111),
+    fab = Color(0xFFDCF36B),
+    onFab = Color(0xFF111111),
+    isLime = true,
+)
+
+/** Pastel card fills used by the Lime theme (notes pick one by id). */
+val LimePastels = listOf(Color(0xFFFFB088), Color(0xFFCDBBFF), Color(0xFFA9D9FF), Color(0xFFDCF36B))
+
+private val LocalInkwellColors = staticCompositionLocalOf { LimeColors }
 
 /** Design tokens that never change between themes (--r, --r-sm, fonts). */
 object Ink {
@@ -131,6 +170,7 @@ fun InkwellTheme(mode: ThemeMode, content: @Composable () -> Unit) {
         ThemeMode.Dark -> DarkColors
         ThemeMode.Light -> LightColors
         ThemeMode.Github -> GithubColors
+        ThemeMode.Lime -> LimeColors
     }
     CompositionLocalProvider(LocalInkwellColors provides colors, content = content)
 }

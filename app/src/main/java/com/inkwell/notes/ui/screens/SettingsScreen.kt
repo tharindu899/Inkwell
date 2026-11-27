@@ -514,6 +514,7 @@ private fun ThemeSeg(current: ThemeMode, onPick: (ThemeMode, String, Int) -> Uni
         Triple(ThemeMode.Light, "Light", R.drawable.ic_fa_r_sun),
         Triple(ThemeMode.Dark, "Dark", R.drawable.ic_fa_r_moon),
         Triple(ThemeMode.Github, "GitHub", R.drawable.ic_fa_brand_github),
+        Triple(ThemeMode.Lime, "Lime", R.drawable.ic_fa_leaf),
     )
     SegContainer(radius = 18.dp, padding = 4.dp, gap = 4.dp) {
         options.forEach { (mode, label, icon) ->

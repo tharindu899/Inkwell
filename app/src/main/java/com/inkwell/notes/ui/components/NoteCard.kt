@@ -76,7 +76,7 @@ fun NoteCard(
     highlight: String = "",
 ) {
     val c = Ink.colors
-    val shape = RoundedCornerShape(15.dp)
+    val shape = RoundedCornerShape(if (c.isLime) 26.dp else 15.dp)
     val preview = remember(note.content, note.markdown) { notePreview(note.content, note.markdown) }
 
     // press feedback: transform: scale(.985) while the finger is down
@@ -85,7 +85,8 @@ fun NoteCard(
     val scale by animateFloatAsState(if (dragging) 1.02f else if (pressed) 0.985f else 1f, tween(150), label = "cardScale")
 
     // selected: color-mix(accent 7% into bg-card) fill, accent 42% into border
-    val fill = if (selected) lerp(c.bgCard, c.accent, 0.07f) else c.bgCard
+    val pastel = if (c.isLime) com.inkwell.notes.ui.theme.LimePastels[(note.id.hashCode() and 0x7fffffff) % com.inkwell.notes.ui.theme.LimePastels.size] else c.bgCard
+    val fill = if (selected) lerp(pastel, c.accent, 0.07f) else pastel
     val stroke = if (selected || dragging) lerp(c.border, c.accent, 0.42f) else c.border
 
     Box(
