@@ -70,6 +70,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+          cache-disabled: true   # restored Gradle cache was missing kotlin-stdlib/reflect jars
 
       # ── 6. Derive version from run number ────────────────────────────────────
       # versionCode = 1000 + run number, so it is always higher than the old
