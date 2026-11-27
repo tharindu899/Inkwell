@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
@@ -320,7 +321,8 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(bottomInsets)) {
             // Reading mode is full screen: no top bar (a floating button + Back leave it), status bar hidden below.
             if (ctl.readMode) {
-                Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars))
+                // The status bar is hidden here, so its inset is 0 — also reserve the camera cutout (notch) so the title clears it.
+                Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout)))
             } else EditorTopBar(
                 title = ctl.title.text.ifBlank { "New Note" },
                 readMode = ctl.readMode,
@@ -605,7 +607,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
-                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout))
                     .padding(top = 10.dp, end = 12.dp)
                     .size(36.dp)
                     .clip(CircleShape)
