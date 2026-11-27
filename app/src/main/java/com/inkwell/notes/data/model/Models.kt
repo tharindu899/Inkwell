@@ -19,6 +19,8 @@ data class Note(
     val createdAt: String = "",
     val updatedAt: String = "",
     val wordCount: Int = 0,
+    /** Alarm time (epoch millis) set from the editor's bell; null = no reminder. */
+    val reminderAt: Long? = null,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -35,6 +37,7 @@ data class Note(
         put("createdAt", createdAt)
         put("updatedAt", updatedAt)
         put("wordCount", wordCount)
+        if (reminderAt != null) put("reminderAt", reminderAt)
     }
 
     companion object {
@@ -60,6 +63,7 @@ data class Note(
                 createdAt = o.optString("createdAt", ""),
                 updatedAt = o.optString("updatedAt", ""),
                 wordCount = o.optInt("wordCount", 0),
+                reminderAt = if (o.has("reminderAt") && !o.isNull("reminderAt")) o.optLong("reminderAt") else null,
             )
         }
     }

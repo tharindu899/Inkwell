@@ -674,3 +674,71 @@ fun ToolbarModal(
         }
     }
 }
+
+/** Reminder sheet: quick times, a date + time picker, and remove. The alarm itself lives in `reminder/Reminders`. */
+@Composable
+fun ReminderModal(
+    current: Long?,
+    onSet: (Long) -> Unit,
+    onRemove: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val c = Ink.colors
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val fmt = remember { java.text.SimpleDateFormat("EEE, MMM d · h:mm a", java.util.Locale.getDefault()) }
+
+    fun at(addDays: Int, hour: Int, minute: Int = 0): Long =
+        java.util.Calendar.getInstance().apply {
+            add(java.util.Calendar.DAY_OF_YEAR, addDays)
+            set(java.util.Calendar.HOUR_OF_DAY, hour); set(java.util.Calendar.MINUTE, minute)
+            set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+    fun pick() {
+        val now = java.util.Calendar.getInstance()
+        android.app.DatePickerDialog(
+            context,
+            { _, y, m, d ->
+                android.app.TimePickerDialog(
+                    context,
+                    { _, h, min ->
+                        val cal = java.util.Calendar.getInstance().apply {
+                            set(y, m, d, h, min, 0); set(java.util.Calendar.MILLISECOND, 0)
+                        }
+                        onSet(cal.timeInMillis)
+                    },
+                    now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE),
+                    false,
+                ).show()
+            },
+            now.get(java.util.Calendar.YEAR), now.get(java.util.Calendar.MONTH), now.get(java.util.Calendar.DAY_OF_MONTH),
+        ).apply { datePicker.minDate = System.currentTimeMillis() - 1000 }.show()
+    }
+
+    BottomCard(onClose) {
+        InkText("Reminder", family = Ink.serif, size = 20.sp, weight = FontWeight.Bold, lineHeight = 24.sp)
+        Spacer(Modifier.height(4.dp))
+        InkText(
+            if (current != null) "Alarm: ${fmt.format(java.util.Date(current))}" else "Rings like an alarm with your phone's alarm sound",
+            size = 12.sp,
+            color = if (current != null) c.accent else c.text3,
+        )
+        Spacer(Modifier.height(12.dp))
+        val now = System.currentTimeMillis()
+        val quick = buildList {
+            add("In 1 hour" to now + 60 * 60_000L)
+            if (at(0, 20) > now) add("Tonight 8:00 PM" to at(0, 20))
+            add("Tomorrow 9:00 AM" to at(1, 9))
+        }
+        for ((label, t) in quick) {
+            TagButton(label, c.bgCard, c.text1, c.border, Modifier.fillMaxWidth()) { onSet(t) }
+            Spacer(Modifier.height(8.dp))
+        }
+        TagButton("Pick date & time…", c.accent, onAccent(), c.accent, Modifier.fillMaxWidth()) { pick() }
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (current != null) TagButton("Remove", c.bgCard, DeleteRed, c.border, Modifier.weight(1f), onRemove)
+            TagButton("Close", c.bgCard, c.text2, c.border, Modifier.weight(1f), onClose)
+        }
+    }
+}

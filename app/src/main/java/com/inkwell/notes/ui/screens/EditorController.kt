@@ -27,6 +27,7 @@ import com.inkwell.notes.editor.MarkdownCodec
 import com.inkwell.notes.editor.NoteExport
 import com.inkwell.notes.editor.OBJ
 import com.inkwell.notes.editor.SourceEdit
+import com.inkwell.notes.reminder.Reminders
 import com.inkwell.notes.editor.Para
 import com.inkwell.notes.editor.RichDoc
 import com.inkwell.notes.editor.TableData
@@ -115,6 +116,43 @@ class EditorController(private val context: Context, route: Route.Editor) {
 
     var source by mutableStateOf(TextFieldValue(""))
         private set
+
+    /** Reminder (bell): the sheet, and the alarm time of this note (null = none / already rang). */
+    var reminderOpen by mutableStateOf(false)
+        private set
+
+    val reminderAt: Long? get() = note.reminderAt?.takeIf { it > System.currentTimeMillis() }
+
+    fun openReminder() { if (!readMode) reminderOpen = true }
+
+    fun closeReminder() { reminderOpen = false }
+
+    /** Sets the alarm ([atMillis]) or removes it (null). The note is saved first so the alarm always finds it. */
+    fun setReminder(atMillis: Long?) {
+        if (atMillis != null && atMillis <= System.currentTimeMillis()) {
+            showToast("Pick a time in the future", R.drawable.ic_fa_circle_exclamation)
+            return
+        }
+        if (atMillis != null && !persisted && title.text.isBlank() && currentDoc().text.isBlank()) {
+            showToast("Write something first", R.drawable.ic_fa_circle_exclamation)
+            return
+        }
+        reminderOpen = false
+        note = note.copy(reminderAt = atMillis)
+        dirty = true
+        save()
+        if (atMillis == null) {
+            Reminders.cancel(context, note.id)
+            showToast("Reminder removed", R.drawable.ic_fa_bell)
+        } else {
+            Reminders.schedule(context, note.id, atMillis)
+            val ok = Reminders.canNotify(context)
+            showToast(
+                if (ok) "Reminder set" else "Reminder set — allow notifications to hear it",
+                R.drawable.ic_fa_bell,
+            )
+        }
+    }
 
     /** Part 8: toolbar customiser — hidden tool keys (persisted) and the dialog. */
     var hiddenTools by mutableStateOf(AppPrefs.getHiddenTools(context))
@@ -1239,6 +1277,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
         deleteConfirmOpen = false
         discarded = true // flush on leave must not re-create it
         if (persisted) store.deleteNote(note.id)
+        Reminders.cancel(context, note.id)
     }
 
     // ─── saving ──────────────────────────────
@@ -1279,6 +1318,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
             markdown = if (rich) HtmlCodec.toMarkdown(d) else note.markdown,
             wordCount = if (rich) countWords(d.countText) else note.wordCount,
             updatedAt = Iso.now(),
+            reminderAt = note.reminderAt?.takeIf { it > System.currentTimeMillis() },
         )
         try {
             store.saveNote(updated)
@@ -1313,5 +1353,5 @@ class EditorController(private val context: Context, route: Route.Editor) {
 
     /** Everything a save would write; equal fingerprint = nothing to save (the web `saveHash`). */
     private fun fingerprint(title: String, content: String): String =
-        "$title\u0000$content\u0000${note.pinned}\u0000${note.notebookId}\u0000${note.tags}"
+        "$title\u0000$content\u0000${note.pinned}\u0000${note.notebookId}\u0000${note.tags}\u0000${note.reminderAt}"
 }

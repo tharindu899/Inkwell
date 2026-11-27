@@ -156,6 +156,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
 
     // Back in Reading mode only returns to editing (the status bar comes back with it).
     BackHandler(enabled = ctl.readMode) { ctl.toggleReadMode() }
+    BackHandler(enabled = ctl.reminderOpen) { ctl.closeReminder() }
     BackHandler(enabled = ctl.toolbarManageOpen) { ctl.closeToolbarManager() }
     BackHandler(enabled = ctl.exportOpen) { ctl.closeExport() }
     // Back with an image selected only drops the handles; it must not leave the note.
@@ -203,6 +204,15 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             focusManager.clearFocus(force = true)
             keyboard?.hide()
         }
+    }
+
+    // Reminders ring through notifications: ask once (Android 13+) when the sheet opens.
+    val askNotif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(ctl.reminderOpen) {
+        if (ctl.reminderOpen && android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) askNotif.launch(android.Manifest.permission.POST_NOTIFICATIONS)
     }
 
     // Export: the system "save as" chooser (no storage permission needed).
@@ -319,6 +329,8 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 onReadMode = ctl::toggleReadMode,
                 onPin = { tickStrong(); ctl.togglePin() },
                 onExport = ctl::openExport,
+                reminderOn = ctl.reminderAt != null,
+                onReminder = ctl::openReminder,
                 onDelete = ctl::requestDelete,
                 onSave = { tickLight(); ctl.save(); onBack() },
             )
@@ -359,6 +371,15 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 },
             )
             Box(Modifier.fillMaxWidth().height(1.dp).background(c.border))
+            ctl.reminderAt?.let { t ->
+                InkText(
+                    "⏰ " + java.text.SimpleDateFormat("EEE, MMM d · h:mm a", java.util.Locale.getDefault()).format(java.util.Date(t)),
+                    size = 11.sp,
+                    weight = FontWeight.Bold,
+                    color = c.accent,
+                    modifier = Modifier.fillMaxWidth().tap(ctl::openReminder).padding(horizontal = 20.dp, vertical = 7.dp),
+                )
+            }
 
             // ── body (scrolls; tapping the empty area below the text focuses it) ──
             Column(
@@ -620,6 +641,15 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             )
         }
 
+        if (ctl.reminderOpen) {
+            ReminderModal(
+                current = ctl.reminderAt,
+                onSet = ctl::setReminder,
+                onRemove = { ctl.setReminder(null) },
+                onClose = ctl::closeReminder,
+            )
+        }
+
         if (ctl.exportOpen) {
             ExportModal(onPick = ctl::export, onClose = ctl::closeExport)
         }
@@ -712,6 +742,8 @@ private fun EditorTopBar(
     onReadMode: () -> Unit,
     onPin: () -> Unit,
     onExport: () -> Unit,
+    reminderOn: Boolean,
+    onReminder: () -> Unit,
     onDelete: () -> Unit,
     onSave: () -> Unit,
 ) {
@@ -743,6 +775,7 @@ private fun EditorTopBar(
         )
 
         TopIconButton(R.drawable.ic_fa_book_open, on = readMode, onClick = onReadMode)
+        TopIconButton(R.drawable.ic_fa_bell, on = reminderOn, onClick = onReminder)
         TopIconButton(R.drawable.ic_fa_download, onClick = onExport)
         TopIconButton(R.drawable.ic_fa_thumbtack, on = pinned, onClick = onPin)
         TopIconButton(R.drawable.ic_fa_trash_can, tint = DeleteRed, onClick = onDelete)

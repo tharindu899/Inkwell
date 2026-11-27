@@ -171,6 +171,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                         }
                     }
                     refresh()
+                    withContext(Dispatchers.IO) { runCatching { com.inkwell.notes.reminder.Reminders.rescheduleAll(app) } }
                     val n = data.optJSONArray("notes")?.length() ?: 0
                     showToast("Restored $n notes", R.drawable.ic_fa_cloud_arrow_down)
                 }

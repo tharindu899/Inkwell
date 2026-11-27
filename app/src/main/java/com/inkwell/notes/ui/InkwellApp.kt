@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,6 +75,16 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                 // New navigator per sign-in, so a fresh login always starts on Home.
                 val nav = remember { Navigator() }
                 BackHandler(enabled = nav.canGoBack) { nav.back() }
+
+                // A tapped reminder notification opens its note (replacing an editor that is already showing).
+                val openId = com.inkwell.notes.reminder.PendingOpen.noteId
+                LaunchedEffect(openId) {
+                    if (openId != null) {
+                        val route = Route.Editor(id = openId)
+                        if (nav.current is Route.Editor) nav.replaceTop(route) else nav.push(route)
+                        com.inkwell.notes.reminder.PendingOpen.noteId = null
+                    }
+                }
 
                 val onNavTab: (NavTab) -> Unit = { tab ->
                     when (tab) {

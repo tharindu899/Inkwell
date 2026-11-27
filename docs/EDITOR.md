@@ -42,6 +42,11 @@ Tag manager / notebook picker / create-notebook → delete confirm → cell shee
 - [ ] Rendered view: copy / cut a selection → paste elsewhere gives Markdown (`**bold**`, `- item`).
 **Backup / restore (Drive)**
 - [ ] Backup → toast; Restore on a second install brings the notes back (photos included).
+**Reminders (bell in the top bar)**
+- [ ] Set "In 1 hour" / a custom date + time → ⏰ line under the title; phone shows the alarm icon in the status bar.
+- [ ] At the time: heads-up notification with the alarm sound + vibration, repeating until handled; Snooze 10 min and Dismiss work; tapping opens the note.
+- [ ] Reboot the phone with a reminder pending → it still rings. Remove / delete note → no ring.
+- [ ] Android 13+: notification permission is asked when the sheet opens.
 **Export**
 - [ ] PDF with Sinhala text opens correctly; md / html / txt / xls open in their apps.
 - [ ] Cancel in the save dialog leaves no toast / crash.
