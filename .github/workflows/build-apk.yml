@@ -1,100 +1,77 @@
 name: Build & Release APK
 
-# ─── Triggers ─────────────────────────────────────────────────────────────────
 on:
   push:
-    branches:
-      - main          # every push to main → build + release
-  workflow_dispatch:  # manual "Run workflow" button → build + release
+    branches: [main]
+  workflow_dispatch:
 
-# ─── Permissions ──────────────────────────────────────────────────────────────
 permissions:
-  contents: write   # needed to create GitHub Releases
+  contents: write
 
 jobs:
   build:
-    name: Build Signed APK (Kotlin / Jetpack Compose)
+    name: Build Signed APK (Kotlin)
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────────────
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Preflight required GitHub Secrets (same secrets as the old build) ─
       - name: Check required GitHub Secrets
-        run: |
-          missing=0
-          for key in KEYSTORE_BASE64 KEY_ALIAS KEY_PASSWORD STORE_PASSWORD VITE_GOOGLE_CLIENT_ID; do
-            value="${!key}"
-            if [ -z "$value" ]; then
-              echo "❌ Missing GitHub Secret: $key"
-              echo "- ❌ Missing secret: \`$key\`" >> $GITHUB_STEP_SUMMARY
-              missing=1
-            fi
-          done
-          if [ "$missing" -eq 1 ]; then
-            echo "Add missing secrets in: Repository Settings → Secrets and variables → Actions"
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Secrets are **per repository** — a new repo needs its own copy of all 5." >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-          echo "✅ Required secrets are present"
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        run: |
+          missing=0
+          for key in KEYSTORE_BASE64 KEY_ALIAS KEY_PASSWORD STORE_PASSWORD VITE_GOOGLE_CLIENT_ID; do
+            value="${!key}"
+            if [ -z "$value" ]; then
+              echo "❌ Missing GitHub Secret: $key"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then exit 1; fi
+          echo "✅ Required secrets are present"
 
-      # ── 3. Java 17 (AGP 8.7 / Gradle 8.9) ────────────────────────────────────
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # ── 4. Android SDK ───────────────────────────────────────────────────────
-      # ubuntu-latest already ships the Android SDK ($ANDROID_HOME). We do NOT use
-      # android-actions/setup-android: v3 crashes on the runner's newer
-      # cmdline-tools ("Failed to find package 'tools'").
       - name: Set up Android SDK
-        run: |
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          # `yes` gets SIGPIPE when sdkmanager exits → ignore that exit code
-          yes | "$SDKMANAGER" --licenses > /dev/null || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+        uses: android-actions/setup-android@v3
 
-      # ── 5. Gradle (no wrapper jar needed in the repo) ────────────────────────
+      - name: Install Android SDK components
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.10.2'
 
-      # ── 6. Derive version from run number ────────────────────────────────────
-      # versionCode = 1000 + run number, so it is always higher than the old
-      # React/Capacitor APK (whose versionCode was just the run number) and the
-      # new build installs over it as a normal update.
+      # run #45 -> v1.4.5   run #106 -> v2.0.6
       - name: Derive version from run number
         run: |
           RUN=${{ github.run_number }}
-          VERSION="2.0.${RUN}"
-          TAG="v${VERSION}"
-          echo "VERSION=${VERSION}"               >> $GITHUB_ENV
-          echo "TAG=${TAG}"                       >> $GITHUB_ENV
-          echo "APK_NAME=Inkwell-${TAG}.apk"      >> $GITHUB_ENV
-          echo "APP_VERSION_NAME=${VERSION}"      >> $GITHUB_ENV
-          echo "APP_VERSION_CODE=$(( 1000 + RUN ))" >> $GITHUB_ENV
-          echo "▸ Run #${RUN}  →  ${TAG}  (versionCode $(( 1000 + RUN )))"
+          MAJOR=$(( RUN / 100 + 1 ))
+          MINOR=$(( (RUN % 100) / 10 ))
+          PATCH=$(( RUN % 10 ))
+          VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "TAG=v${VERSION}" >> $GITHUB_ENV
+          echo "APK_NAME=Inkwell-v${VERSION}.apk" >> $GITHUB_ENV
+          echo "RUN_NUMBER=${RUN}" >> $GITHUB_ENV
 
-      # ── 7. Decode keystore ───────────────────────────────────────────────────
       - name: Decode keystore
         run: |
-          KEYSTORE_PATH="${{ github.workspace }}/app/inkwell-release.jks"
+          KEYSTORE_PATH="$RUNNER_TEMP/inkwell-release.jks"
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "$KEYSTORE_PATH"
           echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> $GITHUB_ENV
 
-      # ── 8. Print SHA-1 fingerprint ───────────────────────────────────────────
       - name: Print release keystore SHA-1
         run: |
           SHA1=$(keytool -list -v \
@@ -103,33 +80,26 @@ jobs:
             -storepass "${{ secrets.STORE_PASSWORD }}" \
             -noprompt 2>/dev/null | grep "SHA1:" | head -1 | awk '{print $2}')
           echo "### 🔑 Release Keystore SHA-1" >> $GITHUB_STEP_SUMMARY
-          echo "Needed for Google Cloud Console Android OAuth credential:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "$SHA1"  >> $GITHUB_STEP_SUMMARY
+          echo "$SHA1" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "📋 Package name: **com.inkwell.notes**" >> $GITHUB_STEP_SUMMARY
 
-      # ── 9. Build signed release APK ──────────────────────────────────────────
-      # app/build.gradle.kts reads KEYSTORE_PATH / STORE_PASSWORD / KEY_ALIAS /
-      # KEY_PASSWORD / VITE_GOOGLE_CLIENT_ID / APP_VERSION_* from the environment.
       - name: Build release APK
         env:
-          KEY_ALIAS:             ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD:          ${{ secrets.KEY_PASSWORD }}
-          STORE_PASSWORD:        ${{ secrets.STORE_PASSWORD }}
-          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          gradle assembleRelease --stacktrace 2>&1 | tee /tmp/gradle-build.log
+          gradle :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee /tmp/gradle-build.log
           exit ${PIPESTATUS[0]}
 
-      # ── 10. Rename APK ───────────────────────────────────────────────────────
       - name: Rename APK
         run: |
           mv app/build/outputs/apk/release/app-release.apk \
              app/build/outputs/apk/release/${{ env.APK_NAME }}
 
-      # ── 11. Upload APK as workflow artifact ──────────────────────────────────
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -137,63 +107,29 @@ jobs:
           path: app/build/outputs/apk/release/${{ env.APK_NAME }}
           retention-days: 30
 
-      # ── 12. Create GitHub Release ────────────────────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
           name: "Inkwell ${{ env.TAG }}"
           body: |
-            ## Inkwell ${{ env.TAG }} (native Kotlin)
+            ## Inkwell ${{ env.TAG }}
+            Built from run [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-            Built from run [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) · commit [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
-
-            ### Install
-            1. Download `${{ env.APK_NAME }}` below
-            2. On your Android phone: Settings → Security → enable **Install unknown apps**
-            3. Open the downloaded APK and tap Install
+            1. Download `${{ env.APK_NAME }}`
+            2. Allow **Install unknown apps** on your phone
+            3. Open the APK and tap Install
           files: app/build/outputs/apk/release/${{ env.APK_NAME }}
-          draft: false
-          prerelease: false
 
-      # ── 13. Job Summary — SUCCESS ────────────────────────────────────────────
-      - name: Write success summary
-        if: success()
-        run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## ✅ Build Succeeded
-          | Field | Value |
-          |-------|-------|
-          | **Version** | \`${{ env.TAG }}\` |
-          | **Run** | \`#${{ github.run_number }}\` |
-          | **APK** | \`${{ env.APK_NAME }}\` |
-          | **Commit** | [\`${{ github.sha }}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |
-          | **Triggered by** | \`${{ github.event_name }}\` |
-          EOF
-
-      # ── 14. Job Summary — FAILURE ────────────────────────────────────────────
-      - name: Write failure summary
+      - name: Failure summary
         if: failure()
         run: |
-          GRADLE_LOG=""
-          if [ -f /tmp/gradle-build.log ]; then
-            GRADLE_LOG=$(tail -100 /tmp/gradle-build.log)
-          else
-            echo "## ⚠️ Gradle never started" >> $GITHUB_STEP_SUMMARY
-            echo "A step *before* the Gradle build failed. Open this run, find the step marked with a red ✗ and copy its last lines." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-          cat >> $GITHUB_STEP_SUMMARY << SUMMARY
-          ## ❌ Build Failed
-          ### Last 100 lines of Gradle log
-          \`\`\`
-          ${GRADLE_LOG:-No Gradle log captured — check the step logs above.}
-          \`\`\`
-          ### Common fixes
-          | Error | Fix |
-          |-------|-----|
-          | \`KEYSTORE_BASE64\` | Check GitHub Secrets are set correctly |
-          | \`SDK location not found\` | The setup-android step may have failed |
-          | \`Could not resolve com.android\` | Network issue — re-run the workflow |
-          | \`DEVELOPER_ERROR / code 10\` | Add Android OAuth credential in Google Cloud Console (see SHA-1 above) |
-          SUMMARY
+          LOG=""
+          if [ -f /tmp/gradle-build.log ]; then LOG=$(tail -100 /tmp/gradle-build.log); fi
+          {
+            echo "## ❌ Build Failed"
+            echo "### Last 100 lines of Gradle log"
+            echo '```'
+            echo "${LOG:-No Gradle log captured}"
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
