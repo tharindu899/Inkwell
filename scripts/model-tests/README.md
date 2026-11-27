@@ -5,3 +5,4 @@ Pure-Kotlin checks for the editor model (no Android / Compose needed). Needs `ko
     kotlinc $E/RichDoc.kt $E/TableData.kt $E/ImageData.kt $E/HtmlCodec.kt $E/MarkdownCodec.kt $E/RichLayout.kt scripts/model-tests/RichLayoutTests.kt -include-runtime -d /tmp/t2.jar && java -jar /tmp/t2.jar
     kotlinc $E/RichDoc.kt $E/TableData.kt $E/ImageData.kt $E/HtmlCodec.kt $E/MarkdownCodec.kt $E/RichLayout.kt scripts/model-tests/Part5Tests.kt -include-runtime -d /tmp/t3.jar && java -jar /tmp/t3.jar
     kotlinc $E/RichDoc.kt $E/TableData.kt $E/ImageData.kt $E/HtmlCodec.kt $E/MarkdownCodec.kt $E/RichLayout.kt scripts/model-tests/Part6Tests.kt -include-runtime -d /tmp/t4.jar && java -jar /tmp/t4.jar
+    kotlinc $E/RichDoc.kt $E/TableData.kt $E/ImageData.kt $E/HtmlCodec.kt $E/MarkdownCodec.kt $E/RichLayout.kt $E/NoteExport.kt scripts/model-tests/Part7Tests.kt -include-runtime -d /tmp/t5.jar && java -jar /tmp/t5.jar

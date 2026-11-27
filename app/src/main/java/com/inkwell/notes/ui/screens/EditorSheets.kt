@@ -599,3 +599,27 @@ fun TableCellSheet(
         TagButton("Done", c.accent, onAccent(), c.accent, Modifier.fillMaxWidth(), onClose)
     }
 }
+
+/** Part 7: "Download note" — pick a format; the screen then opens the system save dialog. */
+@Composable
+fun ExportModal(onPick: (String) -> Unit, onClose: () -> Unit) {
+    val c = Ink.colors
+    BottomCard(onClose) {
+        InkText("Download note", family = Ink.serif, size = 20.sp, weight = FontWeight.Bold, lineHeight = 24.sp)
+        Spacer(Modifier.height(4.dp))
+        InkText("Choose a file format", size = 12.sp, color = c.text3)
+        Spacer(Modifier.height(12.dp))
+        val items = listOf(
+            "pdf" to "PDF (.pdf)",
+            "md" to "Markdown (.md)",
+            "html" to "Web page (.html)",
+            "txt" to "Plain text (.txt)",
+            "xls" to "Excel (.xls)",
+        )
+        for ((key, label) in items) {
+            TagButton(label, c.bgCard, c.text1, c.border, Modifier.fillMaxWidth()) { onPick(key) }
+            Spacer(Modifier.height(8.dp))
+        }
+        TagButton("Cancel", c.bgCard, c.text2, c.border, Modifier.fillMaxWidth(), onClose)
+    }
+}

@@ -23,6 +23,7 @@ import com.inkwell.notes.editor.ImageData
 import com.inkwell.notes.editor.LinkTable
 import com.inkwell.notes.editor.Mark
 import com.inkwell.notes.editor.MarkdownCodec
+import com.inkwell.notes.editor.NoteExport
 import com.inkwell.notes.editor.OBJ
 import com.inkwell.notes.editor.Para
 import com.inkwell.notes.editor.RichDoc
@@ -30,6 +31,7 @@ import com.inkwell.notes.editor.TableData
 import com.inkwell.notes.ui.Route
 import com.inkwell.notes.ui.components.ToastState
 import com.inkwell.notes.util.Iso
+import com.inkwell.notes.util.PdfExport
 import com.inkwell.notes.util.countWords
 import com.inkwell.notes.util.genId
 import com.inkwell.notes.util.normalizeTagInput
@@ -105,6 +107,22 @@ class EditorController(private val context: Context, route: Route.Editor) {
     var markdownShortcuts by mutableStateOf(AppPrefs.getPref(context, "markdownMode", true))
         private set
 
+    /** Part 7: Markdown text mode — the body is shown / edited as markdown source ([source]) instead of rendered. */
+    var sourceMode by mutableStateOf(false)
+        private set
+
+    var source by mutableStateOf(TextFieldValue(""))
+        private set
+
+    /** Part 7: export sheet + pending SAF save (format, file name, bytes). */
+    var exportOpen by mutableStateOf(false)
+        private set
+
+    var pendingExport by mutableStateOf<PendingExport?>(null)
+        private set
+
+    class PendingExport(val fileName: String, val mime: String, val bytes: ByteArray)
+
     /** Typing formatting chosen with a collapsed caret (e.g. Bold toggled, nothing selected yet). */
     private var pending by mutableStateOf<Int?>(null)
 
@@ -145,7 +163,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
                 align = para.align,
                 canUndo = undoStack.isNotEmpty(),
                 canRedo = redoStack.isNotEmpty(),
-                markdown = markdownShortcuts,
+                markdown = sourceMode,
             )
         }
 
@@ -199,8 +217,19 @@ class EditorController(private val context: Context, route: Route.Editor) {
     val isNew: Boolean = route.id == null
     val autosaveEnabled: Boolean = AppPrefs.getPref(context, "autosave", true)
 
-    val wordCount: Int get() = if (bodyEditable) countWords(doc.countText) else countWords(body.text)
-    val charCount: Int get() = if (bodyEditable) doc.charCount else body.text.length
+    val wordCount: Int get() = when {
+        sourceMode -> countWords(source.text)
+        bodyEditable -> countWords(doc.countText)
+        else -> countWords(body.text)
+    }
+    val charCount: Int get() = when {
+        sourceMode -> source.text.length
+        bodyEditable -> doc.charCount
+        else -> body.text.length
+    }
+
+    /** The document as it would be saved right now (source text is parsed back when in Markdown text mode). */
+    private fun currentDoc(): RichDoc = if (sourceMode) MarkdownCodec.parse(source.text) else doc
 
     private var dirty = false
     private var persisted = false
@@ -699,13 +728,88 @@ class EditorController(private val context: Context, route: Route.Editor) {
         if (!readMode) markDirty()
     }
 
+    /** Toolbar "M": switches THIS note between rendered view and Markdown text (the pref only sets the default). */
     fun toggleMarkdown() {
-        markdownShortcuts = !markdownShortcuts
-        AppPrefs.setPref(context, "markdownMode", markdownShortcuts)
-        showToast(
-            if (markdownShortcuts) "Markdown shortcuts on" else "Markdown shortcuts off",
-            R.drawable.ic_fa_code,
-        )
+        if (!bodyEditable || readMode) return
+        if (sourceMode) leaveSource() else enterSource()
+    }
+
+    private fun enterSource() {
+        pending = null
+        tableEdit = null
+        linkDraft = null
+        selectedImage = null
+        source = TextFieldValue(HtmlCodec.toMarkdown(doc))
+        sourceMode = true
+        showToast("Markdown text mode", R.drawable.ic_fa_code)
+    }
+
+    private fun leaveSource() {
+        val parsed = MarkdownCodec.parse(source.text)
+        if (parsed.text != doc.text || HtmlCodec.toHtml(parsed) != HtmlCodec.toHtml(doc)) {
+            recordBefore(KIND_FORMAT)
+            doc = parsed
+            markDirty()
+        }
+        body = TextFieldValue(doc.text, TextRange(0))
+        sourceMode = false
+        historyVersion++
+        showToast("Rendered view", R.drawable.ic_fa_code)
+    }
+
+    fun onSourceChange(v: TextFieldValue) {
+        if (!sourceMode || readMode) return
+        val changed = v.text != source.text
+        source = v
+        if (changed) markDirty()
+    }
+
+    // ─── export ──────────────────────────────
+
+    fun openExport() {
+        exportOpen = true
+    }
+
+    fun closeExport() {
+        exportOpen = false
+    }
+
+    fun consumeExport() {
+        pendingExport = null
+    }
+
+    fun exportSaved(ok: Boolean) {
+        pendingExport = null
+        showToast(if (ok) "Note exported" else "Export failed", if (ok) R.drawable.ic_fa_book_open else R.drawable.ic_fa_circle_exclamation)
+    }
+
+    /** Builds the file for [format] ("pdf" | "md" | "html" | "txt" | "xls"); the screen then asks where to save it. */
+    fun export(format: String) {
+        exportOpen = false
+        val d = currentDoc()
+        val t = title.text.trim().ifEmpty { "Untitled" }
+        val plain = if (bodyEditable) NoteExport.plainText(d) else body.text
+        val stem = NoteExport.safeFileName(t)
+        try {
+            pendingExport = when (format) {
+                "pdf" -> PendingExport("$stem.pdf", "application/pdf", PdfExport.render(t, plain))
+                "md" -> PendingExport(
+                    "$stem.md", "text/markdown",
+                    NoteExport.markdown(t, if (bodyEditable) HtmlCodec.toMarkdown(d) else note.markdown).toByteArray(),
+                )
+                "html" -> PendingExport(
+                    "$stem.html", "text/html",
+                    NoteExport.html(t, if (bodyEditable) HtmlCodec.toHtml(d) else note.content).toByteArray(),
+                )
+                "xls" -> PendingExport(
+                    "$stem.xls", "application/vnd.ms-excel",
+                    NoteExport.xls(t, note.updatedAt, countWords(plain), plain).toByteArray(),
+                )
+                else -> PendingExport("$stem.txt", "text/plain", NoteExport.text(t, plain).toByteArray())
+            }
+        } catch (_: Exception) {
+            showToast("Export failed", R.drawable.ic_fa_circle_exclamation)
+        }
     }
 
     fun clearFormat() {
@@ -905,7 +1009,10 @@ class EditorController(private val context: Context, route: Route.Editor) {
     // ─── toolbar actions ─────────────────────
 
     fun toggleReadMode() {
-        if (!readMode) flush() // entering Reading mode saves what you have, like the web
+        if (!readMode) {
+            if (sourceMode) leaveSource() // Reading mode always shows the rendered note
+            flush() // entering Reading mode saves what you have, like the web
+        }
         readMode = !readMode
         showToast(
             if (readMode) "Reading mode on" else "Editing mode on",
@@ -954,7 +1061,8 @@ class EditorController(private val context: Context, route: Route.Editor) {
     fun save() {
         if (discarded || missing || !dirty) return
 
-        val text = body.text
+        val d = currentDoc()
+        val text = if (sourceMode) d.text else body.text
         val titleText = title.text.trim()
         val rich = bodyEditable
 
@@ -966,7 +1074,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
         }
 
         val finalTitle = titleText.ifEmpty { "Untitled" }
-        val html = if (rich) HtmlCodec.toHtml(doc) else note.content
+        val html = if (rich) HtmlCodec.toHtml(d) else note.content
         val hash = fingerprint(finalTitle, html)
         if (persisted && hash == lastHash) {
             dirty = false
@@ -977,8 +1085,8 @@ class EditorController(private val context: Context, route: Route.Editor) {
         val updated = note.copy(
             title = finalTitle,
             content = html,
-            markdown = if (rich) HtmlCodec.toMarkdown(doc) else note.markdown,
-            wordCount = if (rich) countWords(doc.countText) else note.wordCount,
+            markdown = if (rich) HtmlCodec.toMarkdown(d) else note.markdown,
+            wordCount = if (rich) countWords(d.countText) else note.wordCount,
             updatedAt = Iso.now(),
         )
         try {

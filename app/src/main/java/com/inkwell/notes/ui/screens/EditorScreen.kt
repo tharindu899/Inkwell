@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
@@ -79,6 +80,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -116,7 +118,7 @@ import kotlinx.coroutines.delay
  *   Enter / Backspace list behaviour, basic code blocks.
  * Part 4: tags row → "Manage tags" modal, notebook row → "Move to Notebook" sheet (+ inline create).
  *   Both rows are tappable; they are hidden in Reading mode like the web (`.read-mode .tags-row`).
- * Coming next: code-block tools / tables / links, images + drawing, markdown source mode, export.
+ * Part 7: Markdown text mode (toolbar M), Reading-mode polish, Download note (PDF / md / html / txt / xls).
  */
 @Composable
 fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
@@ -149,6 +151,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
         }
     }
 
+    BackHandler(enabled = ctl.exportOpen) { ctl.closeExport() }
     BackHandler(enabled = ctl.drawOpen) { ctl.closeDraw() }
     BackHandler(enabled = ctl.linkDraft != null) { ctl.closeLink() }
     BackHandler(enabled = ctl.tableEdit != null) { ctl.closeCell() }
@@ -166,6 +169,37 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 if (url != null) ctl.insertImage(url, "Photo", drawing = false) else ctl.photoFailed()
             }
         }
+    }
+
+    // Reading mode: drop focus + hide the keyboard so the note is just a page to read.
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    LaunchedEffect(ctl.readMode) {
+        if (ctl.readMode) {
+            focusManager.clearFocus(force = true)
+            keyboard?.hide()
+        }
+    }
+
+    // Export: the system "save as" chooser (no storage permission needed).
+    val exportMime = ctl.pendingExport?.mime ?: "application/octet-stream"
+    val saveExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(exportMime)) { uri ->
+        val job = ctl.pendingExport
+        if (uri == null || job == null) {
+            ctl.consumeExport()
+        } else {
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openOutputStream(uri)?.use { it.write(job.bytes) } != null
+                    }.getOrDefault(false)
+                }
+                ctl.exportSaved(ok)
+            }
+        }
+    }
+    LaunchedEffect(ctl.pendingExport) {
+        ctl.pendingExport?.let { saveExport.launch(it.fileName) }
     }
 
     val titleFocus = remember { FocusRequester() }
@@ -252,6 +286,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 onBack = { ctl.flush(); onBack() },
                 onReadMode = ctl::toggleReadMode,
                 onPin = ctl::togglePin,
+                onExport = ctl::openExport,
                 onDelete = ctl::requestDelete,
                 onSave = { ctl.save(); onBack() },
             )
@@ -304,7 +339,14 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             ) {
                 if (!ctl.bodyEditable) RichNoteBanner()
 
-                Box(Modifier.fillMaxWidth()) {
+                if (ctl.sourceMode) {
+                    SourceField(
+                        value = ctl.source,
+                        onChange = ctl::onSourceChange,
+                        fontSp = fontSp.toFloat(),
+                        focus = bodyFocus,
+                    )
+                } else Box(Modifier.fillMaxWidth()) {
                 BasicTextField(
                     value = ctl.body,
                     onValueChange = ctl::onBodyChange,
@@ -507,6 +549,10 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
             )
         }
 
+        if (ctl.exportOpen) {
+            ExportModal(onPick = ctl::export, onClose = ctl::closeExport)
+        }
+
         // ── Part 6: drawing dialog ──
         if (ctl.drawOpen) {
             DrawModal(
@@ -594,6 +640,7 @@ private fun EditorTopBar(
     onBack: () -> Unit,
     onReadMode: () -> Unit,
     onPin: () -> Unit,
+    onExport: () -> Unit,
     onDelete: () -> Unit,
     onSave: () -> Unit,
 ) {
@@ -625,6 +672,7 @@ private fun EditorTopBar(
         )
 
         TopIconButton(R.drawable.ic_fa_book_open, on = readMode, onClick = onReadMode)
+        TopIconButton(R.drawable.ic_fa_download, onClick = onExport)
         TopIconButton(R.drawable.ic_fa_thumbtack, on = pinned, onClick = onPin)
         TopIconButton(R.drawable.ic_fa_trash_can, tint = DeleteRed, onClick = onDelete)
 
@@ -952,5 +1000,40 @@ private fun openUrl(context: android.content.Context, url: String) {
     if (!ok) return
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+}
+
+/** Markdown text mode: the note's markdown source as plain monospace text. */
+@Composable
+private fun SourceField(
+    value: TextFieldValue,
+    onChange: (TextFieldValue) -> Unit,
+    fontSp: Float,
+    focus: FocusRequester,
+) {
+    val c = Ink.colors
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            InkText("Markdown text mode — tap M to render", size = 11.sp, color = c.accent, weight = FontWeight.Bold)
+        }
+        BasicTextField(
+            value = value,
+            onValueChange = onChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focus)
+                .padding(start = 20.dp, end = 20.dp, bottom = 24.dp)
+                .defaultMinSize(minHeight = 240.dp),
+            textStyle = TextStyle(
+                color = c.text1,
+                fontSize = (fontSp - 1f).sp,
+                lineHeight = ((fontSp - 1f) * 1.6f).sp,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            ),
+            cursorBrush = SolidColor(c.accent),
+        )
     }
 }
