@@ -1,0 +1,3 @@
+# Copy to local.properties (never commit it) for local / Android Studio builds.
+# Same value as the VITE_GOOGLE_CLIENT_ID GitHub secret (OAuth *Web* client ID).
+VITE_GOOGLE_CLIENT_ID=your-client-id-here.apps.googleusercontent.com
