@@ -1,51 +1,60 @@
-name: Build & Release APK (Native Kotlin)
+name: Build & Release APK
 
-# ─── Triggers ─────────────────────────────────────────────────────────────────
 on:
   push:
-    branches:
-      - main          # every push to main → build + release
-  workflow_dispatch:  # manual "Run workflow" button
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write     # needed to create GitHub Releases
-
-env:
-  # Added to the run number so versionCode is always higher than your old
-  # Capacitor APK. Android refuses to update an app with a LOWER versionCode.
-  VERSION_CODE_OFFSET: 1000
+  contents: write
 
 jobs:
   build:
-    name: Build APK
+    name: Build Signed APK (Kotlin)
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────────────
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Check signing secrets ─────────────────────────────────────────────
-      # All 4 present → signed release APK (can update your installed app).
-      # Missing       → debug APK, so the build still works in a fresh repo.
-      - name: Check signing secrets
-        id: signing
+      - name: Check required GitHub Secrets
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ] && [ -n "$STORE_PASSWORD" ]; then
-            echo "signed=true" >> $GITHUB_OUTPUT
-            echo "✅ Signing secrets found → release build"
-          else
-            echo "signed=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Signing secrets missing → debug build (add KEYSTORE_BASE64, KEY_ALIAS, KEY_PASSWORD, STORE_PASSWORD for a release build)"
-          fi
+          missing=0
+          for key in KEYSTORE_BASE64 KEY_ALIAS KEY_PASSWORD STORE_PASSWORD VITE_GOOGLE_CLIENT_ID; do
+            value="${!key}"
+            if [ -z "$value" ]; then
+              echo "❌ Missing GitHub Secret: $key"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then exit 1; fi
+          echo "✅ Required secrets are present"
 
-      # ── 3. Derive version from run number ────────────────────────────────────
-      #   run #45 → v1.4.5     run #106 → v2.0.6
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # ubuntu-latest already ships the Android SDK (ANDROID_HOME) — no extra setup action needed
+      - name: Install Android SDK components
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      # run #45 -> v1.4.5   run #106 -> v2.0.6
       - name: Derive version from run number
         run: |
           RUN=${{ github.run_number }}
@@ -53,48 +62,18 @@ jobs:
           MINOR=$(( (RUN % 100) / 10 ))
           PATCH=$(( RUN % 10 ))
           VERSION="${MAJOR}.${MINOR}.${PATCH}"
-          TAG="v${VERSION}"
-          CODE=$(( RUN + VERSION_CODE_OFFSET ))
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          echo "TAG=${TAG}" >> $GITHUB_ENV
-          echo "VERSION_CODE=${CODE}" >> $GITHUB_ENV
-          echo "APK_NAME=Inkwell-${TAG}.apk" >> $GITHUB_ENV
-          echo "▸ Run #${RUN} → ${TAG} (versionCode ${CODE})"
+          echo "TAG=v${VERSION}" >> $GITHUB_ENV
+          echo "APK_NAME=Inkwell-v${VERSION}.apk" >> $GITHUB_ENV
+          echo "RUN_NUMBER=${RUN}" >> $GITHUB_ENV
 
-      # ── 4. Java ──────────────────────────────────────────────────────────────
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      # ── 5. Android SDK ───────────────────────────────────────────────────────
-      # packages: '' → skip the default "tools" package, it no longer exists
-      # in sdkmanager and makes this step fail ("Failed to find package 'tools'").
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: ''
-
-      - name: Install Android SDK components
-        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-
-      # ── 6. Gradle (no gradlew needed, version is pinned here) ────────────────
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      # ── 7. Decode keystore (release only) ────────────────────────────────────
       - name: Decode keystore
-        if: steps.signing.outputs.signed == 'true'
         run: |
-          KEYSTORE_PATH="${{ github.workspace }}/inkwell-release.jks"
+          KEYSTORE_PATH="$RUNNER_TEMP/inkwell-release.jks"
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "$KEYSTORE_PATH"
           echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> $GITHUB_ENV
 
       - name: Print release keystore SHA-1
-        if: steps.signing.outputs.signed == 'true'
         run: |
           SHA1=$(keytool -list -v \
             -keystore "$KEYSTORE_PATH" \
@@ -102,95 +81,56 @@ jobs:
             -storepass "${{ secrets.STORE_PASSWORD }}" \
             -noprompt 2>/dev/null | grep "SHA1:" | head -1 | awk '{print $2}')
           echo "### 🔑 Release Keystore SHA-1" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "$SHA1" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "📋 Package name: **com.inkwell.notes**" >> $GITHUB_STEP_SUMMARY
 
-      # ── 8. Build ─────────────────────────────────────────────────────────────
       - name: Build release APK
-        if: steps.signing.outputs.signed == 'true'
         env:
+          GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         run: |
-          gradle assembleRelease --stacktrace \
-            -PappVersionName=$VERSION -PappVersionCode=$VERSION_CODE \
-            2>&1 | tee /tmp/gradle-build.log
+          gradle :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee /tmp/gradle-build.log
           exit ${PIPESTATUS[0]}
 
-      - name: Build debug APK
-        if: steps.signing.outputs.signed != 'true'
-        run: |
-          gradle assembleDebug --stacktrace \
-            -PappVersionName=$VERSION -PappVersionCode=$VERSION_CODE \
-            2>&1 | tee /tmp/gradle-build.log
-          exit ${PIPESTATUS[0]}
-
-      # ── 9. Rename APK ────────────────────────────────────────────────────────
       - name: Rename APK
         run: |
-          if [ "${{ steps.signing.outputs.signed }}" = "true" ]; then
-            SRC="app/build/outputs/apk/release/app-release.apk"
-          else
-            SRC="app/build/outputs/apk/debug/app-debug.apk"
-          fi
-          mv "$SRC" "app/build/outputs/${APK_NAME}"
-          echo "APK_PATH=app/build/outputs/${APK_NAME}" >> $GITHUB_ENV
+          mv app/build/outputs/apk/release/app-release.apk \
+             app/build/outputs/apk/release/${{ env.APK_NAME }}
 
-      # ── 10. Upload artifact ──────────────────────────────────────────────────
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.APK_NAME }}
-          path: ${{ env.APK_PATH }}
+          path: app/build/outputs/apk/release/${{ env.APK_NAME }}
           retention-days: 30
 
-      # ── 11. GitHub Release ───────────────────────────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
           name: "Inkwell ${{ env.TAG }}"
           body: |
-            ## Inkwell ${{ env.TAG }} (native Kotlin)
+            ## Inkwell ${{ env.TAG }}
+            Built from run [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-            Built from run [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) · commit [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+            1. Download `${{ env.APK_NAME }}`
+            2. Allow **Install unknown apps** on your phone
+            3. Open the APK and tap Install
+          files: app/build/outputs/apk/release/${{ env.APK_NAME }}
 
-            ### Install
-            1. Download `${{ env.APK_NAME }}` below
-            2. On your Android phone: Settings → Security → enable **Install unknown apps**
-            3. Open the downloaded APK and tap Install
-          files: ${{ env.APK_PATH }}
-          draft: false
-          prerelease: ${{ steps.signing.outputs.signed != 'true' }}
-
-      # ── 12. Summaries ────────────────────────────────────────────────────────
-      - name: Write success summary
-        if: success()
-        run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## ✅ Build Succeeded
-          | Field | Value |
-          |-------|-------|
-          | **Version** | \`${{ env.TAG }}\` (code ${{ env.VERSION_CODE }}) |
-          | **Type** | ${{ steps.signing.outputs.signed == 'true' && 'Signed release' || 'Debug (no signing secrets)' }} |
-          | **APK** | \`${{ env.APK_NAME }}\` |
-          | **Commit** | [\`${{ github.sha }}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |
-          EOF
-
-      - name: Write failure summary
+      - name: Failure summary
         if: failure()
         run: |
-          GRADLE_LOG=""
-          if [ -f /tmp/gradle-build.log ]; then
-            GRADLE_LOG=$(grep -E "^e: |error:|FAILED|What went wrong" -A3 /tmp/gradle-build.log | head -60)
-          fi
-          cat >> $GITHUB_STEP_SUMMARY << SUMMARY
-          ## ❌ Build Failed
-          ### Compiler / Gradle errors
-          \`\`\`
-          ${GRADLE_LOG:-No Gradle log captured — check the step logs above.}
-          \`\`\`
-          SUMMARY
+          LOG=""
+          if [ -f /tmp/gradle-build.log ]; then LOG=$(tail -100 /tmp/gradle-build.log); fi
+          {
+            echo "## ❌ Build Failed"
+            echo "### Last 100 lines of Gradle log"
+            echo '```'
+            echo "${LOG:-No Gradle log captured}"
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
