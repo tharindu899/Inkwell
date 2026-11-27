@@ -25,11 +25,24 @@ object SourceEdit {
             return Result(text.substring(0, s) + inner + text.substring(e), s, s + inner.length)
         }
         if (s == e) {
-            val t = text.substring(0, s) + open + close + text.substring(e)
-            return Result(t, s + open.length, s + open.length)
+            // Nothing selected: type the opening marker; pressing again (inside it) types the closing one.
+            val mark = if (isInside(text, s, open, close)) close else open
+            val t = text.substring(0, s) + mark + text.substring(e)
+            return Result(t, s + mark.length, s + mark.length)
         }
         val t = text.substring(0, s) + open + sel + close + text.substring(e)
         return Result(t, s + open.length, e + open.length)
+    }
+
+    /** True when the caret sits after an unclosed [open] marker on its line. */
+    fun isInside(text: String, pos: Int, open: String, close: String): Boolean {
+        val p = pos.coerceIn(0, text.length)
+        val line = text.substring(text.lastIndexOf('\n', p - 1).let { if (p == 0) 0 else it + 1 }, p)
+        return when {
+            open != close -> line.windowed(open.length).count { it == open } > line.windowed(close.length).count { it == close }
+            open == "*" -> line.replace("**", "").count { it == '*' } % 2 == 1
+            else -> Regex(Regex.escape(open)).findAll(line).count() % 2 == 1
+        }
     }
 
     /** Line range `[from, to)` covering the selection (to excludes the trailing newline). */
@@ -68,7 +81,7 @@ object SourceEdit {
         }
         val joined = out.joinToString("\n")
         val t = text.substring(0, from) + joined + text.substring(to)
-        return Result(t, from, from + joined.length)
+        return keepCaret(t, from, to, joined.length, s, e)
     }
 
     /** Indent (+1) / outdent (−1) by two spaces per selected line. */
@@ -79,7 +92,14 @@ object SourceEdit {
             else if (l.startsWith("  ")) l.substring(2) else l.trimStart(' ').let { if (l.startsWith(" ")) l.substring(1) else l }
         }
         val t = text.substring(0, from) + out + text.substring(to)
-        return Result(t, from, from + out.length)
+        return keepCaret(t, from, to, out.length, s, e)
+    }
+
+    /** A caret stays a caret (moved by the length change); a multi-line selection keeps covering its lines. */
+    private fun keepCaret(t: String, from: Int, oldTo: Int, newLen: Int, s: Int, e: Int): Result {
+        if (s != e) return Result(t, from, from + newLen)
+        val c = (s + (newLen - (oldTo - from))).coerceIn(from, from + newLen)
+        return Result(t, c, c)
     }
 
     /** Replaces the selection with [ins]; the caret lands at [caretFromStart] (default: after it). */
