@@ -66,7 +66,6 @@ import com.inkwell.notes.ui.components.NavTab
 import com.inkwell.notes.ui.components.NoteCard
 import com.inkwell.notes.ui.components.onAccent
 import com.inkwell.notes.ui.components.tap
-import androidx.compose.foundation.shape.CircleShape
 import com.inkwell.notes.ui.theme.Ink
 import com.inkwell.notes.util.fmtNum
 import com.inkwell.notes.util.greetingForNow
@@ -176,9 +175,6 @@ fun HomeScreen(
                 onAvatarClick = onOpenProfile,
                 onSearch = onSearch,
                 onSettings = onSettings,
-                notes = state.stats.notes,
-                books = state.stats.notebooks,
-                words = fmtNum(state.stats.words),
             )
 
             // .page-content.home-page  (padding: 10 16 62+inset+14)
@@ -187,7 +183,7 @@ fun HomeScreen(
                 state = listState,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 62.dp + navInset + 14.dp),
             ) {
-                if (!c.isLime) item(key = "stats") {
+                item(key = "stats") {
                     StatsRow(state.stats.notes, state.stats.notebooks, fmtNum(state.stats.words))
                 }
 
@@ -370,8 +366,7 @@ private fun StatCard(num: String, label: String, modifier: Modifier = Modifier) 
 @Composable
 private fun SortRow(current: SortOrder, onSelect: (SortOrder) -> Unit, onStartSelect: () -> Unit) {
     val c = Ink.colors
-    val shape = if (c.isLime) CircleShape else RoundedCornerShape(10.dp)
-    val chipLine = if (c.isLime) c.text1 else c.border
+    val shape = RoundedCornerShape(10.dp)
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -385,7 +380,7 @@ private fun SortRow(current: SortOrder, onSelect: (SortOrder) -> Unit, onStartSe
                 .height(28.dp)
                 .clip(shape)
                 .background(c.bgCard)
-                .border(1.5.dp, chipLine, shape)
+                .border(1.5.dp, c.border, shape)
                 .tap(onStartSelect)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -402,7 +397,7 @@ private fun SortRow(current: SortOrder, onSelect: (SortOrder) -> Unit, onStartSe
                     .height(28.dp)
                     .clip(shape)
                     .background(if (on) c.accent else c.bgCard)
-                    .border(1.5.dp, if (on) c.accent else chipLine, shape)
+                    .border(1.5.dp, if (on) c.accent else c.border, shape)
                     .tap { onSelect(s) }
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center,

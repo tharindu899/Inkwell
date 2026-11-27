@@ -160,7 +160,7 @@ fun InkwellApp(vm: AuthViewModel = viewModel()) {
                             if (nav.hasBelow(Route.Profile)) nav.back() else nav.replaceTop(Route.Profile)
                         },
                         onResetDone = {
-                            themeMode = ThemeMode.Lime
+                            themeMode = ThemeMode.Dark
                             vm.signOut()
                         },
                     )

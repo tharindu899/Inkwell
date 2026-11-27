@@ -71,7 +71,7 @@ fun CreateMenu(
 
     // index 0 = closest to the FAB
     val items = buildList {
-        add(DialItem(R.drawable.ic_fa_file_circle_plus, c.fab, c.onFab, "New note", onNewNote))
+        add(DialItem(R.drawable.ic_fa_file_circle_plus, c.accent, onAccent(), "New note", onNewNote))
         add(DialItem(R.drawable.ic_fa_folder_plus, MenuBlue, Color.White, "New notebook", onNewNotebook))
         add(DialItem(R.drawable.ic_fa_tag, MenuGreen, Color.White, "New tag", onNewTag))
         add(DialItem(R.drawable.ic_fa_magnifying_glass, MenuPurple, Color.White, "Search", onSearch))
@@ -83,14 +83,14 @@ fun CreateMenu(
     Box(Modifier.fillMaxSize()) {
         // backdrop
         AnimatedVisibility(open, enter = fadeIn(tween(180)), exit = fadeOut(tween(120))) {
-            Box(Modifier.fillMaxSize().background(if (c.isLime) c.bg.copy(alpha = 0.85f) else Color.Black.copy(alpha = 0.32f)).tap(onClose))
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)).tap(onClose))
         }
 
         // FAB: 48dp, end 18dp, bottom = navInset + 62 + 12. Dial buttons: 40dp, centred over it.
         Column(
             Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 18.dp + (fabSize() - 40.dp) / 2, bottom = navInset + 62.dp + 12.dp + fabSize() + 12.dp),
+                .padding(end = 18.dp + 4.dp, bottom = navInset + 62.dp + 12.dp + 48.dp + 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.End,
         ) {
@@ -110,12 +110,12 @@ fun CreateMenu(
                         Box(
                             Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(if (c.isLime) c.text1 else c.bgElevated)
+                                .background(c.bgElevated)
                                 .border(1.dp, c.borderHi, RoundedCornerShape(50))
                                 .tap(item.onClick)
                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                         ) {
-                            InkText(item.label, color = if (c.isLime) c.bg else c.text1, size = 14.sp, weight = FontWeight.Medium)
+                            InkText(item.label, color = c.text1, size = 14.sp, weight = FontWeight.Medium)
                         }
                         Spacer(Modifier.width(10.dp))
                         Box(

@@ -2,8 +2,6 @@ package com.inkwell.notes.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -47,15 +45,8 @@ fun HomeTopBar(
     onAvatarClick: () -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
-    notes: Int = 0,
-    books: Int = 0,
-    words: String = "0",
 ) {
     val c = Ink.colors
-    if (c.isLime) {
-        LimeHero(greeting, firstName, picture, onAvatarClick, onSearch, onSettings, notes, books, words)
-        return
-    }
     Row(
         Modifier
             .fillMaxWidth()
@@ -130,62 +121,9 @@ fun HomeTopBar(
 internal fun IconBtn(icon: Int, onClick: () -> Unit) {
     val c = Ink.colors
     Box(
-        Modifier
-            .size(if (c.isLime) 42.dp else 38.dp)
-            .clip(CircleShape)
-            .background(if (c.isLime) androidx.compose.ui.graphics.Color.Transparent else c.bgCard)
-            .then(if (c.isLime) Modifier.border(2.dp, c.text1, CircleShape) else Modifier)
-            .tap(onClick),
+        Modifier.size(38.dp).clip(CircleShape).background(c.bgCard).tap(onClick),
         contentAlignment = Alignment.Center,
     ) {
-        FaIcon(icon, tint = if (c.isLime) c.text1 else c.text2, size = if (c.isLime) 17.dp else 15.dp)
-    }
-}
-
-/** Lime theme: big lime block with title, greeting, name and the notes counter. */
-@Composable
-private fun LimeHero(
-    greeting: String, firstName: String, picture: String,
-    onAvatarClick: () -> Unit, onSearch: () -> Unit, onSettings: () -> Unit,
-    notes: Int, books: Int, words: String,
-) {
-    val c = Ink.colors
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp))
-            .background(c.hero)
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(start = 22.dp, end = 22.dp, top = 12.dp, bottom = 22.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            InkText("inkwell", Modifier.weight(1f), color = c.onHero, size = 19.sp, weight = FontWeight.Bold)
-            IconBtn(R.drawable.ic_fa_magnifying_glass, onSearch)
-            Spacer(Modifier.size(8.dp))
-            IconBtn(R.drawable.ic_fa_gear, onSettings)
-            Spacer(Modifier.size(8.dp))
-            Box(
-                Modifier.size(42.dp).clip(CircleShape).background(c.onHero).tap(onAvatarClick),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (picture.isNotBlank()) {
-                    AsyncImage(model = picture, contentDescription = firstName, contentScale = ContentScale.Crop, modifier = Modifier.size(42.dp))
-                } else {
-                    InkText(firstName.trim().take(1).uppercase().ifEmpty { "U" }, color = c.hero, size = 17.sp, weight = FontWeight.ExtraBold)
-                }
-            }
-        }
-        Spacer(Modifier.height(22.dp))
-        InkText("$greeting,", color = c.onHero, size = 17.sp)
-        InkText(firstName, color = c.onHero, size = 34.sp, weight = FontWeight.Bold, letterSpacing = (-1).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(14.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
-            InkText(notes.toString(), color = c.onHero, size = 96.sp, weight = FontWeight.ExtraBold, letterSpacing = (-4).sp, lineHeight = 92.sp)
-            Spacer(Modifier.size(12.dp))
-            Column(Modifier.padding(bottom = 8.dp)) {
-                InkText(if (notes == 1) "note" else "notes", color = c.onHero, size = 21.sp, weight = FontWeight.Bold)
-                InkText("$books books · $words words", color = c.onHero, size = 14.sp)
-            }
-        }
+        FaIcon(icon, tint = c.text2, size = 15.dp)
     }
 }
