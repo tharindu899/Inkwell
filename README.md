@@ -1,30 +1,33 @@
-# Inkwell — native Kotlin (Jetpack Compose)
+# Inkwell Native UI - Part 1 (Soft Bento, Jetpack Compose)
 
-UI direction: **Bold Sheet** (lime `#D9F36B` + ink `#111111`, dark bottom sheet, pill nav).
+Package: `com.inkwell.notes` (copy the files under `app/src/main/java/com/inkwell/notes/` into your project).
 
-## Part 1 (this zip)
-- Gradle project (Kotlin 2.0.21, AGP 8.7.3, Compose BOM 2024.12.01, minSdk 26)
-- Theme: `ui/theme/` (Color, Type, Theme)
-- Native Google sign-in (Credential Manager): `auth/`
-- Login screen + animations: `ui/login/LoginScreen.kt`
-- Temporary Home placeholder with Sign out: `ui/home/HomePlaceholder.kt`
-- GitHub Actions APK build: `.github/workflows/build-apk.yml`
+## What is in Part 1
+- Theme: Light / Dark / GitHub (same GitHub colors as the web app), colors animate when you switch
+- Components: pressScale, staggeredEntrance, InkChip, PastelCard, StatCard, floating sliding bottom bar, speed-dial FAB
+- Navigation: same routes as the web app, animated screen transitions, bottom bar only on Home / Tags / Notebook
+- Home screen: greeting top bar, count-up stats, sort chips, wide pinned card + staggered bento grid
+- Temporary: the Settings icon on Home cycles the theme so you can preview all three
 
-## Part 2
-- Notes data layer: `data/` (same JSON format as the old backup, kept in `filesDir/inkwell_data.json`)
-- Home screen (Bold Sheet): header with count-up, sort chips, Pinned + Recent, multi-select, delete + Undo
-- Navigation shell: `ui/shell/` (NavHost, floating bottom bar, toasts)
-- Placeholders for Tags / Notebooks / Profile / Search / Editor: `ui/screens/Placeholders.kt`
+## Dependencies (app/build.gradle.kts)
+```kotlin
+implementation(platform("androidx.compose:compose-bom:2024.10.01")) // or your latest BOM
+implementation("androidx.compose.ui:ui")
+implementation("androidx.compose.material3:material3")
+implementation("androidx.compose.material:material-icons-extended")
+implementation("androidx.compose.ui:ui-tooling-preview")
+implementation("androidx.activity:activity-compose:1.9.3")
+implementation("androidx.navigation:navigation-compose:2.8.3")
+```
+Needs Kotlin 2.x with the Compose compiler plugin, `SortOrder.entries` needs Kotlin 1.9+.
+Manifest: set `android:name` of the activity to `.MainActivity` and use a NoActionBar theme.
 
-## GitHub setup (same secrets as before)
-`KEYSTORE_BASE64`, `KEY_ALIAS`, `KEY_PASSWORD`, `STORE_PASSWORD`, `VITE_GOOGLE_CLIENT_ID`
-(the Web client ID is passed to the app as `GOOGLE_CLIENT_ID`).
-
-Google Cloud Console must have an **Android OAuth client** for package
-`com.inkwell.notes` with the release keystore SHA-1 (printed in the run summary).
-
-## Local build
-`gradle :app:assembleDebug -PGOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com`
+## Build on GitHub (no Android Studio needed)
+1. Put the contents of this folder at the **root** of a GitHub repo (the `.github`, `app`, `build.gradle.kts` ... all at top level).
+2. Push to `main`. `.github/workflows/build-apk.yml` builds the APK, uploads it as an artifact and makes a GitHub Release.
+3. Optional signed release APK: add the same 4 secrets as your web repo: `KEYSTORE_BASE64`, `KEY_ALIAS`, `KEY_PASSWORD`, `STORE_PASSWORD`.
+   Without them it builds a debug APK instead. Same keystore + same package = it updates your installed Inkwell.
+4. `VERSION_CODE_OFFSET` (top of the yml) keeps versionCode above your old Capacitor builds.
 
 ## Next parts
-2 Home screen + navigation · 3 Notes storage · 4 Editor (8 sub-parts) · 5 Search/Tags/Notebooks · 6 Settings/Profile/Drive sync/updater
+2 Notebooks + Notebook detail, 3 Tags + Search, 4 Login + Profile + Settings, 5 hook to the real data/editor.
