@@ -34,7 +34,7 @@ Tag manager / notebook picker / create-notebook → delete confirm → cell shee
 - [ ] Caret can't land on a table / image / divider line.
 **Modes**
 - [ ] Markdown text mode: toggle on, edit, toggle off → formatting preserved; save while in text mode.
-- [ ] Reading mode: keyboard hides, edits refused with toast, links open, toggling back restores editing.
+- [ ] Reading mode: full-screen note under the title (tags, counts, toolbar hidden); keyboard hides, edits refused with toast, links open, toggling back restores editing.
 - [ ] Toolbar customiser (⚙): hide a tool, hide a whole group (its separator vanishes), Reset, restart app → choice kept.
 **Markdown text view (default on; Settings → Markdown mode)**
 - [ ] Toolbar works on the text: B / I / U / S / H1–3 / lists / quote / code / link / table / divider / photo / undo / redo.

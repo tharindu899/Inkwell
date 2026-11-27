@@ -528,8 +528,6 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 TagsRow(tags = ctl.note.tags, onClick = ctl::openTagManager)
                 NotebookRow(name = ctl.notebook?.name, colorHex = ctl.notebook?.color, onClick = ctl::openNotebookPicker)
             }
-            EditorFooter(words = ctl.wordCount, chars = ctl.charCount, selected = ctl.selectedWords, streak = ctl.streak, saved = ctl.saved)
-
             // ── formatting toolbar: docked at the bottom, right above the keyboard ──
             if (ctl.bodyEditable && !ctl.readMode) {
                 EditorToolbar(
@@ -554,6 +552,11 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     onManage = ctl::openToolbarManager,
                     scroll = toolbarScroll,
                 )
+            }
+
+            // Reading mode = just the note: the tags / notebook / counts / toolbar step away.
+            if (!ctl.readMode) {
+                EditorFooter(words = ctl.wordCount, chars = ctl.charCount, selected = ctl.selectedWords, streak = ctl.streak, saved = ctl.saved)
             }
         }
 
