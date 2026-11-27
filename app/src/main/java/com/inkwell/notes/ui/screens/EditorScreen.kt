@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
@@ -153,6 +154,8 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
         }
     }
 
+    // Back in Reading mode only returns to editing (the status bar comes back with it).
+    BackHandler(enabled = ctl.readMode) { ctl.toggleReadMode() }
     BackHandler(enabled = ctl.toolbarManageOpen) { ctl.closeToolbarManager() }
     BackHandler(enabled = ctl.exportOpen) { ctl.closeExport() }
     // Back with an image selected only drops the handles; it must not leave the note.
@@ -174,6 +177,22 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 if (url != null) ctl.insertImage(url, "Photo", drawing = false) else ctl.photoFailed()
             }
         }
+    }
+
+    // Reading mode is immersive: the status bar (notifications, clock) slides away; a swipe from the top shows it briefly.
+    val hostView = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(ctl.readMode) {
+        var ctx = hostView.context
+        while (ctx is android.content.ContextWrapper && ctx !is android.app.Activity) ctx = ctx.baseContext
+        val window = (ctx as? android.app.Activity)?.window
+        val bars = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, hostView) }
+        if (ctl.readMode) {
+            bars?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            bars?.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        } else {
+            bars?.show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        }
+        onDispose { bars?.show(androidx.core.view.WindowInsetsCompat.Type.statusBars()) }
     }
 
     // Reading mode: drop focus + hide the keyboard so the note is just a page to read.
@@ -289,7 +308,10 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(bottomInsets)) {
-            EditorTopBar(
+            // Reading mode is full screen: no top bar (a floating button + Back leave it), status bar hidden below.
+            if (ctl.readMode) {
+                Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars))
+            } else EditorTopBar(
                 title = ctl.title.text.ifBlank { "New Note" },
                 readMode = ctl.readMode,
                 pinned = ctl.note.pinned,
@@ -554,9 +576,24 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 )
             }
 
-            // Reading mode = just the note: the tags / notebook / counts / toolbar step away.
-            if (!ctl.readMode) {
-                EditorFooter(words = ctl.wordCount, chars = ctl.charCount, selected = ctl.selectedWords, streak = ctl.streak, saved = ctl.saved)
+            EditorFooter(words = ctl.wordCount, chars = ctl.charCount, selected = ctl.selectedWords, streak = ctl.streak, saved = ctl.saved)
+        }
+
+        // Reading mode: small floating "book" button to get back to editing (Back works too).
+        if (ctl.readMode) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = 10.dp, end = 12.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(c.bgCard.copy(alpha = 0.85f))
+                    .border(1.dp, c.accent, CircleShape)
+                    .tap(ctl::toggleReadMode),
+                contentAlignment = Alignment.Center,
+            ) {
+                FaIcon(R.drawable.ic_fa_book_open, tint = c.accent, size = 14.dp)
             }
         }
 
