@@ -36,6 +36,12 @@ Tag manager / notebook picker / create-notebook → delete confirm → cell shee
 - [ ] Markdown text mode: toggle on, edit, toggle off → formatting preserved; save while in text mode.
 - [ ] Reading mode: keyboard hides, edits refused with toast, links open, toggling back restores editing.
 - [ ] Toolbar customiser (⚙): hide a tool, hide a whole group (its separator vanishes), Reset, restart app → choice kept.
+**Markdown text view (default on; Settings → Markdown mode)**
+- [ ] Toolbar works on the text: B / I / U / S / H1–3 / lists / quote / code / link / table / divider / photo / undo / redo.
+- [ ] Typing at the bottom or with the keyboard up keeps the caret visible (auto-scroll).
+- [ ] Rendered view: copy / cut a selection → paste elsewhere gives Markdown (`**bold**`, `- item`).
+**Backup / restore (Drive)**
+- [ ] Backup → toast; Restore on a second install brings the notes back (photos included).
 **Export**
 - [ ] PDF with Sinhala text opens correctly; md / html / txt / xls open in their apps.
 - [ ] Cancel in the save dialog leaves no toast / crash.

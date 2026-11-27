@@ -26,6 +26,7 @@ import com.inkwell.notes.editor.Mark
 import com.inkwell.notes.editor.MarkdownCodec
 import com.inkwell.notes.editor.NoteExport
 import com.inkwell.notes.editor.OBJ
+import com.inkwell.notes.editor.SourceEdit
 import com.inkwell.notes.editor.Para
 import com.inkwell.notes.editor.RichDoc
 import com.inkwell.notes.editor.TableData
@@ -199,6 +200,13 @@ class EditorController(private val context: Context, route: Route.Editor) {
     val toolbarState: ToolbarState
         get() {
             historyVersion.let { } // read so the toolbar recomposes when the history changes
+            if (sourceMode) {
+                return ToolbarState(
+                    canUndo = srcUndo.isNotEmpty(),
+                    canRedo = srcRedo.isNotEmpty(),
+                    markdown = true,
+                )
+            }
             val sel = body.selection
             val para = doc.paraAt(sel.min)
             return ToolbarState(
@@ -206,8 +214,8 @@ class EditorController(private val context: Context, route: Route.Editor) {
                 link = doc.linkIdAt(sel.min) != 0,
                 block = para.type,
                 align = para.align,
-                canUndo = undoStack.isNotEmpty(),
-                canRedo = redoStack.isNotEmpty(),
+                canUndo = if (sourceMode) srcUndo.isNotEmpty() else undoStack.isNotEmpty(),
+                canRedo = if (sourceMode) srcRedo.isNotEmpty() else redoStack.isNotEmpty(),
                 markdown = sourceMode,
             )
         }
@@ -282,7 +290,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
     private var lastHash = ""
 
     /** Settings → "Markdown mode" (default on): notes open in Markdown text view; the toolbar M switches this note. */
-    private val markdownDefault: Boolean = AppPrefs.getPref(context, "markdownMode", true)
+    private val markdownDefault: Boolean = AppPrefs.getPref(context, "markdownView", true)
 
     private var sourceBeforeRead = false
 
@@ -437,6 +445,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
     /** Bold / italic / underline / strike / highlight / sup / sub. */
     fun toggleMark(mark: Int) {
         if (!canFormat) return
+        if (sourceMode) { srcMarkFor(mark); return }
         val sel = body.selection
         if (sel.collapsed) {
             // Nothing selected: the format applies to what you type next.
@@ -454,11 +463,26 @@ class EditorController(private val context: Context, route: Route.Editor) {
         markDirty()
     }
 
-    fun setBlock(type: BlockType) = format { it.setBlock(type, body.selection.min, body.selection.max) }
+    fun setBlock(type: BlockType) {
+        if (sourceMode) { if (canFormat) srcBlock(type); return }
+        format { it.setBlock(type, body.selection.min, body.selection.max) }
+    }
 
-    fun setAlign(align: Align) = format { it.setAlign(align, body.selection.min, body.selection.max) }
+    fun setAlign(align: Align) {
+        if (sourceMode) {
+            if (canFormat) showToast("Alignment isn't available in Markdown text view", R.drawable.ic_fa_circle_exclamation)
+            return
+        }
+        format { it.setAlign(align, body.selection.min, body.selection.max) }
+    }
 
-    fun changeIndent(delta: Int) = format { it.changeIndent(delta, body.selection.min, body.selection.max) }
+    fun changeIndent(delta: Int) {
+        if (sourceMode) {
+            if (canFormat) srcApply(SourceEdit.indent(source.text, source.selection.start, source.selection.end, delta))
+            return
+        }
+        format { it.changeIndent(delta, body.selection.min, body.selection.max) }
+    }
 
     // ─── code, links, inserts (Part 5) ───────
 
@@ -474,6 +498,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
     /** Toolbar "Code": wraps the selection in inline code, or unwraps when the caret is already inside code. */
     fun toggleInlineCode() {
         if (!canFormat) return
+        if (sourceMode) { srcMark("`"); return }
         val sel = body.selection
         if (doc.paraAt(sel.min).type == BlockType.CODE) return
         if (sel.collapsed) {
@@ -498,6 +523,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
     /** Toolbar "Code block": turns the selected lines into a code block (again = back to paragraphs). */
     fun toggleCodeBlock() {
         if (!canFormat) return
+        if (sourceMode) { srcBlock(BlockType.CODE); return }
         recordBefore(KIND_FORMAT)
         doc = doc.setBlock(BlockType.CODE, body.selection.min, body.selection.max).withParagraphAfterCode()
         markDirty()
@@ -533,6 +559,10 @@ class EditorController(private val context: Context, route: Route.Editor) {
 
     fun insertHr() {
         if (!canFormat) return
+        if (sourceMode) {
+            srcApply(SourceEdit.insertBlock(source.text, source.selection.start, source.selection.end, "---"))
+            return
+        }
         recordBefore(KIND_FORMAT)
         val (nd, at) = doc.insertObject(body.selection.max, Para(type = BlockType.HR))
         place(nd, TextRange(at))
@@ -540,6 +570,10 @@ class EditorController(private val context: Context, route: Route.Editor) {
 
     fun insertTable() {
         if (!canFormat) return
+        if (sourceMode) {
+            srcApply(SourceEdit.insertBlock(source.text, source.selection.start, source.selection.end, SourceEdit.TABLE_TEMPLATE))
+            return
+        }
         recordBefore(KIND_FORMAT)
         val (nd, at) = doc.insertObject(body.selection.max, Para(type = BlockType.TABLE, table = TableData.blank()))
         place(nd, TextRange(at))
@@ -549,6 +583,10 @@ class EditorController(private val context: Context, route: Route.Editor) {
     fun insertDateTime() {
         if (!canFormat) return
         val s = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date())
+        if (sourceMode) {
+            srcApply(SourceEdit.insert(source.text, source.selection.start, source.selection.end, s))
+            return
+        }
         val sel = body.selection
         recordBefore(KIND_FORMAT)
         place(doc.insertInline(sel.min, sel.max, s), TextRange(sel.min + s.length))
@@ -558,6 +596,13 @@ class EditorController(private val context: Context, route: Route.Editor) {
 
     fun openLink() {
         if (!canFormat) return
+        if (sourceMode) {
+            val sel = source.text.substring(source.selection.min, source.selection.max).ifEmpty { "link text" }
+            val ins = "[$sel](https://)"
+            val urlStart = sel.length + 3
+            srcApply(SourceEdit.insert(source.text, source.selection.start, source.selection.end, ins, urlStart, urlStart + 8))
+            return
+        }
         val sel = body.selection
         if (doc.paraAt(sel.min).type == BlockType.CODE) return
         if (sel.collapsed) {
@@ -631,6 +676,12 @@ class EditorController(private val context: Context, route: Route.Editor) {
     /** A picked photo (data URL) or a finished sketch lands below the caret's line, like the web figure. */
     fun insertImage(src: String, alt: String, drawing: Boolean) {
         if (!canFormat) return
+        if (sourceMode) {
+            val name = alt.ifBlank { if (drawing) "Drawing" else "Photo" }
+            srcApply(SourceEdit.insertBlock(source.text, source.selection.start, source.selection.end, "![$name]($src)"))
+            showToast(if (drawing) "Drawing added" else "Photo added", if (drawing) R.drawable.ic_fa_check else R.drawable.ic_fa_image)
+            return
+        }
         recordBefore(KIND_FORMAT)
         val (nd, at) = doc.insertObject(body.selection.max, Para(type = BlockType.IMAGE, image = ImageData(src, alt.ifBlank { if (drawing) "Drawing" else "Photo" }, drawing)))
         place(nd, TextRange(at))
@@ -794,6 +845,7 @@ class EditorController(private val context: Context, route: Route.Editor) {
         linkDraft = null
         selectedImage = null
         source = TextFieldValue(HtmlCodec.toMarkdown(doc))
+        srcUndo.clear(); srcRedo.clear(); srcTyping = false
         sourceMode = true
         if (!quiet) showToast("Markdown text mode", R.drawable.ic_fa_code)
     }
@@ -811,11 +863,69 @@ class EditorController(private val context: Context, route: Route.Editor) {
         if (!quiet) showToast("Rendered view", R.drawable.ic_fa_code)
     }
 
+    // Markdown text mode keeps its own small undo history of text snapshots.
+    private val srcUndo = ArrayList<TextFieldValue>()
+    private val srcRedo = ArrayList<TextFieldValue>()
+    private var srcLastAt = 0L
+    private var srcTyping = false
+
+    private fun srcPush(typing: Boolean) {
+        val now = SystemClock.uptimeMillis()
+        if (!typing || !srcTyping || now - srcLastAt > TYPING_GAP_MS) {
+            srcUndo.add(source)
+            if (srcUndo.size > MAX_HISTORY) srcUndo.removeAt(0)
+            srcRedo.clear()
+            historyVersion++
+        }
+        srcTyping = typing
+        srcLastAt = now
+    }
+
     fun onSourceChange(v: TextFieldValue) {
         if (!sourceMode || readMode) return
         val changed = v.text != source.text
+        if (changed) srcPush(typing = true)
         source = v
         if (changed) markDirty()
+    }
+
+    /** Applies a toolbar edit to the markdown text (own undo step). */
+    private fun srcApply(r: SourceEdit.Result) {
+        srcPush(typing = false)
+        val len = r.text.length
+        source = TextFieldValue(r.text, TextRange(r.start.coerceIn(0, len), r.end.coerceIn(0, len)))
+        markDirty()
+    }
+
+    private fun srcMark(open: String, close: String = open) =
+        srcApply(SourceEdit.wrap(source.text, source.selection.start, source.selection.end, open, close))
+
+    private fun srcBlock(type: BlockType) {
+        val s = source.selection
+        val t = source.text
+        when (type) {
+            BlockType.H1 -> srcApply(SourceEdit.linePrefix(t, s.start, s.end, "# "))
+            BlockType.H2 -> srcApply(SourceEdit.linePrefix(t, s.start, s.end, "## "))
+            BlockType.H3 -> srcApply(SourceEdit.linePrefix(t, s.start, s.end, "### "))
+            BlockType.UL -> srcApply(SourceEdit.linePrefix(t, s.start, s.end, "- "))
+            BlockType.OL -> srcApply(SourceEdit.linePrefix(t, s.start, s.end, "1. ", numbered = true))
+            BlockType.TASK -> srcApply(SourceEdit.linePrefix(t, s.start, s.end, "- [ ] "))
+            BlockType.QUOTE -> srcApply(SourceEdit.linePrefix(t, s.start, s.end, "> "))
+            BlockType.CODE -> srcApply(SourceEdit.codeFence(t, s.start, s.end))
+            else -> srcApply(SourceEdit.linePrefix(t, s.start, s.end, ""))
+        }
+    }
+
+    private fun srcMarkFor(mark: Int) = when (mark) {
+        Mark.BOLD -> srcMark("**")
+        Mark.ITALIC -> srcMark("*")
+        Mark.UNDERLINE -> srcMark("<u>", "</u>")
+        Mark.STRIKE -> srcMark("~~")
+        Mark.HIGHLIGHT -> srcMark("<mark>", "</mark>")
+        Mark.SUP -> srcMark("<sup>", "</sup>")
+        Mark.SUB -> srcMark("<sub>", "</sub>")
+        Mark.CODE -> srcMark("`")
+        else -> {}
     }
 
     // ─── export ──────────────────────────────
@@ -868,6 +978,10 @@ class EditorController(private val context: Context, route: Route.Editor) {
 
     fun clearFormat() {
         if (!canFormat) return
+        if (sourceMode) {
+            srcApply(SourceEdit.clearInline(source.text, source.selection.start, source.selection.end))
+            return
+        }
         pending = null
         format { it.clearFormat(body.selection.min, body.selection.max) }
     }
@@ -895,12 +1009,30 @@ class EditorController(private val context: Context, route: Route.Editor) {
     }
 
     fun undo() {
+        if (sourceMode) {
+            if (!canFormat || srcUndo.isEmpty()) return
+            srcRedo.add(source)
+            source = srcUndo.removeAt(srcUndo.lastIndex)
+            srcTyping = false
+            historyVersion++
+            markDirty()
+            return
+        }
         if (!canFormat || undoStack.isEmpty()) return
         redoStack.add(Snap(doc, body.selection))
         restore(undoStack.removeAt(undoStack.lastIndex))
     }
 
     fun redo() {
+        if (sourceMode) {
+            if (!canFormat || srcRedo.isEmpty()) return
+            srcUndo.add(source)
+            source = srcRedo.removeAt(srcRedo.lastIndex)
+            srcTyping = false
+            historyVersion++
+            markDirty()
+            return
+        }
         if (!canFormat || redoStack.isEmpty()) return
         undoStack.add(Snap(doc, body.selection))
         restore(redoStack.removeAt(redoStack.lastIndex))

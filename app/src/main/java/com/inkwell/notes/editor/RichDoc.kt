@@ -596,6 +596,32 @@ class RichDoc private constructor(
 
     fun chunks(): List<Chunk> = paras.indices.map { chunk(it) }
 
+    /**
+     * The part of the document in `[start, end)` as its own document (copy / cut → markdown).
+     * A selection inside one paragraph keeps only the inline formatting (no "# " or "- " in front of a copied word).
+     */
+    fun slice(start: Int, end: Int): RichDoc {
+        val a = minOf(start, end).coerceIn(0, text.length)
+        val b = maxOf(start, end).coerceIn(0, text.length)
+        if (a == b) return EMPTY
+        val out = ArrayList<Chunk>()
+        for (k in paras.indices) {
+            val from = maxOf(a, starts[k])
+            val to = minOf(b, paraEnd(k))
+            val interiorEmpty = from == to && starts[k] > a && paraEnd(k) < b
+            if (starts[k] >= b || paraEnd(k) < a) continue
+            if (from < to || interiorEmpty) out.add(chunkRange(k, from, to))
+        }
+        if (out.isEmpty()) return EMPTY
+        if (out.size == 1) {
+            val c = out[0]
+            val p = c.para
+            val whole = p.type == BlockType.HR || p.type == BlockType.TABLE || p.type == BlockType.IMAGE
+            if (!whole) return fromChunks(listOf(Chunk(c.text, c.marks, if (p.type == BlockType.CODE) p else Para())))
+        }
+        return fromChunks(out)
+    }
+
     /** Deletes paragraph [k] completely (an empty paragraph stays when it was the only one). */
     fun removeParaAt(k: Int): RichDoc {
         val l = chunks().toMutableList()

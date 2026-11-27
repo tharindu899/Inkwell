@@ -35,8 +35,8 @@ object DriveApi {
                 requestMethod = method
             }
             setRequestProperty("Authorization", "Bearer $token")
-            connectTimeout = 15_000
-            readTimeout = 30_000
+            connectTimeout = 20_000
+            readTimeout = 120_000
         }
 
     private fun HttpURLConnection.send(contentType: String, body: ByteArray) {
@@ -64,34 +64,49 @@ object DriveApi {
         }
     }
 
-    /** Creates or updates `inkwell-sync.json` with [payload]. */
+    /** All `inkwell-sync.json` files in appData (normally one), newest first. */
+    private suspend fun listSyncFiles(token: String): List<DriveFile> = withContext(Dispatchers.IO) {
+        val q = enc("name='$FILENAME' and trashed=false")
+        val url = "$DRIVE/files?spaces=appDataFolder&q=$q&orderBy=modifiedTime%20desc" +
+            "&fields=${enc("files(id,name,modifiedTime,size)")}&pageSize=20"
+        val arr = JSONObject(open(url, token, "GET").readOk("list")).optJSONArray("files")
+        buildList {
+            if (arr != null) for (i in 0 until arr.length()) {
+                val it = arr.getJSONObject(i)
+                add(DriveFile(it.getString("id"), it.optString("modifiedTime", ""), it.optString("size", "0").toLongOrNull() ?: 0L))
+            }
+        }
+    }
+
+    /**
+     * Saves [payload] as `inkwell-sync.json`. Always creates a fresh file and then deletes the old ones:
+     * `HttpURLConnection` has no PATCH, and the override-header trick is unreliable on the upload endpoint.
+     * (Compact JSON — photos are base64 inside the notes, so pretty-printing would only bloat it.)
+     */
     suspend fun backup(token: String, payload: JSONObject) {
-        val existing = findSyncFile(token)
-        val body = payload.toString(2).toByteArray()
+        val old = listSyncFiles(token)
+        val body = payload.toString().toByteArray(Charsets.UTF_8)
+        val meta = JSONObject().put("name", FILENAME).put("parents", org.json.JSONArray().put("appDataFolder"))
+        val head = ("--$BOUNDARY\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + meta.toString() +
+            "\r\n--$BOUNDARY\r\nContent-Type: application/json\r\n\r\n").toByteArray(Charsets.UTF_8)
+        val tail = "\r\n--$BOUNDARY--".toByteArray(Charsets.UTF_8)
+        val multipart = head + body + tail
         withContext(Dispatchers.IO) {
-            if (existing != null) {
-                open("$UPLOAD/files/${existing.id}?uploadType=media", token, "PATCH")
-                    .apply { send("application/json", body) }
-                    .readOk("update")
-            } else {
-                val meta = JSONObject().put("name", FILENAME).put("parents", org.json.JSONArray().put("appDataFolder"))
-                val multipart = buildString {
-                    append("--$BOUNDARY\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n")
-                    append(meta.toString())
-                    append("\r\n--$BOUNDARY\r\nContent-Type: application/json\r\n\r\n")
-                    append(String(body, Charsets.UTF_8))
-                    append("\r\n--$BOUNDARY--")
-                }.toByteArray()
-                open("$UPLOAD/files?uploadType=multipart", token, "POST")
-                    .apply { send("multipart/related; boundary=$BOUNDARY", multipart) }
-                    .readOk("create")
+            val conn = open("$UPLOAD/files?uploadType=multipart&fields=id", token, "POST")
+            conn.setFixedLengthStreamingMode(multipart.size)
+            conn.send("multipart/related; boundary=$BOUNDARY", multipart)
+            val newId = JSONObject(conn.readOk("create")).optString("id", "")
+            // Only after the new copy is safely stored do the old ones go.
+            for (f in old) {
+                if (f.id == newId) continue
+                runCatching { open("$DRIVE/files/${f.id}", token, "DELETE").readOk("delete") }
             }
         }
     }
 
     /** The backup JSON, or null when no backup exists yet. */
     suspend fun restore(token: String): JSONObject? {
-        val file = findSyncFile(token) ?: return null
+        val file = listSyncFiles(token).firstOrNull() ?: return null
         return withContext(Dispatchers.IO) {
             JSONObject(open("$DRIVE/files/${file.id}?alt=media", token, "GET").readOk("download"))
         }

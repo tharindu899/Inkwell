@@ -79,7 +79,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             it.copy(
                 spellcheck = AppPrefs.getPref(app, "spellcheck", true),
                 autosave = AppPrefs.getPref(app, "autosave", true),
-                markdownMode = AppPrefs.getPref(app, "markdownMode", true),
+                markdownMode = AppPrefs.getPref(app, "markdownView", true),
                 serifBody = AppPrefs.getPref(app, "serifBody", false),
                 fontSize = AppPrefs.getFontSize(app),
                 noteCount = notes.size,
@@ -133,12 +133,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             try {
                 val profile = runCatching { JSONObject(AppPrefs.of(app).getString(AppPrefs.KEY_PROFILE, null) ?: "{}") }
                     .getOrDefault(JSONObject())
-                val payload = JSONObject()
-                    .put("version", 2)
-                    .put("backedUpAt", Iso.now())
-                    .put("notes", JSONArray(store.getNotes().map { it.toJson() }))
-                    .put("notebooks", JSONArray(store.getNotebooks().map { it.toJson() }))
-                    .put("profile", profile)
+                val payload = withContext(Dispatchers.Default) {
+                    JSONObject()
+                        .put("version", 2)
+                        .put("backedUpAt", Iso.now())
+                        .put("notes", JSONArray(store.getNotes().map { it.toJson() }))
+                        .put("notebooks", JSONArray(store.getNotebooks().map { it.toJson() }))
+                        .put("profile", profile)
+                }
                 withToken { DriveApi.backup(it, payload) }
                 showToast("Backed up to Google Drive", R.drawable.ic_fa_cloud_arrow_up)
                 loadBackupInfo()
@@ -160,11 +162,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 if (data == null) {
                     showToast("No backup found on Drive", R.drawable.ic_fa_circle_info)
                 } else {
-                    data.optJSONArray("notes")?.let { arr ->
-                        store.saveNotes((0 until arr.length()).mapNotNull { Note.fromJson(arr.getJSONObject(it)) })
-                    }
-                    data.optJSONArray("notebooks")?.let { arr ->
-                        store.saveNotebooks((0 until arr.length()).mapNotNull { Notebook.fromJson(arr.getJSONObject(it)) })
+                    withContext(Dispatchers.IO) {
+                        data.optJSONArray("notes")?.let { arr ->
+                            store.saveNotes((0 until arr.length()).mapNotNull { Note.fromJson(arr.getJSONObject(it)) })
+                        }
+                        data.optJSONArray("notebooks")?.let { arr ->
+                            store.saveNotebooks((0 until arr.length()).mapNotNull { Notebook.fromJson(arr.getJSONObject(it)) })
+                        }
                     }
                     refresh()
                     val n = data.optJSONArray("notes")?.length() ?: 0

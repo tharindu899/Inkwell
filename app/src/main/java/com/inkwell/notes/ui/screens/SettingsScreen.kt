@@ -213,7 +213,7 @@ fun SettingsScreen(
                 SettingsRow(R.drawable.ic_fa_r_floppy_disk, "Auto-save", "Save notes automatically while typing",
                     right = { Toggle(s.autosave) { vm.setPref("autosave", it) } })
                 SettingsRow(R.drawable.ic_fa_code, "Markdown mode", "Open notes in Markdown text view",
-                    right = { Toggle(s.markdownMode) { vm.setPref("markdownMode", it) } })
+                    right = { Toggle(s.markdownMode) { vm.setPref("markdownView", it) } })
                 SettingsRow(R.drawable.ic_fa_font, "Serif body font", "Use Lora instead of DM Sans for notes",
                     right = { Toggle(s.serifBody) { vm.setPref("serifBody", it) } })
 

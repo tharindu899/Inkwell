@@ -74,6 +74,8 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -269,7 +271,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     // Keep the caret (plus a margin, so sub/superscript lines are never cut) inside the visible body.
     LaunchedEffect(ctl.body.selection, ctl.body.text, layoutRes, viewportH) {
         val lay = layoutRes ?: return@LaunchedEffect
-        if (viewportH == 0 || !ctl.bodyEditable) return@LaunchedEffect
+        if (viewportH == 0 || !ctl.bodyEditable || ctl.sourceMode) return@LaunchedEffect
         val len = lay.layoutInput.text.length
         val orig = ctl.body.selection.end.coerceIn(0, ctl.body.text.length)
         val t = (transformation?.offsetMapping?.originalToTransformed(orig) ?: orig).coerceIn(0, len)
@@ -353,8 +355,14 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                         onChange = ctl::onSourceChange,
                         fontSp = fontSp.toFloat(),
                         focus = bodyFocus,
+                        scroll = bodyScroll,
+                        viewportH = viewportH,
+                        readOnly = ctl.readMode,
                     )
-                } else Box(Modifier.fillMaxWidth()) {
+                } else androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalClipboardManager provides
+                        MarkdownClipboard(androidx.compose.ui.platform.LocalClipboardManager.current, ctl),
+                ) { Box(Modifier.fillMaxWidth()) {
                 BasicTextField(
                     value = ctl.body,
                     onValueChange = ctl::onBodyChange,
@@ -511,7 +519,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                         }
                     }
                 }
-                }
+                } }
             }
 
             // ── bottom panel: tags, notebook, counts ──
@@ -1035,6 +1043,24 @@ private fun openUrl(context: android.content.Context, url: String) {
     }
 }
 
+/**
+ * Copy / cut in the rendered view puts the selection on the clipboard as Markdown text
+ * (`**bold**`, `# heading`, `- item`), so pasting into another app keeps the structure.
+ * Everything else about the clipboard is the real one ([base]).
+ */
+private class MarkdownClipboard(
+    private val base: androidx.compose.ui.platform.ClipboardManager,
+    private val ctl: EditorController,
+) : androidx.compose.ui.platform.ClipboardManager by base {
+    override fun setText(annotatedString: androidx.compose.ui.text.AnnotatedString) {
+        val sel = ctl.body.selection
+        val md = if (ctl.bodyEditable && !ctl.sourceMode && !sel.collapsed) {
+            runCatching { com.inkwell.notes.editor.HtmlCodec.toMarkdown(ctl.doc.slice(sel.min, sel.max)).trim('\n') }.getOrNull()
+        } else null
+        base.setText(if (md.isNullOrEmpty()) annotatedString else androidx.compose.ui.text.AnnotatedString(md))
+    }
+}
+
 /** Markdown text mode: the note's markdown source as plain monospace text. */
 @Composable
 private fun SourceField(
@@ -1042,8 +1068,31 @@ private fun SourceField(
     onChange: (TextFieldValue) -> Unit,
     fontSp: Float,
     focus: FocusRequester,
+    scroll: androidx.compose.foundation.ScrollState,
+    viewportH: Int,
+    readOnly: Boolean,
 ) {
     val c = Ink.colors
+    val density = LocalDensity.current
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    var fieldTop by remember { mutableIntStateOf(0) }
+
+    // Keep the caret on screen while typing (same rule as the rendered view: a margin above the keyboard / below the top).
+    LaunchedEffect(value.selection, value.text, layout, viewportH, fieldTop) {
+        val lay = layout ?: return@LaunchedEffect
+        if (viewportH == 0) return@LaunchedEffect
+        val at = value.selection.end.coerceIn(0, lay.layoutInput.text.length)
+        val r = lay.getCursorRect(at)
+        val margin = with(density) { 32.dp.toPx() }
+        val top = fieldTop + r.top
+        val bottom = fieldTop + r.bottom
+        val cur = scroll.value
+        when {
+            bottom + margin > cur + viewportH -> scroll.animateScrollTo((bottom + margin - viewportH).toInt().coerceAtLeast(0))
+            top - margin < cur -> scroll.animateScrollTo((top - margin).toInt().coerceAtLeast(0))
+        }
+    }
+
     Column(Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
@@ -1058,7 +1107,10 @@ private fun SourceField(
                 .fillMaxWidth()
                 .focusRequester(focus)
                 .padding(start = 20.dp, end = 20.dp, bottom = 24.dp)
-                .defaultMinSize(minHeight = 240.dp),
+                .defaultMinSize(minHeight = 240.dp)
+                .onGloballyPositioned { fieldTop = it.positionInParent().y.toInt() },
+            readOnly = readOnly,
+            onTextLayout = { layout = it },
             textStyle = TextStyle(
                 color = c.text1,
                 fontSize = (fontSp - 1f).sp,
