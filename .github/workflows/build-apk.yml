@@ -69,8 +69,12 @@ jobs:
           distribution: 'temurin'
 
       # ── 5. Android SDK ───────────────────────────────────────────────────────
+      # packages: '' → skip the default "tools" package, it no longer exists
+      # in sdkmanager and makes this step fail ("Failed to find package 'tools'").
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: ''
 
       - name: Install Android SDK components
         run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
