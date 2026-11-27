@@ -1,47 +1,34 @@
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Config comes from environment (GitHub Actions) or local.properties (local builds).
-val localProps = Properties().apply {
-    val f = rootProject.file("local.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
-}
-fun cfg(name: String): String =
-    System.getenv(name)?.takeIf { it.isNotBlank() } ?: localProps.getProperty(name, "")
+// Same Google OAuth *Web* client ID the old app used (GitHub secret VITE_GOOGLE_CLIENT_ID).
+// CI passes it as env GOOGLE_CLIENT_ID. Locally: -PGOOGLE_CLIENT_ID=xxxx
+val googleClientId: String =
+    System.getenv("GOOGLE_CLIENT_ID")
+        ?: providers.gradleProperty("GOOGLE_CLIENT_ID").orNull
+        ?: ""
 
 android {
-    // Same package name as the React/Capacitor build → the existing Google Cloud
-    // Android OAuth credential (package + SHA-1) keeps working.
     namespace = "com.inkwell.notes"
     compileSdk = 35
 
     defaultConfig {
         applicationId = "com.inkwell.notes"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 35
-        versionCode = (System.getenv("APP_VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("APP_VERSION_NAME") ?: "2.0.0-dev"
-
-        buildConfigField("String", "GOOGLE_CLIENT_ID", "\"${cfg("VITE_GOOGLE_CLIENT_ID")}\"")
-
-        // Repo the update checker reads releases from: VITE_GITHUB_REPO override →
-        // the repo running the GitHub Action → the original Inkwell repo.
-        val githubRepo = cfg("VITE_GITHUB_REPO").ifBlank {
-            System.getenv("GITHUB_REPOSITORY")?.takeIf { it.isNotBlank() } ?: "tharindu899/Inkwell"
-        }
-        buildConfigField("String", "GITHUB_REPO", "\"$githubRepo\"")
+        versionCode = (System.getenv("RUN_NUMBER") ?: "1").toInt()
+        versionName = System.getenv("VERSION") ?: "1.0.0"
+        buildConfigField("String", "GOOGLE_CLIENT_ID", "\"$googleClientId\"")
     }
 
-    val keystorePath = System.getenv("KEYSTORE_PATH")
     signingConfigs {
-        if (!keystorePath.isNullOrBlank()) {
-            create("release") {
-                storeFile = file(keystorePath)
+        create("release") {
+            val ks = System.getenv("KEYSTORE_PATH")
+            if (ks != null) {
+                storeFile = file(ks)
                 storePassword = System.getenv("STORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD")
@@ -52,11 +39,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = if (!keystorePath.isNullOrBlank()) {
+            signingConfig = if (System.getenv("KEYSTORE_PATH") != null)
                 signingConfigs.getByName("release")
-            } else {
+            else
                 signingConfigs.getByName("debug")
-            }
         }
     }
 
@@ -67,38 +53,29 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-
     buildFeatures {
         compose = true
         buildConfig = true
     }
-
-    lint {
-        abortOnError = false
-        checkReleaseBuilds = false
-    }
-
-    packaging {
-        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-    }
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
-    implementation(composeBom)
-
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
-
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
+    implementation("androidx.compose.material3:material3")
 
-    // Google profile picture in the Home top bar
-    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
-    // Native Google Sign-In (same SDK the Capacitor plugin used)
-    implementation("com.google.android.gms:play-services-auth:21.2.0")
+    implementation("androidx.navigation:navigation-compose:2.8.5")
+
+    // Google sign-in (Credential Manager)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 }
