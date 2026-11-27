@@ -92,13 +92,21 @@ object Reminders {
         )
 
     /** Sets (or replaces) the alarm for [noteId] at [atMillis]. */
-    fun schedule(ctx: Context, noteId: String, atMillis: Long) {
-        ensureChannel(ctx)
-        val am = ctx.getSystemService(AlarmManager::class.java) ?: return
-        am.setAlarmClock(
-            AlarmManager.AlarmClockInfo(atMillis, openNote(ctx, noteId)),
-            pending(ctx, ACTION_FIRE, noteId, 1),
-        )
+    fun schedule(ctx: Context, noteId: String, atMillis: Long): Boolean {
+        return try {
+            ensureChannel(ctx)
+            val am = ctx.getSystemService(AlarmManager::class.java) ?: return false
+            val fire = pending(ctx, ACTION_FIRE, noteId, 1)
+            try {
+                am.setAlarmClock(AlarmManager.AlarmClockInfo(atMillis, openNote(ctx, noteId)), fire)
+            } catch (_: SecurityException) {
+                // Some ROMs (MIUI etc.) refuse alarm-clock alarms: fall back to an inexact alarm instead of crashing.
+                am.set(AlarmManager.RTC_WAKEUP, atMillis, fire)
+            }
+            true
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     fun cancel(ctx: Context, noteId: String) {

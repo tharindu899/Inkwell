@@ -145,11 +145,15 @@ class EditorController(private val context: Context, route: Route.Editor) {
             Reminders.cancel(context, note.id)
             showToast("Reminder removed", R.drawable.ic_fa_bell)
         } else {
-            Reminders.schedule(context, note.id, atMillis)
+            val scheduled = Reminders.schedule(context, note.id, atMillis)
             val ok = Reminders.canNotify(context)
             showToast(
-                if (ok) "Reminder set" else "Reminder set — allow notifications to hear it",
-                R.drawable.ic_fa_bell,
+                when {
+                    !scheduled -> "Couldn't set the alarm on this phone"
+                    ok -> "Reminder set"
+                    else -> "Reminder set — allow notifications to hear it"
+                },
+                if (scheduled) R.drawable.ic_fa_bell else R.drawable.ic_fa_circle_exclamation,
             )
         }
     }

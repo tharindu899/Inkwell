@@ -3,6 +3,15 @@ package com.inkwell.notes.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -675,7 +684,14 @@ fun ToolbarModal(
     }
 }
 
-/** Reminder sheet: quick times, a date + time picker, and remove. The alarm itself lives in `reminder/Reminders`. */
+/** Minute wheel step (the MIUI picker shows 00, 05, 10 …). */
+private const val REMINDER_MIN_STEP = 5
+private const val REMINDER_DAYS = 366
+
+/**
+ * Reminder sheet, MIUI-style: three snapping wheels (date · H · M) with Cancel / OK.
+ * The alarm itself lives in `reminder/Reminders`.
+ */
 @Composable
 fun ReminderModal(
     current: Long?,
@@ -684,61 +700,146 @@ fun ReminderModal(
     onClose: () -> Unit,
 ) {
     val c = Ink.colors
-    val context = androidx.compose.ui.platform.LocalContext.current
     val fmt = remember { java.text.SimpleDateFormat("EEE, MMM d · h:mm a", java.util.Locale.getDefault()) }
+    val dayFmt = remember { java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.getDefault()) }
 
-    fun at(addDays: Int, hour: Int, minute: Int = 0): Long =
-        java.util.Calendar.getInstance().apply {
-            add(java.util.Calendar.DAY_OF_YEAR, addDays)
-            set(java.util.Calendar.HOUR_OF_DAY, hour); set(java.util.Calendar.MINUTE, minute)
-            set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
-        }.timeInMillis
-
-    fun pick() {
-        val now = java.util.Calendar.getInstance()
-        android.app.DatePickerDialog(
-            context,
-            { _, y, m, d ->
-                android.app.TimePickerDialog(
-                    context,
-                    { _, h, min ->
-                        val cal = java.util.Calendar.getInstance().apply {
-                            set(y, m, d, h, min, 0); set(java.util.Calendar.MILLISECOND, 0)
-                        }
-                        onSet(cal.timeInMillis)
-                    },
-                    now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE),
-                    false,
-                ).show()
-            },
-            now.get(java.util.Calendar.YEAR), now.get(java.util.Calendar.MONTH), now.get(java.util.Calendar.DAY_OF_MONTH),
-        ).apply { datePicker.minDate = System.currentTimeMillis() - 1000 }.show()
+    // Day labels: today + the next year.
+    val dayLabels = remember {
+        val cal = java.util.Calendar.getInstance()
+        List(REMINDER_DAYS) { i ->
+            val d = cal.clone() as java.util.Calendar
+            d.add(java.util.Calendar.DAY_OF_YEAR, i)
+            dayFmt.format(d.time)
+        }
     }
+    val hourLabels = remember { List(24) { "%02d".format(it) } }
+    val minLabels = remember { List(60 / REMINDER_MIN_STEP) { "%02d".format(it * REMINDER_MIN_STEP) } }
+
+    // Start at the current alarm, or one hour from now (rounded up to the next minute step).
+    val start = remember(current) {
+        val now = System.currentTimeMillis()
+        val cal = java.util.Calendar.getInstance().apply {
+            timeInMillis = if (current != null && current > now) current else now + 60 * 60_000L
+        }
+        val m = cal.get(java.util.Calendar.MINUTE)
+        val rounded = (m + REMINDER_MIN_STEP - 1) / REMINDER_MIN_STEP * REMINDER_MIN_STEP
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        cal.add(java.util.Calendar.MINUTE, rounded)
+        val today0 = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val day0 = (cal.clone() as java.util.Calendar).apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+        }
+        val days = Math.round((day0.timeInMillis - today0.timeInMillis) / 86_400_000.0).toInt()
+        Triple(
+            days.coerceIn(0, REMINDER_DAYS - 1),
+            cal.get(java.util.Calendar.HOUR_OF_DAY),
+            cal.get(java.util.Calendar.MINUTE) / REMINDER_MIN_STEP,
+        )
+    }
+    var dayI by remember(start) { mutableIntStateOf(start.first) }
+    var hourI by remember(start) { mutableIntStateOf(start.second) }
+    var minI by remember(start) { mutableIntStateOf(start.third) }
 
     BottomCard(onClose) {
-        InkText("Reminder", family = Ink.serif, size = 20.sp, weight = FontWeight.Bold, lineHeight = 24.sp)
-        Spacer(Modifier.height(4.dp))
         InkText(
-            if (current != null) "Alarm: ${fmt.format(java.util.Date(current))}" else "Rings like an alarm with your phone's alarm sound",
-            size = 12.sp,
-            color = if (current != null) c.accent else c.text3,
+            "Set date and time",
+            modifier = Modifier.fillMaxWidth(),
+            align = androidx.compose.ui.text.style.TextAlign.Center,
+            family = Ink.serif, size = 19.sp, weight = FontWeight.Bold, lineHeight = 24.sp,
         )
-        Spacer(Modifier.height(12.dp))
-        val now = System.currentTimeMillis()
-        val quick = buildList {
-            add("In 1 hour" to now + 60 * 60_000L)
-            if (at(0, 20) > now) add("Tonight 8:00 PM" to at(0, 20))
-            add("Tomorrow 9:00 AM" to at(1, 9))
+        if (current != null) {
+            Spacer(Modifier.height(4.dp))
+            InkText(
+                "Current alarm: ${fmt.format(java.util.Date(current))}",
+                modifier = Modifier.fillMaxWidth(),
+                align = androidx.compose.ui.text.style.TextAlign.Center,
+                size = 12.sp, color = c.accent,
+            )
         }
-        for ((label, t) in quick) {
-            TagButton(label, c.bgCard, c.text1, c.border, Modifier.fillMaxWidth()) { onSet(t) }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth()) {
+            Spacer(Modifier.weight(1.7f))
+            InkText("H", Modifier.weight(1f), color = c.text3, size = 15.sp, weight = FontWeight.Bold, align = androidx.compose.ui.text.style.TextAlign.Center)
+            InkText("M", Modifier.weight(1f), color = c.text3, size = 15.sp, weight = FontWeight.Bold, align = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+        Box(Modifier.fillMaxWidth()) {
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .height(WheelItemH)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(c.accent.copy(alpha = 0.10f)),
+            )
+            Row(Modifier.fillMaxWidth()) {
+                PickerWheel(dayLabels, start.first, { dayI = it }, Modifier.weight(1.7f))
+                PickerWheel(hourLabels, start.second, { hourI = it }, Modifier.weight(1f))
+                PickerWheel(minLabels, start.third, { minI = it }, Modifier.weight(1f))
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        if (current != null) {
+            TagButton("Remove reminder", c.bgCard, DeleteRed, c.border, Modifier.fillMaxWidth(), onRemove)
             Spacer(Modifier.height(8.dp))
         }
-        TagButton("Pick date & time…", c.accent, onAccent(), c.accent, Modifier.fillMaxWidth()) { pick() }
-        Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (current != null) TagButton("Remove", c.bgCard, DeleteRed, c.border, Modifier.weight(1f), onRemove)
-            TagButton("Close", c.bgCard, c.text2, c.border, Modifier.weight(1f), onClose)
+            TagButton("Cancel", c.bgCard, c.text2, c.border, Modifier.weight(1f), onClose)
+            TagButton("OK", c.accent, onAccent(), c.accent, Modifier.weight(1f)) {
+                val cal = java.util.Calendar.getInstance().apply {
+                    add(java.util.Calendar.DAY_OF_YEAR, dayI)
+                    set(java.util.Calendar.HOUR_OF_DAY, hourI)
+                    set(java.util.Calendar.MINUTE, minI * REMINDER_MIN_STEP)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }
+                onSet(cal.timeInMillis)
+            }
+        }
+    }
+}
+
+private val WheelItemH = 48.dp
+
+/** One snapping wheel: five rows visible, the middle one is the selection (accent coloured, larger). */
+@Composable
+private fun PickerWheel(items: List<String>, initial: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val c = Ink.colors
+    val state = rememberLazyListState(initialFirstVisibleItemIndex = initial.coerceIn(0, items.lastIndex))
+    val scope = rememberCoroutineScope()
+    val centre by remember {
+        derivedStateOf {
+            val h = state.layoutInfo.visibleItemsInfo.firstOrNull()?.size ?: 1
+            (state.firstVisibleItemIndex + if (state.firstVisibleItemScrollOffset > h / 2) 1 else 0)
+                .coerceIn(0, items.lastIndex)
+        }
+    }
+    LaunchedEffect(centre) { onSelect(centre) }
+    LazyColumn(
+        state = state,
+        modifier = modifier.height(WheelItemH * 5),
+        flingBehavior = rememberSnapFlingBehavior(state),
+        contentPadding = PaddingValues(vertical = WheelItemH * 2),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        itemsIndexed(items) { i, label ->
+            val sel = i == centre
+            Box(
+                Modifier.fillMaxWidth().height(WheelItemH).tap { scope.launch { state.animateScrollToItem(i) } },
+                contentAlignment = Alignment.Center,
+            ) {
+                InkText(
+                    label,
+                    size = if (sel) 22.sp else 17.sp,
+                    weight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                    color = if (sel) c.accent else c.text3,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
