@@ -151,7 +151,10 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
         }
     }
 
+    BackHandler(enabled = ctl.toolbarManageOpen) { ctl.closeToolbarManager() }
     BackHandler(enabled = ctl.exportOpen) { ctl.closeExport() }
+    // Back with an image selected only drops the handles; it must not leave the note.
+    BackHandler(enabled = ctl.selectedImage != null && !ctl.exportOpen && !ctl.toolbarManageOpen) { ctl.deselectImage() }
     BackHandler(enabled = ctl.drawOpen) { ctl.closeDraw() }
     BackHandler(enabled = ctl.linkDraft != null) { ctl.closeLink() }
     BackHandler(enabled = ctl.tableEdit != null) { ctl.closeCell() }
@@ -201,6 +204,11 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
     LaunchedEffect(ctl.pendingExport) {
         ctl.pendingExport?.let { saveExport.launch(it.fileName) }
     }
+
+    // Part 8: haptics like the web `haptic()` — light on save, medium on pin, heavy on delete.
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val tickLight = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove) }
+    val tickStrong = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) }
 
     val titleFocus = remember { FocusRequester() }
     val bodyFocus = remember { FocusRequester() }
@@ -285,10 +293,10 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 pinned = ctl.note.pinned,
                 onBack = { ctl.flush(); onBack() },
                 onReadMode = ctl::toggleReadMode,
-                onPin = ctl::togglePin,
+                onPin = { tickStrong(); ctl.togglePin() },
                 onExport = ctl::openExport,
                 onDelete = ctl::requestDelete,
-                onSave = { ctl.save(); onBack() },
+                onSave = { tickLight(); ctl.save(); onBack() },
             )
 
             // ── title ──
@@ -418,7 +426,10 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     cursorBrush = SolidColor(c.accent),
                     visualTransformation = transformation ?: VisualTransformation.None,
                     onTextLayout = { layoutRes = it },
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        autoCorrectEnabled = ctl.spellcheck,
+                    ),
                     decorationBox = { inner ->
                         Box(Modifier.fillMaxWidth()) {
                             if (ctl.body.text.isEmpty() && ctl.bodyEditable) {
@@ -509,7 +520,7 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 TagsRow(tags = ctl.note.tags, onClick = ctl::openTagManager)
                 NotebookRow(name = ctl.notebook?.name, colorHex = ctl.notebook?.color, onClick = ctl::openNotebookPicker)
             }
-            EditorFooter(words = ctl.wordCount, chars = ctl.charCount, saved = ctl.saved)
+            EditorFooter(words = ctl.wordCount, chars = ctl.charCount, selected = ctl.selectedWords, streak = ctl.streak, saved = ctl.saved)
 
             // ── formatting toolbar: docked at the bottom, right above the keyboard ──
             if (ctl.bodyEditable && !ctl.readMode) {
@@ -531,6 +542,8 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                     onDraw = ctl::openDraw,
                     onCode = ctl::toggleInlineCode,
                     onCodeBlock = ctl::toggleCodeBlock,
+                    hidden = ctl.hiddenTools,
+                    onManage = ctl::openToolbarManager,
                     scroll = toolbarScroll,
                 )
             }
@@ -543,9 +556,19 @@ fun EditorScreen(route: Route.Editor, onBack: () -> Unit) {
                 message = "This note will be deleted permanently.",
                 onCancel = ctl::dismissDelete,
                 onConfirm = {
+                    tickStrong()
                     ctl.confirmDelete()
                     onBack()
                 },
+            )
+        }
+
+        if (ctl.toolbarManageOpen) {
+            ToolbarModal(
+                hidden = ctl.hiddenTools,
+                onToggle = ctl::setToolVisible,
+                onReset = ctl::resetToolbar,
+                onClose = ctl::closeToolbarManager,
             )
         }
 
@@ -894,7 +917,7 @@ private fun NotebookRow(name: String?, colorHex: String?, onClick: () -> Unit) {
 
 /** `.editor-footer`: word / char count on the left, `.autosave-dot` on the right. */
 @Composable
-private fun EditorFooter(words: Int, chars: Int, saved: Boolean) {
+private fun EditorFooter(words: Int, chars: Int, selected: Int, streak: Int, saved: Boolean) {
     val c = Ink.colors
     Column(Modifier.fillMaxWidth().background(c.bgCard)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(c.border))
@@ -903,9 +926,18 @@ private fun EditorFooter(words: Int, chars: Int, saved: Boolean) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 InkText("$words ${if (words == 1) "word" else "words"}", size = 11.sp, color = c.text3)
                 InkText("$chars ${if (chars == 1) "char" else "chars"}", size = 11.sp, color = c.text3)
+                InkText("$selected selected", size = 11.sp, color = if (selected > 0) c.accent else c.text3)
+                if (streak > 0) {
+                    InkText(
+                        "🔥 $streak day${if (streak != 1) "s" else ""}",
+                        size = 11.sp,
+                        weight = FontWeight.Bold,
+                        color = if (streak >= 7) Color(0xFFF28C40) else c.text2,
+                    )
+                }
             }
             InkText(
                 if (saved) "● Saved" else "● Saving…",
@@ -1034,6 +1066,7 @@ private fun SourceField(
                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
             ),
             cursorBrush = SolidColor(c.accent),
+            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, capitalization = KeyboardCapitalization.None),
         )
     }
 }

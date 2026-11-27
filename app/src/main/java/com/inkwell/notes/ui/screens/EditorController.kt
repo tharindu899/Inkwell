@@ -18,6 +18,7 @@ import com.inkwell.notes.data.model.Note
 import com.inkwell.notes.data.model.Notebook
 import com.inkwell.notes.editor.Align
 import com.inkwell.notes.editor.BlockType
+import com.inkwell.notes.editor.EditorStats
 import com.inkwell.notes.editor.HtmlCodec
 import com.inkwell.notes.editor.ImageData
 import com.inkwell.notes.editor.LinkTable
@@ -113,6 +114,50 @@ class EditorController(private val context: Context, route: Route.Editor) {
 
     var source by mutableStateOf(TextFieldValue(""))
         private set
+
+    /** Part 8: toolbar customiser — hidden tool keys (persisted) and the dialog. */
+    var hiddenTools by mutableStateOf(AppPrefs.getHiddenTools(context))
+        private set
+
+    var toolbarManageOpen by mutableStateOf(false)
+        private set
+
+    fun deselectImage() { selectedImage = null }
+
+    fun openToolbarManager() { toolbarManageOpen = true }
+
+    fun closeToolbarManager() { toolbarManageOpen = false }
+
+    fun setToolVisible(key: String, show: Boolean) {
+        hiddenTools = if (show) hiddenTools - key else hiddenTools + key
+        AppPrefs.setHiddenTools(context, hiddenTools)
+        showToast(if (show) "Tool enabled" else "Tool hidden", R.drawable.ic_fa_book_open)
+    }
+
+    fun resetToolbar() {
+        hiddenTools = emptySet()
+        AppPrefs.setHiddenTools(context, hiddenTools)
+        showToast("Toolbar reset", R.drawable.ic_fa_book_open)
+    }
+
+    /** Part 8: spell check (Settings → Editor, default on) → the keyboard's suggestions / auto-correct. */
+    val spellcheck: Boolean = AppPrefs.getPref(context, "spellcheck", true)
+
+    /** Part 8: writing streak shown in the footer (days in a row, ending today, with an edited note). */
+    val streak: Int = run {
+        val days = store.getNotes().map { (it.updatedAt.ifEmpty { it.createdAt }).take(10) }.filter { it.isNotEmpty() }.toSet()
+        EditorStats.streak(days) { i ->
+            val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+            cal.add(java.util.Calendar.DAY_OF_YEAR, -i)
+            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(cal.time)
+        }
+    }
+
+    /** Part 8: words inside the current selection (footer "N selected"). */
+    val selectedWords: Int
+        get() = if (sourceMode) EditorStats.selectedWords(source.text, source.selection.start, source.selection.end, ::countWords)
+        else EditorStats.selectedWords(body.text, body.selection.start, body.selection.end, ::countWords)
 
     /** Part 7: export sheet + pending SAF save (format, file name, bytes). */
     var exportOpen by mutableStateOf(false)

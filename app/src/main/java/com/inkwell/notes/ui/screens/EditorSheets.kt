@@ -623,3 +623,54 @@ fun ExportModal(onPick: (String) -> Unit, onClose: () -> Unit) {
         TagButton("Cancel", c.bgCard, c.text2, c.border, Modifier.fillMaxWidth(), onClose)
     }
 }
+
+/** Part 8: "Toolbar tools" — a checkbox per tool (web `.toolbar-modal`). */
+@Composable
+fun ToolbarModal(
+    hidden: Set<String>,
+    onToggle: (key: String, show: Boolean) -> Unit,
+    onReset: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val c = Ink.colors
+    BottomCard(onClose) {
+        InkText("Toolbar tools", family = Ink.serif, size = 20.sp, weight = FontWeight.Bold, lineHeight = 24.sp)
+        Spacer(Modifier.height(4.dp))
+        InkText("Turn off tools you do not need.", size = 12.sp, color = c.text3)
+        Spacer(Modifier.height(10.dp))
+        for (t in com.inkwell.notes.editor.ToolbarTools.all) {
+            val shown = t.key !in hidden
+            val shape = RoundedCornerShape(12.dp)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 7.dp)
+                    .clip(shape)
+                    .background(c.bgCard)
+                    .border(1.dp, c.border, shape)
+                    .tap { onToggle(t.key, !shown) }
+                    .padding(horizontal = 12.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                InkText(t.title, size = 13.sp, color = c.text1)
+                val box = RoundedCornerShape(6.dp)
+                Box(
+                    Modifier
+                        .size(20.dp)
+                        .clip(box)
+                        .background(if (shown) c.accent else Color.Transparent)
+                        .border(1.5.dp, if (shown) c.accent else c.text3, box),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (shown) InkText("✓", size = 13.sp, weight = FontWeight.Black, color = onAccent())
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            TagButton("Reset", c.bgCard, c.text2, c.border, Modifier.weight(1f), onReset)
+            TagButton("Done", c.accent, onAccent(), c.accent, Modifier.weight(1f), onClose)
+        }
+    }
+}

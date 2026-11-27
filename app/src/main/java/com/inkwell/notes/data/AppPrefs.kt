@@ -23,6 +23,7 @@ object AppPrefs {
     /** Settings → Editor toggles, one JSON object like the web `iw_prefs`. */
     const val KEY_PREFS = "iw_prefs"
     const val KEY_FONT_SIZE = "iw_fontSize"
+    const val KEY_HIDDEN_TOOLS = "iw_toolbar_hidden_tools"
 
     fun of(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -51,6 +52,14 @@ object AppPrefs {
     /** Missing key → [default] (same as `prefs[id] !== undefined ? !!prefs[id] : def`). */
     fun getPref(context: Context, id: String, default: Boolean): Boolean =
         readPrefsJson(context).let { if (it.has(id)) it.optBoolean(id, default) else default }
+
+    // ─── Toolbar customiser (web `iw_toolbar_hidden_tools`) ───
+    fun getHiddenTools(context: Context): Set<String> =
+        com.inkwell.notes.editor.ToolbarTools.decode(of(context).getString(KEY_HIDDEN_TOOLS, null))
+
+    fun setHiddenTools(context: Context, hidden: Set<String>) {
+        of(context).edit().putString(KEY_HIDDEN_TOOLS, com.inkwell.notes.editor.ToolbarTools.encode(hidden)).apply()
+    }
 
     fun setPref(context: Context, id: String, value: Boolean) {
         val json = readPrefsJson(context).put(id, value)

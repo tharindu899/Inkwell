@@ -41,6 +41,7 @@ import com.inkwell.notes.R
 import com.inkwell.notes.editor.Align
 import com.inkwell.notes.editor.BlockType
 import com.inkwell.notes.editor.Mark
+import com.inkwell.notes.editor.ToolbarTools
 import com.inkwell.notes.ui.components.FaIcon
 import com.inkwell.notes.ui.components.tap
 import com.inkwell.notes.ui.theme.Ink
@@ -89,7 +90,7 @@ private sealed interface Glyph {
 
 /**
  * Port of `.editor-toolbar` (Parts 2–3): history · markdown · inline · blocks · lists (bullets, numbers, checklist, quote) · align · extras · clear.
- * Tables, links, images, code, date/time and the toolbar customiser arrive in later parts.
+ * Part 8: tools can be hidden from the ⚙ customiser ([ToolbarTools]).
  *
  * Buttons are plain taps (no focus), so the text field keeps its focus and selection while you format.
  */
@@ -112,6 +113,8 @@ fun EditorToolbar(
     onDraw: () -> Unit = {},
     onCode: () -> Unit = {},
     onCodeBlock: () -> Unit = {},
+    hidden: Set<String> = emptySet(),
+    onManage: () -> Unit = {},
     scroll: ScrollState = rememberScrollState(),
 ) {
     val c = Ink.colors
@@ -126,46 +129,46 @@ fun EditorToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            ToolButton(Glyph.Undo, enabled = state.canUndo, onClick = onUndo)
-            ToolButton(Glyph.Redo, enabled = state.canRedo, onClick = onRedo)
+            ToolbarTools.visible(hidden).forEachIndexed { gi, group ->
+                if (gi > 0) Sep()
+                for (t in group) when (t.key) {
+                    "undo" -> ToolButton(Glyph.Undo, enabled = state.canUndo, onClick = onUndo)
+                    "redo" -> ToolButton(Glyph.Redo, enabled = state.canRedo, onClick = onRedo)
+                    "markdown" -> ToolButton(Glyph.Markdown, on = state.markdown, onClick = onMarkdown)
+                    "bold" -> ToolButton(Glyph.Bold, on = state.marks and Mark.BOLD != 0) { onMark(Mark.BOLD) }
+                    "italic" -> ToolButton(Glyph.Italic, on = state.marks and Mark.ITALIC != 0) { onMark(Mark.ITALIC) }
+                    "underline" -> ToolButton(Glyph.Underline, on = state.marks and Mark.UNDERLINE != 0) { onMark(Mark.UNDERLINE) }
+                    "strike" -> ToolButton(Glyph.Strike, on = state.marks and Mark.STRIKE != 0) { onMark(Mark.STRIKE) }
+                    "h1" -> ToolButton(Glyph.Label("H1"), on = state.block == BlockType.H1) { onBlock(BlockType.H1) }
+                    "h2" -> ToolButton(Glyph.Label("H2"), on = state.block == BlockType.H2) { onBlock(BlockType.H2) }
+                    "h3" -> ToolButton(Glyph.Label("H3"), on = state.block == BlockType.H3) { onBlock(BlockType.H3) }
+                    "p" -> ToolButton(Glyph.Label("¶", FontWeight.Normal, 15), on = state.block == BlockType.P) { onBlock(BlockType.P) }
+                    "ul" -> ToolButton(Glyph.Bullets, on = state.block == BlockType.UL) { onBlock(BlockType.UL) }
+                    "ol" -> ToolButton(Glyph.Numbers, on = state.block == BlockType.OL) { onBlock(BlockType.OL) }
+                    "check" -> ToolButton(Glyph.Checklist, on = state.block == BlockType.TASK) { onBlock(BlockType.TASK) }
+                    "bq" -> ToolButton(Glyph.Quote, on = state.block == BlockType.QUOTE) { onBlock(BlockType.QUOTE) }
+                    "left" -> ToolButton(Glyph.AlignLines(Align.Start), on = state.align == Align.Start) { onAlign(Align.Start) }
+                    "center" -> ToolButton(Glyph.AlignLines(Align.Center), on = state.align == Align.Center) { onAlign(Align.Center) }
+                    "right" -> ToolButton(Glyph.AlignLines(Align.End), on = state.align == Align.End) { onAlign(Align.End) }
+                    "indent" -> ToolButton(Glyph.IndentArrow(true)) { onIndent(1) }
+                    "outdent" -> ToolButton(Glyph.IndentArrow(false)) { onIndent(-1) }
+                    "highlight" -> ToolButton(Glyph.Highlight, on = state.marks and Mark.HIGHLIGHT != 0) { onMark(Mark.HIGHLIGHT) }
+                    "table" -> ToolButton(Glyph.Table, onClick = onTable)
+                    "datetime" -> ToolButton(Glyph.DateTime, onClick = onDateTime)
+                    "sup" -> ToolButton(Glyph.Sup, on = state.marks and Mark.SUP != 0) { onMark(Mark.SUP) }
+                    "sub" -> ToolButton(Glyph.Sub, on = state.marks and Mark.SUB != 0) { onMark(Mark.SUB) }
+                    "link" -> ToolButton(Glyph.Link, on = state.link, onClick = onLink)
+                    "photo" -> ToolButton(Glyph.Photo, onClick = onPhoto)
+                    "draw" -> ToolButton(Glyph.Draw, onClick = onDraw)
+                    "hr" -> ToolButton(Glyph.Hr, onClick = onHr)
+                    "code" -> ToolButton(Glyph.InlineCode, on = state.marks and Mark.CODE != 0, onClick = onCode)
+                    "codeblock" -> ToolButton(Glyph.CodeBlock, on = state.block == BlockType.CODE, onClick = onCodeBlock)
+                    "clear" -> ToolButton(Glyph.Clear, onClick = onClear)
+                }
+            }
+            // `.tb-manage-btn`: always last, never hideable, so a hidden tool can always be brought back.
             Sep()
-            ToolButton(Glyph.Markdown, on = state.markdown, onClick = onMarkdown)
-            Sep()
-            ToolButton(Glyph.Bold, on = state.marks and Mark.BOLD != 0) { onMark(Mark.BOLD) }
-            ToolButton(Glyph.Italic, on = state.marks and Mark.ITALIC != 0) { onMark(Mark.ITALIC) }
-            ToolButton(Glyph.Underline, on = state.marks and Mark.UNDERLINE != 0) { onMark(Mark.UNDERLINE) }
-            ToolButton(Glyph.Strike, on = state.marks and Mark.STRIKE != 0) { onMark(Mark.STRIKE) }
-            Sep()
-            ToolButton(Glyph.Label("H1"), on = state.block == BlockType.H1) { onBlock(BlockType.H1) }
-            ToolButton(Glyph.Label("H2"), on = state.block == BlockType.H2) { onBlock(BlockType.H2) }
-            ToolButton(Glyph.Label("H3"), on = state.block == BlockType.H3) { onBlock(BlockType.H3) }
-            ToolButton(Glyph.Label("¶", FontWeight.Normal, 15), on = state.block == BlockType.P) { onBlock(BlockType.P) }
-            Sep()
-            ToolButton(Glyph.Bullets, on = state.block == BlockType.UL) { onBlock(BlockType.UL) }
-            ToolButton(Glyph.Numbers, on = state.block == BlockType.OL) { onBlock(BlockType.OL) }
-            ToolButton(Glyph.Checklist, on = state.block == BlockType.TASK) { onBlock(BlockType.TASK) }
-            ToolButton(Glyph.Quote, on = state.block == BlockType.QUOTE) { onBlock(BlockType.QUOTE) }
-            Sep()
-            ToolButton(Glyph.AlignLines(Align.Start), on = state.align == Align.Start) { onAlign(Align.Start) }
-            ToolButton(Glyph.AlignLines(Align.Center), on = state.align == Align.Center) { onAlign(Align.Center) }
-            ToolButton(Glyph.AlignLines(Align.End), on = state.align == Align.End) { onAlign(Align.End) }
-            ToolButton(Glyph.IndentArrow(true)) { onIndent(1) }
-            ToolButton(Glyph.IndentArrow(false)) { onIndent(-1) }
-            Sep()
-            ToolButton(Glyph.Highlight, on = state.marks and Mark.HIGHLIGHT != 0) { onMark(Mark.HIGHLIGHT) }
-            ToolButton(Glyph.Table, onClick = onTable)
-            ToolButton(Glyph.DateTime, onClick = onDateTime)
-            ToolButton(Glyph.Sup, on = state.marks and Mark.SUP != 0) { onMark(Mark.SUP) }
-            ToolButton(Glyph.Sub, on = state.marks and Mark.SUB != 0) { onMark(Mark.SUB) }
-            Sep()
-            ToolButton(Glyph.Link, on = state.link, onClick = onLink)
-            ToolButton(Glyph.Photo, onClick = onPhoto)
-            ToolButton(Glyph.Draw, onClick = onDraw)
-            ToolButton(Glyph.Hr, onClick = onHr)
-            ToolButton(Glyph.InlineCode, on = state.marks and Mark.CODE != 0, onClick = onCode)
-            ToolButton(Glyph.CodeBlock, on = state.block == BlockType.CODE, onClick = onCodeBlock)
-            Sep()
-            ToolButton(Glyph.Clear, onClick = onClear)
+            ToolButton(Glyph.Label("⚙", FontWeight.Normal, 15), on = true, onClick = onManage)
         }
     }
 }
