@@ -99,7 +99,7 @@ fun NotebooksScreen(
 
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 62.dp + navInset + 14.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = Ink.navHeight + navInset + 14.dp),
             ) {
                 item(key = "total") { TotalBar(state.notebooks.size) }
                 item(key = "sort") {
@@ -152,7 +152,7 @@ fun NotebooksScreen(
             onDismiss = vm::dismissToast,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(start = 17.dp, end = 17.dp, bottom = 62.dp + navInset + 12.dp),
+                .padding(start = 17.dp, end = 17.dp, bottom = Ink.navHeight + navInset + 12.dp),
         )
 
         // ── Context sheet ──
@@ -329,6 +329,6 @@ internal fun BoxScope.PlainFab(onClick: () -> Unit) {
         modifier = Modifier
             .align(Alignment.BottomEnd)
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(end = 18.dp, bottom = 62.dp + 12.dp),
+            .padding(end = 18.dp, bottom = Ink.navHeight + 12.dp),
     )
 }

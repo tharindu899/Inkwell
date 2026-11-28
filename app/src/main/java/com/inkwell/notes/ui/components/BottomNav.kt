@@ -38,7 +38,7 @@ enum class NavTab(val label: String, @DrawableRes val icon: Int) {
 /**
  * Bento nav: a rounded "pill" tile floating on the page background. The selected tab becomes a
  * lime pill (colour fades in); every tab squishes slightly while pressed.
- * Total height is unchanged (62dp + nav-bar inset) so screen layouts need no edits.
+ * Total height is Ink.navHeight (pill + a 21dp gap above the screen edge); screens use the same constant.
  */
 @Composable
 fun BottomNav(active: NavTab?, onSelect: (NavTab) -> Unit, modifier: Modifier = Modifier) {
@@ -54,8 +54,8 @@ fun BottomNav(active: NavTab?, onSelect: (NavTab) -> Unit, modifier: Modifier = 
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(62.dp)
-                .padding(horizontal = Ink.screenPad, vertical = 3.dp)
+                .height(Ink.navHeight)
+                .padding(start = Ink.screenPad, end = Ink.screenPad, top = 3.dp, bottom = 21.dp)
                 .clip(pill)
                 .background(c.bgCard)
                 .padding(horizontal = 6.dp),

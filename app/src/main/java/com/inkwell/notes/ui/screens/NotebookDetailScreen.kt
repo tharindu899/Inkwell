@@ -104,7 +104,7 @@ fun NotebookDetailScreen(
 
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 62.dp + navInset + 14.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = Ink.navHeight + navInset + 14.dp),
             ) {
                 item(key = "sort") {
                     SortChips(

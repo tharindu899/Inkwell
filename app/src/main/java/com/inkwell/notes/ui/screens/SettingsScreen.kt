@@ -128,7 +128,7 @@ fun SettingsScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 62.dp + navInset + 14.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = Ink.navHeight + navInset + 14.dp),
             ) {
                 // ── Google Drive Sync ──
                 GroupLabel("Google Drive Sync", leading = {
@@ -302,7 +302,7 @@ fun SettingsScreen(
             onDismiss = vm::dismissToast,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(start = 17.dp, end = 17.dp, bottom = 62.dp + navInset + 12.dp),
+                .padding(start = 17.dp, end = 17.dp, bottom = Ink.navHeight + navInset + 12.dp),
         )
 
         s.confirm?.let { kind ->

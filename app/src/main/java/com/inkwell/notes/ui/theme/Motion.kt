@@ -1,5 +1,8 @@
 package com.inkwell.notes.ui.theme
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberSaveable
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -37,12 +40,16 @@ fun Modifier.bentoPress(onClick: () -> Unit): Modifier = composed {
         .clickable(interactionSource = source, indication = null, onClick = onClick)
 }
 
-/** Tiles fade, rise and scale in one after another; [index] sets the order. */
+/** Tiles fade, rise and scale in one after another; [index] sets the order. Plays only once per item. */
 fun Modifier.bentoEnter(index: Int): Modifier = composed {
-    val progress = remember { Animatable(0f) }
+    var played by rememberSaveable { mutableStateOf(false) }
+    val progress = remember { Animatable(if (played) 1f else 0f) }
     LaunchedEffect(Unit) {
-        delay(index * InkMotion.STAGGER_MS)
-        progress.animateTo(1f, InkMotion.enter)
+        if (!played) {
+            delay(index.coerceIn(0, 8) * InkMotion.STAGGER_MS)
+            progress.animateTo(1f, InkMotion.enter)
+            played = true
+        }
     }
     this.graphicsLayer {
         val p = progress.value

@@ -105,7 +105,7 @@ fun CreateMenu(
         Column(
             Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = Ink.screenPad, bottom = navInset + 62.dp + 12.dp + 56.dp + 12.dp),
+                .padding(end = Ink.screenPad, bottom = navInset + Ink.navHeight + 12.dp + 56.dp + 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.End,
         ) {

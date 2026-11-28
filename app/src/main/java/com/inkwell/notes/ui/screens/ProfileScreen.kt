@@ -104,7 +104,7 @@ fun ProfileScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 62.dp + navInset + 14.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = Ink.navHeight + navInset + 14.dp),
             ) {
                 Hero(user)
 

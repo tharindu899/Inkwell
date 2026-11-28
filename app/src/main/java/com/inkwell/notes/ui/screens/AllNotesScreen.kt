@@ -127,7 +127,7 @@ fun AllNotesScreen(
 
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 62.dp + navInset + 80.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = Ink.navHeight + navInset + 80.dp),
             ) {
                 item(key = "h") {
                     SectionHeader(null, if (filter.isActive) "Filtered notes" else "Notes", filtered.size, topPadding = 0.dp)

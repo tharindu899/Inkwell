@@ -1,5 +1,6 @@
 package com.inkwell.notes.ui.screens
 
+import com.inkwell.notes.ui.theme.Ink
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -68,7 +69,7 @@ fun BoxScope.CreateLayer(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(end = 18.dp, bottom = 62.dp + 12.dp),
+                .padding(end = 18.dp, bottom = Ink.navHeight + 12.dp),
         )
     }
 
@@ -79,7 +80,7 @@ fun BoxScope.CreateLayer(
         onDismiss = vm::dismissToast,
         modifier = Modifier
             .align(Alignment.BottomCenter)
-            .padding(start = 17.dp, end = 17.dp, bottom = 62.dp + navInset + 12.dp),
+            .padding(start = 17.dp, end = 17.dp, bottom = Ink.navHeight + navInset + 12.dp),
     )
 
     state.quickCreate?.let { kind ->

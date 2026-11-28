@@ -175,7 +175,7 @@ fun SearchScreen(
             // .search-page-content
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(bottom = 62.dp + navInset + 18.dp),
+                contentPadding = PaddingValues(bottom = Ink.navHeight + navInset + 18.dp),
             ) {
                 if (results == null) {
                     // Recent searches

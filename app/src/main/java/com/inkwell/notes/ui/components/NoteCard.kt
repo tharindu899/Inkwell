@@ -1,5 +1,7 @@
 package com.inkwell.notes.ui.components
 
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -76,22 +78,22 @@ fun NoteCard(
     highlight: String = "",
 ) {
     val c = Ink.colors
-    val shape = RoundedCornerShape(15.dp)
+    val shape = RoundedCornerShape(Ink.radius)
     val preview = remember(note.content, note.markdown) { notePreview(note.content, note.markdown) }
 
     // press feedback: transform: scale(.985) while the finger is down
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (dragging) 1.02f else if (pressed) 0.985f else 1f, tween(150), label = "cardScale")
+    val scale by animateFloatAsState(if (dragging) 1.02f else if (pressed) 0.97f else 1f, spring<Float>(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium), label = "cardScale")
 
     // selected: color-mix(accent 7% into bg-card) fill, accent 42% into border
-    val fill = if (selected) lerp(c.bgCard, c.accent, 0.07f) else c.bgCard
+    val fill = if (selected) lerp(c.bgCard, c.accent, 0.12f) else if (note.pinned) lerp(c.bgCard, c.accent, 0.06f) else c.bgCard
     val stroke = if (selected || dragging) lerp(c.border, c.accent, 0.42f) else c.border
 
     Box(
         modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp)
+            .padding(bottom = 10.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -105,7 +107,7 @@ fun NoteCard(
                 onClick = onClick,
                 onLongClick = onLongClick,
             )
-            .padding(horizontal = 11.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         // selection check chip (24dp circle, top 10 / right 10)
         if (selectMode) {
@@ -145,7 +147,7 @@ fun NoteCard(
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                FaIcon(R.drawable.ic_fa_grip_lines, tint = if (dragging) onAccent() else c.accent, size = 12.dp)
+                FaIcon(R.drawable.ic_fa_grip_lines, tint = if (dragging) onAccent() else c.accentInk, size = 12.dp)
             }
         }
 
@@ -153,8 +155,8 @@ fun NoteCard(
         if (note.pinned && !selectMode && !draggablePinned) {
             FaIcon(
                 R.drawable.ic_fa_thumbtack,
-                tint = c.accent,
-                size = 10.dp,
+                tint = c.accentInk,
+                size = 14.dp,
                 modifier = Modifier.align(Alignment.TopEnd).offset(x = 1.dp, y = (-1).dp),
             )
         }
@@ -163,22 +165,22 @@ fun NoteCard(
             // .n-title
             InkText(
                 text = highlighted(note.title.ifEmpty { "Untitled" }, highlight),
-                size = 13.5.sp,
-                weight = FontWeight.ExtraBold,
-                lineHeight = 17.5.sp,
-                modifier = Modifier.padding(end = if (selectMode) 30.dp else if (draggablePinned) 38.dp else 18.dp),
+                size = 17.sp,
+                weight = FontWeight.Bold,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(end = if (selectMode) 36.dp else if (draggablePinned) 42.dp else 24.dp),
             )
-            Spacer(Modifier.height(3.dp))
+            Spacer(Modifier.height(4.dp))
             // .n-preview — 2-line clamp
             InkText(
                 text = highlighted(if (highlight.isBlank()) preview else preview.take(120), highlight),
-                size = 11.5.sp,
+                size = 14.sp,
                 color = c.text2,
-                lineHeight = 16.3.sp,
+                lineHeight = 21.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(12.dp)) // 6 (margin-bottom) + 6 (.n-meta margin-top)
+            Spacer(Modifier.height(14.dp)) // 6 (margin-bottom) + 6 (.n-meta margin-top)
 
             // .n-meta
             FlowRow(
@@ -186,13 +188,13 @@ fun NoteCard(
                 verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Row(Modifier.height(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FaIcon(R.drawable.ic_fa_clock, tint = c.text3, size = 10.dp)
+                    FaIcon(R.drawable.ic_fa_clock, tint = c.text2, size = 12.dp)
                     Spacer(Modifier.size(4.dp))
                     InkText(
                         text = formatDate(note.updatedAt),
-                        size = 10.5.sp,
-                        weight = FontWeight.SemiBold,
-                        color = c.text3,
+                        size = 12.sp,
+                        weight = FontWeight.Medium,
+                        color = c.text2,
                     )
                 }
                 if (notebook != null) {
@@ -205,7 +207,7 @@ fun NoteCard(
                     )
                 }
                 note.tags.take(2).forEach { t ->
-                    Tag(text = highlighted(t, highlight), color = c.accent, background = c.accentDim)
+                    Tag(text = highlighted(t, highlight), color = c.accentInk, background = c.accentDim)
                 }
             }
         }
@@ -219,14 +221,14 @@ private fun Tag(text: AnnotatedString, color: Color, background: Color, icon: In
         Modifier
             .clip(RoundedCornerShape(20.dp))
             .background(background)
-            .padding(horizontal = 7.dp, vertical = 2.dp),
+            .padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            FaIcon(icon, tint = color, size = 9.dp)
+            FaIcon(icon, tint = color, size = 11.dp)
             Spacer(Modifier.size(4.dp))
         }
-        InkText(text = text, size = 9.5.sp, weight = FontWeight.ExtraBold, color = color, maxLines = 1)
+        InkText(text = text, size = 11.sp, weight = FontWeight.Bold, color = color, maxLines = 1)
     }
 }
 

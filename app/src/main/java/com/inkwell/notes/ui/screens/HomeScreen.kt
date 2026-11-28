@@ -1,5 +1,9 @@
 package com.inkwell.notes.ui.screens
 
+import com.inkwell.notes.ui.theme.animateCount
+import com.inkwell.notes.ui.theme.bentoEnter
+import com.inkwell.notes.ui.theme.bentoPress
+import androidx.compose.animation.animateColorAsState
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -181,10 +185,10 @@ fun HomeScreen(
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
                 state = listState,
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 62.dp + navInset + 14.dp),
+                contentPadding = PaddingValues(start = Ink.screenPad, end = Ink.screenPad, top = 4.dp, bottom = Ink.navHeight + navInset + 14.dp),
             ) {
                 item(key = "stats") {
-                    StatsRow(state.stats.notes, state.stats.notebooks, fmtNum(state.stats.words))
+                    StatsRow(state.stats.notes, state.stats.notebooks, state.stats.words)
                 }
 
                 if (state.selectMode) {
@@ -257,6 +261,7 @@ fun HomeScreen(
                                 n.notebookId?.let(notebooksById::get),
                                 onClick = { onOpenNote(n.id) },
                                 onLongClick = { enterSelect(n.id) },
+                                modifier = Modifier.bentoEnter(pinned.indexOf(n)),
                                 draggablePinned = true,
                                 dragging = dragId == n.id,
                                 onDragStart = { onPinDragStart(n.id, it) },
@@ -281,6 +286,7 @@ fun HomeScreen(
                                 n.notebookId?.let(notebooksById::get),
                                 onClick = { onOpenNote(n.id) },
                                 onLongClick = { enterSelect(n.id) },
+                                modifier = Modifier.bentoEnter(2 + recent.indexOf(n)),
                             )
                         }
                     } else {
@@ -324,90 +330,94 @@ fun HomeScreen(
     }
 }
 
-/** .stats-row / .stat-card */
+/** Bento stat tiles: the Notes tile is lime; numbers count up when the screen opens. */
 @Composable
-private fun StatsRow(notes: Int, books: Int, words: String) {
+private fun StatsRow(notes: Int, books: Int, words: Int) {
     Row(
-        Modifier.fillMaxWidth().padding(bottom = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        Modifier.fillMaxWidth().padding(bottom = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(Ink.gap),
     ) {
-        StatCard(notes.toString(), "Notes", Modifier.weight(1f))
-        StatCard(books.toString(), "Books", Modifier.weight(1f))
-        StatCard(words, "Words", Modifier.weight(1f))
+        StatCard(notes, "Notes", highlight = true, index = 0, modifier = Modifier.weight(1f))
+        StatCard(books, "Books", highlight = false, index = 1, modifier = Modifier.weight(1f))
+        StatCard(words, "Words", highlight = false, index = 2, modifier = Modifier.weight(1f), abbreviate = true)
     }
 }
 
 @Composable
-private fun StatCard(num: String, label: String, modifier: Modifier = Modifier) {
+private fun StatCard(
+    value: Int,
+    label: String,
+    highlight: Boolean,
+    index: Int,
+    modifier: Modifier = Modifier,
+    abbreviate: Boolean = false,
+) {
     val c = Ink.colors
-    val shape = RoundedCornerShape(13.dp)
+    val shape = RoundedCornerShape(Ink.radius)
+    val shown = animateCount(value)
+    val fg = if (highlight) onAccent() else c.text1
+    val sub = if (highlight) onAccent().copy(alpha = 0.72f) else c.text2
     Column(
         modifier
+            .bentoEnter(index)
             .clip(shape)
-            .background(c.bgCard)
-            .border(1.dp, c.border, shape)
-            .padding(horizontal = 7.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .background(if (highlight) c.accent else c.bgCard)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        InkText(num, size = 18.sp, weight = FontWeight.ExtraBold, color = c.accent, lineHeight = 19.sp)
-        Spacer(Modifier.height(1.dp))
         InkText(
-            label.uppercase(),
-            size = 9.sp,
+            if (abbreviate) fmtNum(shown) else shown.toString(),
+            size = 30.sp,
             weight = FontWeight.Bold,
-            color = c.text3,
-            letterSpacing = 0.45.sp,
-            align = TextAlign.Center,
+            color = fg,
+            lineHeight = 34.sp,
+            maxLines = 1,
         )
+        InkText(label.uppercase(), size = 11.sp, weight = FontWeight.Bold, color = sub, letterSpacing = 0.6.sp)
     }
 }
 
-/** .sort-row / .sort-btn (+ .select-now-btn) */
+/** Sort chips: pills; the selected one fades to lime. */
 @Composable
 private fun SortRow(current: SortOrder, onSelect: (SortOrder) -> Unit, onStartSelect: () -> Unit) {
     val c = Ink.colors
-    val shape = RoundedCornerShape(10.dp)
+    val pill = RoundedCornerShape(Ink.radiusPill)
+    val onAcc = onAccent()
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        InkText("SORT BY", size = 10.sp, weight = FontWeight.ExtraBold, color = c.text3, letterSpacing = 0.45.sp)
+        InkText("SORT BY", size = 11.sp, weight = FontWeight.Bold, color = c.text2, letterSpacing = 0.6.sp)
 
         // Select — enters multi-select with nothing picked yet
         Row(
             Modifier
-                .height(28.dp)
-                .clip(shape)
+                .height(36.dp)
+                .bentoPress(onStartSelect)
+                .clip(pill)
                 .background(c.bgCard)
-                .border(1.5.dp, c.border, shape)
-                .tap(onStartSelect)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FaIcon(R.drawable.ic_fa_circle_check, tint = c.text2, size = 11.dp)
+            FaIcon(R.drawable.ic_fa_circle_check, tint = c.text2, size = 13.dp)
             Spacer(Modifier.size(6.dp))
-            InkText("Select", size = 10.sp, weight = FontWeight.Bold, color = c.text2)
+            InkText("Select", size = 13.sp, weight = FontWeight.Bold, color = c.text2)
         }
 
         SortOrder.entries.forEach { s ->
             val on = s == current
+            val bg by animateColorAsState(if (on) c.accent else c.bgCard, tween(220), label = "sortBg")
+            val fg by animateColorAsState(if (on) onAcc else c.text2, tween(220), label = "sortFg")
             Box(
                 Modifier
-                    .height(28.dp)
-                    .clip(shape)
-                    .background(if (on) c.accent else c.bgCard)
-                    .border(1.5.dp, if (on) c.accent else c.border, shape)
-                    .tap { onSelect(s) }
-                    .padding(horizontal = 8.dp),
+                    .height(36.dp)
+                    .bentoPress { onSelect(s) }
+                    .clip(pill)
+                    .background(bg)
+                    .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                InkText(
-                    s.label,
-                    size = 10.sp,
-                    weight = FontWeight.Bold,
-                    color = if (on) onAccent() else c.text2,
-                )
+                InkText(s.label, size = 13.sp, weight = FontWeight.Bold, color = fg)
             }
         }
     }
@@ -446,7 +456,7 @@ private fun SelectToolbar(
             if (count == 0) "Tap notes to select" else "$count selected",
             size = 13.sp,
             weight = FontWeight.SemiBold,
-            color = c.accent,
+            color = c.accentInk,
             maxLines = 1,
             modifier = Modifier.weight(1f),
         )
@@ -498,7 +508,7 @@ private fun ToolbarButton(
     }
 }
 
-/** .sec-header / .sec-title / .count-badge */
+/** Section title with a count badge. */
 @Composable
 internal fun SectionHeader(
     icon: Int?,
@@ -509,52 +519,45 @@ internal fun SectionHeader(
 ) {
     val c = Ink.colors
     Row(
-        modifier.fillMaxWidth().padding(top = topPadding, bottom = 7.dp),
+        modifier.fillMaxWidth().padding(top = topPadding, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            FaIcon(icon, tint = c.accent, size = 11.dp)
-            Spacer(Modifier.size(5.dp))
+            FaIcon(icon, tint = c.accentInk, size = 13.dp)
+            Spacer(Modifier.size(8.dp))
         }
-        InkText(
-            title.uppercase(),
-            size = 11.sp,
-            weight = FontWeight.ExtraBold,
-            color = c.text3,
-            letterSpacing = 0.5.sp,
-        )
-        Spacer(Modifier.size(5.dp))
+        InkText(title.uppercase(), size = 13.sp, weight = FontWeight.Bold, color = c.text2, letterSpacing = 0.6.sp)
+        Spacer(Modifier.size(8.dp))
         Box(
-            Modifier.clip(RoundedCornerShape(20.dp)).background(c.bgElevated).padding(horizontal = 6.dp, vertical = 1.dp),
+            Modifier.clip(RoundedCornerShape(Ink.radiusPill)).background(c.bgCard).padding(horizontal = 9.dp, vertical = 2.dp),
         ) {
-            InkText(count.toString(), size = 9.5.sp, weight = FontWeight.ExtraBold, color = c.text2)
+            InkText(count.toString(), size = 11.sp, weight = FontWeight.Bold, color = c.text1)
         }
     }
 }
 
-/** .empty-mini — dashed box */
+/** Empty section placeholder — dashed tile. */
 @Composable
 private fun EmptyMini(text: String) {
     val c = Ink.colors
-    val shape = RoundedCornerShape(15.dp)
+    val shape = RoundedCornerShape(Ink.radius)
     Box(
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(c.bgCard)
             .drawBehind {
                 drawRoundRect(
-                    color = c.border,
-                    cornerRadius = CornerRadius(15.dp.toPx()),
+                    color = c.borderHi,
+                    cornerRadius = CornerRadius(24.dp.toPx()),
                     style = Stroke(
-                        width = 1.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())),
+                        width = 1.5.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())),
                     ),
                 )
             }
-            .padding(horizontal = 12.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 22.dp),
         contentAlignment = Alignment.Center,
     ) {
-        InkText(text, size = 12.sp, color = c.text3, align = TextAlign.Center)
+        InkText(text, size = 14.sp, color = c.text2, align = TextAlign.Center)
     }
 }

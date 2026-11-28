@@ -1,5 +1,6 @@
 package com.inkwell.notes.ui.components
 
+import com.inkwell.notes.ui.theme.bentoPress
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -52,13 +53,13 @@ fun HomeTopBar(
             .fillMaxWidth()
             .background(c.bg)
             .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = Ink.screenPad, end = Ink.screenPad, top = 10.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // .profile-avatar — 42px circle
         Box(
             Modifier
-                .size(42.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(Brush.linearGradient(listOf(c.accent, lerp(c.accent, Color.White, 0.25f))))
                 .tap(onAvatarClick),
@@ -69,15 +70,15 @@ fun HomeTopBar(
                     model = picture,
                     contentDescription = firstName,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(42.dp),
+                    modifier = Modifier.size(48.dp),
                 )
             } else {
                 InkText(
                     text = firstName.trim().take(1).uppercase().ifEmpty { "U" },
                     family = Ink.serif,
-                    size = 16.sp,
-                    weight = FontWeight.ExtraBold,
-                    color = Color.White,
+                    size = 18.sp,
+                    weight = FontWeight.Bold,
+                    color = onAccent(),
                 )
             }
         }
@@ -89,10 +90,10 @@ fun HomeTopBar(
             InkText(
                 text = buildAnnotatedString {
                     append("$greeting, ")
-                    withStyle(SpanStyle(color = c.accent, fontWeight = FontWeight.ExtraBold)) { append(firstName) }
+                    withStyle(SpanStyle(color = c.accentInk, fontWeight = FontWeight.Bold)) { append(firstName) }
                 },
-                size = 13.sp,
-                weight = FontWeight.SemiBold,
+                size = 14.sp,
+                weight = FontWeight.Medium,
                 color = c.text2,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -100,30 +101,32 @@ fun HomeTopBar(
             Spacer(Modifier.height(3.dp))
             InkText(
                 text = "My Notes",
-                family = Ink.serif,
-                size = 22.sp,
+                family = Ink.sans,
+                size = 32.sp,
                 weight = FontWeight.Bold,
-                lineHeight = 23.sp,
+                lineHeight = 36.sp,
+                letterSpacing = (-0.5).sp,
             )
         }
 
         // .top-bar-actions
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconBtn(R.drawable.ic_fa_magnifying_glass, onSearch)
-            Spacer(Modifier.size(7.dp))
+            Spacer(Modifier.size(8.dp))
             IconBtn(R.drawable.ic_fa_gear, onSettings)
         }
     }
 }
 
-/** .icon-btn — 38px circle, 15px glyph */
+/** Rounded-square tile button (44dp) with a spring press. */
 @Composable
 internal fun IconBtn(icon: Int, onClick: () -> Unit) {
     val c = Ink.colors
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(Ink.radiusSm)
     Box(
-        Modifier.size(38.dp).clip(CircleShape).background(c.bgCard).tap(onClick),
+        Modifier.size(44.dp).bentoPress(onClick).clip(shape).background(c.bgCard),
         contentAlignment = Alignment.Center,
     ) {
-        FaIcon(icon, tint = c.text2, size = 15.dp)
+        FaIcon(icon, tint = c.text1, size = 17.dp)
     }
 }

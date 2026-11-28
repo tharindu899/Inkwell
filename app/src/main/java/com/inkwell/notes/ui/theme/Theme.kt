@@ -126,6 +126,9 @@ object Ink {
     val screenPad = 18.dp    // horizontal screen padding
     val tilePad = 16.dp
 
+    /** Bottom nav footprint: 3dp + 56dp pill + 21dp gap to the screen edge (above the system nav inset). */
+    val navHeight = 80.dp
+
     /** One family for everything; [serif] is an alias so old headings pick up the new look. */
     val sans: FontFamily = FontFamily.Default
     val serif: FontFamily = sans

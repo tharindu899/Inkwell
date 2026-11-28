@@ -234,7 +234,7 @@ fun BoxScope.UpdateHost(vm: UpdateViewModel = viewModel()) {
         onDismiss = vm::dismissToast,
         modifier = Modifier
             .align(Alignment.BottomCenter)
-            .padding(start = 17.dp, end = 17.dp, bottom = 62.dp + navInset + 12.dp),
+            .padding(start = 17.dp, end = 17.dp, bottom = Ink.navHeight + navInset + 12.dp),
     )
 }
 
