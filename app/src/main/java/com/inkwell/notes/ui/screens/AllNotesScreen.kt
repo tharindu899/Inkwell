@@ -1,5 +1,13 @@
 package com.inkwell.notes.ui.screens
 
+import com.inkwell.notes.ui.theme.bentoEnter
+import com.inkwell.notes.ui.theme.bentoPress
+import com.inkwell.notes.ui.components.BentoChip
+import com.inkwell.notes.ui.components.ScreenHeader
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -116,9 +124,9 @@ fun AllNotesScreen(
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {
-            InnerTopBar(
+            ScreenHeader(
                 title = "Notes",
-                onBack = onBack,
+                subtitle = "${hs.notes.size} ${if (hs.notes.size == 1) "note" else "notes"}",
                 actions = {
                     FilterButton(count = filter.activeCount, onClick = avm::openFilter)
                     IconBtn(R.drawable.ic_fa_magnifying_glass, onSearch)
@@ -127,10 +135,13 @@ fun AllNotesScreen(
 
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = Ink.navHeight + navInset + 80.dp),
+                contentPadding = PaddingValues(start = Ink.screenPad, end = Ink.screenPad, top = 4.dp, bottom = Ink.navHeight + navInset + 80.dp),
             ) {
+                if (tags.isNotEmpty()) {
+                    item(key = "quick-tags") { QuickTags(tags, filter, avm) }
+                }
                 item(key = "h") {
-                    SectionHeader(null, if (filter.isActive) "Filtered notes" else "Notes", filtered.size, topPadding = 0.dp)
+                    SectionHeader(null, if (filter.isActive) "Filtered notes" else "All notes", filtered.size, topPadding = 0.dp)
                 }
 
                 if (filter.isActive) {
@@ -156,8 +167,13 @@ fun AllNotesScreen(
                         }
                     }
                 } else {
-                    items(filtered, key = { it.id }) { n ->
-                        NoteCard(n, n.notebookId?.let(notebooksById::get), onClick = { onOpenNote(n.id) })
+                    itemsIndexed(filtered, key = { _, it -> it.id }) { i, n ->
+                        NoteCard(
+                            n,
+                            n.notebookId?.let(notebooksById::get),
+                            onClick = { onOpenNote(n.id) },
+                            modifier = Modifier.bentoEnter(i),
+                        )
                     }
                 }
             }
@@ -226,33 +242,46 @@ fun AllNotesScreen(
 
 // ─── top bar filter button ──────────────────────────────
 
-/** 38dp round button like the search one; shows an accent badge with the number of active filters. */
+/** 44dp tile like the search one; turns lime when filters are active and shows how many. */
 @Composable
 private fun FilterButton(count: Int, onClick: () -> Unit) {
     val c = Ink.colors
     val active = count > 0
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(38.dp).tap(onClick)) {
+    val shape = RoundedCornerShape(Ink.radiusSm)
+    val bg by animateColorAsState(if (active) c.accent else c.bgCard, tween(220), label = "filterBg")
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(44.dp).bentoPress(onClick)) {
         Box(
-            Modifier
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(if (active) c.accent.copy(alpha = 0.18f) else c.bgCard),
+            Modifier.size(44.dp).clip(shape).background(bg),
             contentAlignment = Alignment.Center,
         ) {
-            FaIcon(R.drawable.ic_fa_filter, tint = if (active) c.accent else c.text2, size = 15.dp)
+            FaIcon(R.drawable.ic_fa_filter, tint = if (active) onAccent() else c.text1, size = 17.dp)
         }
         if (active) {
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = 2.dp, y = (-2).dp)
-                    .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
+                    .offset(x = 4.dp, y = (-4).dp)
+                    .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
                     .clip(CircleShape)
-                    .background(c.accent),
+                    .background(c.text1),
                 contentAlignment = Alignment.Center,
             ) {
-                InkText(count.toString(), size = 9.sp, weight = FontWeight.Black, color = onAccent())
+                InkText(count.toString(), size = 10.sp, weight = FontWeight.Bold, color = c.bg)
             }
+        }
+    }
+}
+
+/** "All" + the most used tags as one-tap filters. */
+@Composable
+private fun QuickTags(tags: List<Pair<String, Int>>, filter: NoteFilter, avm: AllNotesViewModel) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        BentoChip("All", selected = filter.tags.isEmpty(), onClick = avm::clearTags)
+        tags.take(12).forEach { (name, _) ->
+            BentoChip(name, selected = name in filter.tags, onClick = { avm.toggleTag(name) })
         }
     }
 }
@@ -286,36 +315,37 @@ private fun ActiveFilters(filter: NoteFilter, avm: AllNotesViewModel, modifier: 
     }
 }
 
-/** Accent pill with an ✕ — tapping it removes that one filter. */
+/** Tinted pill with an ✕ — tapping it removes that one filter. */
 @Composable
 private fun ActiveChip(label: String, icon: Int, onClear: () -> Unit) {
     val c = Ink.colors
-    val pill = RoundedCornerShape(percent = 50)
-    val subtle = if (c.isDark) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.06f)
+    val pill = RoundedCornerShape(Ink.radiusPill)
     Row(
         Modifier
-            .height(28.dp)
+            .height(34.dp)
+            .bentoPress(onClear)
             .clip(pill)
-            .background(c.accent.copy(alpha = 0.12f))
-            .border(1.dp, c.accent.copy(alpha = 0.22f), pill)
-            .tap(onClear)
-            .padding(start = 9.dp, end = 5.dp),
+            .background(c.accentDim)
+            .padding(start = 12.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FaIcon(icon, tint = c.accent, size = 9.dp)
+        FaIcon(icon, tint = c.accentInk, size = 11.dp)
         Spacer(Modifier.size(6.dp))
         InkText(
             label,
-            size = 11.sp,
-            weight = FontWeight.ExtraBold,
-            color = c.accent,
+            size = 12.sp,
+            weight = FontWeight.Bold,
+            color = c.accentInk,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.widthIn(max = 180.dp),
         )
         Spacer(Modifier.size(8.dp))
-        Box(Modifier.size(18.dp).clip(CircleShape).background(subtle), contentAlignment = Alignment.Center) {
-            FaIcon(R.drawable.ic_fa_xmark, tint = c.accent, size = 8.dp)
+        Box(
+            Modifier.size(22.dp).clip(CircleShape).background(c.accentInk.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            FaIcon(R.drawable.ic_fa_xmark, tint = c.accentInk, size = 9.dp)
         }
     }
 }
@@ -323,20 +353,19 @@ private fun ActiveChip(label: String, icon: Int, onClear: () -> Unit) {
 @Composable
 private fun ClearAllChip(onClick: () -> Unit) {
     val c = Ink.colors
-    val pill = RoundedCornerShape(percent = 50)
+    val pill = RoundedCornerShape(Ink.radiusPill)
     Row(
         Modifier
-            .height(28.dp)
+            .height(34.dp)
+            .bentoPress(onClick)
             .clip(pill)
             .background(c.bgCard)
-            .border(1.dp, c.border, pill)
-            .tap(onClick)
-            .padding(horizontal = 11.dp),
+            .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FaIcon(R.drawable.ic_fa_rotate_left, tint = c.text2, size = 10.dp)
+        FaIcon(R.drawable.ic_fa_rotate_left, tint = c.text2, size = 12.dp)
         Spacer(Modifier.size(6.dp))
-        InkText("Clear all", size = 11.sp, weight = FontWeight.ExtraBold, color = c.text2)
+        InkText("Clear all", size = 12.sp, weight = FontWeight.Bold, color = c.text2)
     }
 }
 
@@ -438,19 +467,19 @@ private fun FilterSheet(
 private fun FilterLabel(text: String, action: String? = null, onAction: () -> Unit = {}) {
     val c = Ink.colors
     Row(
-        Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         InkText(
             text.uppercase(),
-            size = 11.sp,
-            weight = FontWeight.ExtraBold,
-            color = c.text3,
+            size = 12.sp,
+            weight = FontWeight.Bold,
+            color = c.text2,
             letterSpacing = 0.8.sp,
             modifier = Modifier.weight(1f),
         )
         if (action != null) {
-            InkText(action, size = 12.sp, weight = FontWeight.ExtraBold, color = c.accent, modifier = Modifier.tap(onAction).padding(4.dp))
+            InkText(action, size = 13.sp, weight = FontWeight.Bold, color = c.accentInk, modifier = Modifier.tap(onAction).padding(4.dp))
         }
     }
 }
@@ -458,84 +487,36 @@ private fun FilterLabel(text: String, action: String? = null, onAction: () -> Un
 /** Selectable pill used for sort / date / time options. */
 @Composable
 private fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val c = Ink.colors
-    val pill = RoundedCornerShape(percent = 50)
-    Row(
-        Modifier
-            .height(34.dp)
-            .clip(pill)
-            .background(if (selected) c.accent.copy(alpha = 0.20f) else c.bgCard)
-            .border(1.dp, if (selected) c.accent.copy(alpha = 0.38f) else c.border, pill)
-            .tap(onClick)
-            .padding(horizontal = 13.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (selected) {
-            FaIcon(R.drawable.ic_fa_check, tint = c.accent, size = 10.dp)
-            Spacer(Modifier.size(6.dp))
-        }
-        InkText(label, size = 12.sp, weight = FontWeight.ExtraBold, color = if (selected) c.accent else c.text1)
-    }
+    BentoChip(label, selected, onClick, icon = if (selected) R.drawable.ic_fa_check else null, height = 38.dp)
 }
 
-/** `.all-tag-chip` — pill with tag icon, name and count; accent-tinted when active. */
+/** Tag pill with icon, name and count; lime when active. */
 @Composable
 private fun TagChip(name: String, count: Int, active: Boolean, onClick: () -> Unit) {
-    val c = Ink.colors
-    val pill = RoundedCornerShape(percent = 50)
-    val subtle = if (c.isDark) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.06f)
-    Row(
-        Modifier
-            .widthIn(max = 170.dp)
-            .height(30.dp)
-            .clip(pill)
-            .background(if (active) c.accent.copy(alpha = 0.20f) else c.bgCard)
-            .border(1.dp, if (active) c.accent.copy(alpha = 0.38f) else c.border, pill)
-            .tap(onClick)
-            .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        FaIcon(if (active) R.drawable.ic_fa_check else R.drawable.ic_fa_tag, tint = c.accent, size = 9.dp)
-        Spacer(Modifier.size(6.dp))
-        InkText(
-            name,
-            size = 11.sp,
-            weight = FontWeight.ExtraBold,
-            color = if (active) c.accent else c.text1,
-            letterSpacing = 0.22.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        Spacer(Modifier.size(6.dp))
-        Box(
-            Modifier
-                .defaultMinSize(minWidth = 16.dp)
-                .height(16.dp)
-                .clip(CircleShape)
-                .background(if (active) c.accent.copy(alpha = 0.18f) else subtle)
-                .padding(horizontal = 5.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            InkText(count.toString(), size = 9.sp, weight = FontWeight.Black, color = if (active) c.accent else c.text2)
-        }
-    }
+    BentoChip(
+        name,
+        active,
+        onClick,
+        icon = if (active) R.drawable.ic_fa_check else R.drawable.ic_fa_tag,
+        count = count,
+        height = 38.dp,
+        maxLabelWidth = 130.dp,
+    )
 }
 
 @Composable
 private fun SheetButton(label: String, primary: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val c = Ink.colors
-    val shape = RoundedCornerShape(15.dp)
+    val shape = RoundedCornerShape(Ink.radiusPill)
     Box(
         modifier
-            .heightIn(min = 46.dp)
+            .heightIn(min = 52.dp)
+            .bentoPress(onClick)
             .clip(shape)
-            .background(if (primary) c.accent else c.bgCard)
-            .border(1.dp, if (primary) c.accent else c.border, shape)
-            .tap(onClick),
+            .background(if (primary) c.accent else c.bgCard),
         contentAlignment = Alignment.Center,
     ) {
-        InkText(label, size = 14.sp, weight = FontWeight.Black, color = if (primary) onAccent() else c.text2)
+        InkText(label, size = 15.sp, weight = FontWeight.Bold, color = if (primary) onAccent() else c.text2)
     }
 }
 
@@ -583,24 +564,24 @@ private fun TagRow(name: String, count: Int, onOpen: () -> Unit, onEdit: () -> U
         Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp)
-            .heightIn(min = 52.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .tap(onOpen)
-            .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            .heightIn(min = 60.dp)
+            .bentoPress(onOpen)
+            .clip(RoundedCornerShape(Ink.radiusSm))
+            .padding(start = 8.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)).background(c.bgCard),
+            Modifier.size(44.dp).clip(RoundedCornerShape(Ink.radiusSm)).background(c.bgCard),
             contentAlignment = Alignment.Center,
         ) {
-            FaIcon(R.drawable.ic_fa_tag, tint = c.accent, size = 15.dp)
+            FaIcon(R.drawable.ic_fa_tag, tint = c.accentInk, size = 17.dp)
         }
         Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f)) {
-            InkText(name, size = 14.sp, weight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            InkText("$count note${if (count != 1) "s" else ""}", size = 12.sp, color = c.text3)
+            InkText(name, size = 15.sp, weight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            InkText("$count note${if (count != 1) "s" else ""}", size = 13.sp, color = c.text2)
         }
-        RoundAction(R.drawable.ic_fa_r_pen_to_square, c.accent, c.bgCard, onEdit)
+        RoundAction(R.drawable.ic_fa_r_pen_to_square, c.accentInk, c.bgCard, onEdit)
         Spacer(Modifier.size(6.dp))
         RoundAction(R.drawable.ic_fa_trash_can, DeleteRed, DeleteRed.copy(alpha = 0.12f), onDelete)
     }
@@ -609,9 +590,9 @@ private fun TagRow(name: String, count: Int, onOpen: () -> Unit, onEdit: () -> U
 @Composable
 private fun RoundAction(icon: Int, tint: Color, bg: Color, onClick: () -> Unit) {
     Box(
-        Modifier.size(38.dp).clip(CircleShape).background(bg).tap(onClick),
+        Modifier.size(44.dp).bentoPress(onClick).clip(RoundedCornerShape(Ink.radiusSm)).background(bg),
         contentAlignment = Alignment.Center,
     ) {
-        FaIcon(icon, tint = tint, size = 15.dp)
+        FaIcon(icon, tint = tint, size = 16.dp)
     }
 }

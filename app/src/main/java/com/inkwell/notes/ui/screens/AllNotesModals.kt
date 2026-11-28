@@ -1,5 +1,6 @@
 package com.inkwell.notes.ui.screens
 
+import com.inkwell.notes.ui.theme.bentoPress
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -61,7 +62,7 @@ fun TagEditModal(tag: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
-    val cardShape = RoundedCornerShape(22.dp)
+    val cardShape = RoundedCornerShape(Ink.radiusLg)
     val inputShape = RoundedCornerShape(Ink.radiusSm)
 
     Box(
@@ -79,7 +80,7 @@ fun TagEditModal(tag: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
                 .fillMaxWidth()
                 .clip(cardShape)
                 .background(c.bg)
-                .border(1.dp, c.border, cardShape)
+                .border(1.dp, c.borderHi, cardShape)
                 .tap { /* swallow taps */ }
                 .padding(18.dp),
         ) {
@@ -91,7 +92,7 @@ fun TagEditModal(tag: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
                     FaIcon(R.drawable.ic_fa_r_pen_to_square, tint = onAccent(), size = 20.dp)
                 }
                 Column(Modifier.weight(1f)) {
-                    InkText("Rename tag", size = 21.sp, weight = FontWeight.Bold, family = Ink.serif, lineHeight = 24.sp)
+                    InkText("Rename tag", size = 21.sp, weight = FontWeight.Bold, family = Ink.sans, lineHeight = 24.sp)
                     Spacer(Modifier.height(4.dp))
                     InkText(
                         "Every note using this tag will be updated.",
@@ -102,7 +103,7 @@ fun TagEditModal(tag: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
                 }
             }
             Spacer(Modifier.height(14.dp))
-            InkText("TAG NAME", size = 12.sp, weight = FontWeight.ExtraBold, color = c.text3, letterSpacing = 0.96.sp)
+            InkText("TAG NAME", size = 12.sp, weight = FontWeight.Bold, color = c.text2, letterSpacing = 0.96.sp)
             Spacer(Modifier.height(8.dp))
             BasicTextField(
                 value = value,
@@ -144,7 +145,7 @@ fun TagEditModal(tag: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
 fun TagDeleteModal(tag: String, count: Int, onCancel: () -> Unit, onConfirm: () -> Unit) {
     val c = Ink.colors
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val cardShape = RoundedCornerShape(26.dp)
+    val cardShape = RoundedCornerShape(Ink.radiusLg)
 
     Box(
         Modifier
@@ -160,7 +161,7 @@ fun TagDeleteModal(tag: String, count: Int, onCancel: () -> Unit, onConfirm: () 
                 .fillMaxWidth()
                 .clip(cardShape)
                 .background(c.bg)
-                .border(1.dp, c.border, cardShape)
+                .border(1.dp, c.borderHi, cardShape)
                 .tap { /* swallow taps */ }
                 .padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -176,7 +177,7 @@ fun TagDeleteModal(tag: String, count: Int, onCancel: () -> Unit, onConfirm: () 
                 "Delete tag \"$tag\"?",
                 size = 22.sp,
                 weight = FontWeight.Bold,
-                family = Ink.serif,
+                family = Ink.sans,
                 lineHeight = 26.sp,
                 align = TextAlign.Center,
             )
@@ -207,16 +208,15 @@ private fun ModalBtn(
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(Ink.radiusPill)
     Box(
         modifier
-            .heightIn(min = 48.dp)
+            .heightIn(min = 52.dp)
+            .bentoPress(onClick)
             .clip(shape)
-            .background(background)
-            .border(1.dp, border, shape)
-            .tap(onClick),
+            .background(background),
         contentAlignment = Alignment.Center,
     ) {
-        InkText(label, size = 15.sp, weight = FontWeight.Black, color = textColor)
+        InkText(label, size = 15.sp, weight = FontWeight.Bold, color = textColor)
     }
 }

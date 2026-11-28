@@ -1,5 +1,19 @@
 package com.inkwell.notes.ui.components
 
+import com.inkwell.notes.ui.theme.bentoPress
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.AnimatedVisibility
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,24 +58,32 @@ fun ContextSheet(
 ) {
     val c = Ink.colors
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val shape = RoundedCornerShape(24.dp)
+    val shape = RoundedCornerShape(Ink.radiusLg)
+    // the sheet springs up from the bottom while the scrim fades in
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val scrim by animateFloatAsState(if (shown) 0.55f else 0f, tween(200), label = "scrim")
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.46f))
+            .background(Color.Black.copy(alpha = scrim))
             .tap(onDismiss)
-            .padding(start = 14.dp, end = 14.dp, bottom = 14.dp + navInset),
+            .padding(start = 10.dp, end = 10.dp, bottom = 10.dp + navInset),
         contentAlignment = Alignment.BottomCenter,
     ) {
+        AnimatedVisibility(
+            visible = shown,
+            enter = fadeIn(tween(150)) + slideInVertically(spring<IntOffset>(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) { it / 2 },
+        ) {
         Column(
             Modifier
                 .widthIn(max = 520.dp)
                 .fillMaxWidth()
                 .clip(shape)
                 .background(c.bg) // web: var(--surface)
-                .border(1.dp, c.border, shape)
+                .border(1.dp, c.borderHi, shape)
                 .tap { /* swallow taps */ }
-                .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 12.dp),
+                .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 14.dp),
         ) {
             Box(
                 Modifier
@@ -69,18 +91,19 @@ fun ContextSheet(
                     .padding(top = 4.dp, bottom = 10.dp)
                     .width(38.dp).height(4.dp)
                     .clip(RoundedCornerShape(99.dp))
-                    .background(c.border),
+                    .background(c.borderHi),
             )
             InkText(
                 title,
-                family = Ink.serif,
-                size = 17.sp,
-                weight = FontWeight.ExtraBold,
+                family = Ink.sans,
+                size = 20.sp,
+                weight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
             )
             content()
+        }
         }
     }
 }
@@ -89,21 +112,21 @@ fun ContextSheet(
 @Composable
 fun SheetItem(@DrawableRes icon: Int, label: String, danger: Boolean = false, onClick: () -> Unit) {
     val c = Ink.colors
-    val tint = if (danger) DeleteRed else c.accent
+    val tint = if (danger) DeleteRed else c.accentInk
     Row(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp)
             .heightIn(min = 48.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .tap(onClick)
+            .bentoPress(onClick)
+            .clip(RoundedCornerShape(Ink.radiusSm))
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(13.dp))
+                .size(42.dp)
+                .clip(RoundedCornerShape(14.dp))
                 .background(if (danger) DeleteRed.copy(alpha = 0.12f) else c.bgCard),
             contentAlignment = Alignment.Center,
         ) {
@@ -112,8 +135,8 @@ fun SheetItem(@DrawableRes icon: Int, label: String, danger: Boolean = false, on
         Spacer(Modifier.size(12.dp))
         InkText(
             label,
-            size = 14.sp,
-            weight = FontWeight.ExtraBold,
+            size = 15.sp,
+            weight = FontWeight.Bold,
             color = if (danger) DeleteRed else c.text1,
         )
     }

@@ -1,5 +1,6 @@
 package com.inkwell.notes.ui.components
 
+import com.inkwell.notes.ui.theme.bentoPress
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,25 +43,25 @@ fun InnerTopBar(
             .fillMaxWidth()
             .background(c.bg)
             .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = Ink.screenPad, vertical = 10.dp),
     ) {
-        // .back-btn — 38px circle, 14px arrow
+        // back button: 44dp rounded-square tile
         Box(
             Modifier
                 .align(Alignment.CenterStart)
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(c.bgCard)
-                .tap(onBack),
+                .size(44.dp)
+                .bentoPress(onBack)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(Ink.radiusSm))
+                .background(c.bgCard),
             contentAlignment = Alignment.Center,
         ) {
-            FaIcon(R.drawable.ic_fa_arrow_left, tint = c.text1, size = 14.dp)
+            FaIcon(R.drawable.ic_fa_arrow_left, tint = c.text1, size = 16.dp)
         }
 
         // .top-bar-title — centred, max 45% of the width
         InkText(
             text = title,
-            family = Ink.serif,
+            family = Ink.sans,
             size = 20.sp,
             weight = FontWeight.Bold,
             align = TextAlign.Center,
@@ -72,7 +73,7 @@ fun InnerTopBar(
         // .top-bar-actions
         Row(
             Modifier.align(Alignment.CenterEnd),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = actions,
         )
