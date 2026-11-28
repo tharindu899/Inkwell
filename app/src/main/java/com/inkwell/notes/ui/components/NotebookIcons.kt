@@ -1,52 +1,44 @@
 package com.inkwell.notes.ui.components
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Code
-import androidx.compose.material.icons.rounded.Coffee
-import androidx.compose.material.icons.rounded.Eco
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.Flight
-import androidx.compose.material.icons.rounded.Lightbulb
-import androidx.compose.material.icons.rounded.LocalFireDepartment
-import androidx.compose.material.icons.rounded.MenuBook
-import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.Palette
-import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.PhotoCamera
-import androidx.compose.material.icons.rounded.Public
-import androidx.compose.material.icons.rounded.RocketLaunch
-import androidx.compose.material.icons.rounded.School
-import androidx.compose.material.icons.rounded.Science
-import androidx.compose.material.icons.rounded.Star
-import androidx.compose.material.icons.rounded.Work
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.annotation.DrawableRes
+import androidx.compose.ui.graphics.Color
+import com.inkwell.notes.R
 
-/** Same 8 colors and 18 icon keys as the web notebook form, so synced data matches. */
-val NotebookColors = listOf("#c9a96e", "#6090e0", "#60ad82", "#e06060", "#9b7de8", "#e07860", "#60c8d8", "#d4b0ff")
-
-val NotebookIconKeys = listOf(
-    "user", "briefcase", "lightbulb", "heart", "star", "book",
-    "music", "camera", "globe", "code", "plane", "coffee",
-    "rocket", "leaf", "fire", "flask", "palette", "graduation-cap",
+/** `COLORS` in Notebooks.jsx */
+val NOTEBOOK_COLOR_CHOICES: List<String> = listOf(
+    "#c9a96e", "#6090e0", "#60ad82", "#e06060", "#9b7de8", "#e07860", "#60c8d8", "#d4b0ff",
 )
 
-fun notebookIcon(key: String): ImageVector = when (key) {
-    "user" -> Icons.Rounded.Person
-    "briefcase" -> Icons.Rounded.Work
-    "lightbulb" -> Icons.Rounded.Lightbulb
-    "heart" -> Icons.Rounded.Favorite
-    "star" -> Icons.Rounded.Star
-    "music" -> Icons.Rounded.MusicNote
-    "camera" -> Icons.Rounded.PhotoCamera
-    "globe" -> Icons.Rounded.Public
-    "code" -> Icons.Rounded.Code
-    "plane" -> Icons.Rounded.Flight
-    "coffee" -> Icons.Rounded.Coffee
-    "rocket" -> Icons.Rounded.RocketLaunch
-    "leaf" -> Icons.Rounded.Eco
-    "fire" -> Icons.Rounded.LocalFireDepartment
-    "flask" -> Icons.Rounded.Science
-    "palette" -> Icons.Rounded.Palette
-    "graduation-cap" -> Icons.Rounded.School
-    else -> Icons.Rounded.MenuBook
+/** `ICONS` in Notebooks.jsx — notebooks store the Font Awesome class name, e.g. "fa-user". */
+val NOTEBOOK_ICON_CHOICES: List<String> = listOf(
+    "fa-user", "fa-briefcase", "fa-lightbulb", "fa-heart", "fa-star", "fa-book",
+    "fa-music", "fa-camera", "fa-globe", "fa-code", "fa-plane", "fa-coffee",
+    "fa-rocket", "fa-leaf", "fa-fire", "fa-flask", "fa-palette", "fa-graduation-cap",
+)
+
+/** Font Awesome class name (`nb.icon`) → vector drawable. Unknown names fall back to the book. */
+@DrawableRes
+fun notebookIconRes(name: String): Int = when (name) {
+    "fa-user" -> R.drawable.ic_fa_user
+    "fa-briefcase" -> R.drawable.ic_fa_briefcase
+    "fa-lightbulb" -> R.drawable.ic_fa_lightbulb
+    "fa-heart" -> R.drawable.ic_fa_heart
+    "fa-star" -> R.drawable.ic_fa_star
+    "fa-book" -> R.drawable.ic_fa_book
+    "fa-music" -> R.drawable.ic_fa_music
+    "fa-camera" -> R.drawable.ic_fa_camera
+    "fa-globe" -> R.drawable.ic_fa_globe
+    "fa-code" -> R.drawable.ic_fa_code
+    "fa-plane" -> R.drawable.ic_fa_plane
+    "fa-coffee" -> R.drawable.ic_fa_coffee
+    "fa-rocket" -> R.drawable.ic_fa_rocket
+    "fa-leaf" -> R.drawable.ic_fa_leaf
+    "fa-fire" -> R.drawable.ic_fa_fire
+    "fa-flask" -> R.drawable.ic_fa_flask
+    "fa-palette" -> R.drawable.ic_fa_palette
+    "fa-graduation-cap" -> R.drawable.ic_fa_graduation_cap
+    else -> R.drawable.ic_fa_book_open
 }
+
+/** Notebook colour string → Compose colour. */
+fun notebookColor(hex: String, fallback: Color): Color = parseColor(hex, fallback)

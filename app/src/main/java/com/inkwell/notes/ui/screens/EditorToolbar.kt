@@ -1,0 +1,390 @@
+package com.inkwell.notes.ui.screens
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.BaselineShift
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.inkwell.notes.R
+import com.inkwell.notes.editor.Align
+import com.inkwell.notes.editor.BlockType
+import com.inkwell.notes.editor.Mark
+import com.inkwell.notes.editor.ToolbarTools
+import com.inkwell.notes.ui.components.FaIcon
+import com.inkwell.notes.ui.components.tap
+import com.inkwell.notes.ui.theme.Ink
+
+/** What the toolbar needs to know about the caret / selection (computed by [EditorController]). */
+class ToolbarState(
+    val marks: Int = 0,
+    val block: BlockType = BlockType.P,
+    val align: Align = Align.Start,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
+    val markdown: Boolean = true,
+    /** The caret / selection start sits inside a link. */
+    val link: Boolean = false,
+)
+
+/** Which glyph a button draws. */
+private sealed interface Glyph {
+    class Label(val text: String, val weight: FontWeight = FontWeight.Bold, val size: Int = 12) : Glyph
+    data object Undo : Glyph
+    data object Redo : Glyph
+    data object Bold : Glyph
+    data object Italic : Glyph
+    data object Underline : Glyph
+    data object Strike : Glyph
+    data object Sup : Glyph
+    data object Sub : Glyph
+    data object Highlight : Glyph
+    data object Clear : Glyph
+    data object Bullets : Glyph
+    data object Numbers : Glyph
+    data object Checklist : Glyph
+    data object Markdown : Glyph
+    data object Quote : Glyph
+    data object Table : Glyph
+    data object DateTime : Glyph
+    data object Link : Glyph
+    data object Hr : Glyph
+    data object Photo : Glyph
+    data object Draw : Glyph
+    data object InlineCode : Glyph
+    data object CodeBlock : Glyph
+    data class AlignLines(val align: Align) : Glyph
+    data class IndentArrow(val forward: Boolean) : Glyph
+}
+
+/**
+ * Port of `.editor-toolbar` (Parts 2–3): history · markdown · inline · blocks · lists (bullets, numbers, checklist, quote) · align · extras · clear.
+ * Part 8: tools can be hidden from the ⚙ customiser ([ToolbarTools]).
+ *
+ * Buttons are plain taps (no focus), so the text field keeps its focus and selection while you format.
+ */
+@Composable
+fun EditorToolbar(
+    state: ToolbarState,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onMark: (Int) -> Unit,
+    onBlock: (BlockType) -> Unit,
+    onAlign: (Align) -> Unit,
+    onIndent: (Int) -> Unit,
+    onClear: () -> Unit,
+    onMarkdown: () -> Unit = {},
+    onTable: () -> Unit = {},
+    onDateTime: () -> Unit = {},
+    onLink: () -> Unit = {},
+    onHr: () -> Unit = {},
+    onPhoto: () -> Unit = {},
+    onDraw: () -> Unit = {},
+    onCode: () -> Unit = {},
+    onCodeBlock: () -> Unit = {},
+    hidden: Set<String> = emptySet(),
+    onManage: () -> Unit = {},
+    scroll: ScrollState = rememberScrollState(),
+) {
+    val c = Ink.colors
+    Column(Modifier.fillMaxWidth().background(c.bgCard)) {
+        // Docked at the bottom (above the keyboard): the divider goes on top.
+        Box(Modifier.fillMaxWidth().height(1.dp).background(c.border))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(scroll)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            ToolbarTools.visible(hidden).forEachIndexed { gi, group ->
+                if (gi > 0) Sep()
+                for (t in group) when (t.key) {
+                    "undo" -> ToolButton(Glyph.Undo, enabled = state.canUndo, onClick = onUndo)
+                    "redo" -> ToolButton(Glyph.Redo, enabled = state.canRedo, onClick = onRedo)
+                    "markdown" -> ToolButton(Glyph.Markdown, on = state.markdown, onClick = onMarkdown)
+                    "bold" -> ToolButton(Glyph.Bold, on = state.marks and Mark.BOLD != 0) { onMark(Mark.BOLD) }
+                    "italic" -> ToolButton(Glyph.Italic, on = state.marks and Mark.ITALIC != 0) { onMark(Mark.ITALIC) }
+                    "underline" -> ToolButton(Glyph.Underline, on = state.marks and Mark.UNDERLINE != 0) { onMark(Mark.UNDERLINE) }
+                    "strike" -> ToolButton(Glyph.Strike, on = state.marks and Mark.STRIKE != 0) { onMark(Mark.STRIKE) }
+                    "h1" -> ToolButton(Glyph.Label("H1"), on = state.block == BlockType.H1) { onBlock(BlockType.H1) }
+                    "h2" -> ToolButton(Glyph.Label("H2"), on = state.block == BlockType.H2) { onBlock(BlockType.H2) }
+                    "h3" -> ToolButton(Glyph.Label("H3"), on = state.block == BlockType.H3) { onBlock(BlockType.H3) }
+                    "p" -> ToolButton(Glyph.Label("¶", FontWeight.Normal, 15), on = state.block == BlockType.P) { onBlock(BlockType.P) }
+                    "ul" -> ToolButton(Glyph.Bullets, on = state.block == BlockType.UL) { onBlock(BlockType.UL) }
+                    "ol" -> ToolButton(Glyph.Numbers, on = state.block == BlockType.OL) { onBlock(BlockType.OL) }
+                    "check" -> ToolButton(Glyph.Checklist, on = state.block == BlockType.TASK) { onBlock(BlockType.TASK) }
+                    "bq" -> ToolButton(Glyph.Quote, on = state.block == BlockType.QUOTE) { onBlock(BlockType.QUOTE) }
+                    "left" -> ToolButton(Glyph.AlignLines(Align.Start), on = state.align == Align.Start) { onAlign(Align.Start) }
+                    "center" -> ToolButton(Glyph.AlignLines(Align.Center), on = state.align == Align.Center) { onAlign(Align.Center) }
+                    "right" -> ToolButton(Glyph.AlignLines(Align.End), on = state.align == Align.End) { onAlign(Align.End) }
+                    "indent" -> ToolButton(Glyph.IndentArrow(true)) { onIndent(1) }
+                    "outdent" -> ToolButton(Glyph.IndentArrow(false)) { onIndent(-1) }
+                    "highlight" -> ToolButton(Glyph.Highlight, on = state.marks and Mark.HIGHLIGHT != 0) { onMark(Mark.HIGHLIGHT) }
+                    "table" -> ToolButton(Glyph.Table, onClick = onTable)
+                    "datetime" -> ToolButton(Glyph.DateTime, onClick = onDateTime)
+                    "sup" -> ToolButton(Glyph.Sup, on = state.marks and Mark.SUP != 0) { onMark(Mark.SUP) }
+                    "sub" -> ToolButton(Glyph.Sub, on = state.marks and Mark.SUB != 0) { onMark(Mark.SUB) }
+                    "link" -> ToolButton(Glyph.Link, on = state.link, onClick = onLink)
+                    "photo" -> ToolButton(Glyph.Photo, onClick = onPhoto)
+                    "draw" -> ToolButton(Glyph.Draw, onClick = onDraw)
+                    "hr" -> ToolButton(Glyph.Hr, onClick = onHr)
+                    "code" -> ToolButton(Glyph.InlineCode, on = state.marks and Mark.CODE != 0, onClick = onCode)
+                    "codeblock" -> ToolButton(Glyph.CodeBlock, on = state.block == BlockType.CODE, onClick = onCodeBlock)
+                    "clear" -> ToolButton(Glyph.Clear, onClick = onClear)
+                }
+            }
+            // `.tb-manage-btn`: always last, never hideable, so a hidden tool can always be brought back.
+            Sep()
+            ToolButton(Glyph.Label("⚙", FontWeight.Normal, 15), on = true, onClick = onManage)
+        }
+    }
+}
+
+/** `.tb-sep` */
+@Composable
+private fun Sep() {
+    Box(
+        Modifier
+            .padding(horizontal = 3.dp)
+            .width(1.dp)
+            .height(22.dp)
+            .background(Ink.colors.borderHi),
+    )
+}
+
+/** `.tb-btn` (+ `.on`): 32dp, accent tint while the format is active at the caret. */
+@Composable
+private fun ToolButton(
+    glyph: Glyph,
+    on: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val c = Ink.colors
+    val tint = if (on) c.accent else c.text2
+    Box(
+        Modifier
+            .size(32.dp)
+            .alpha(if (enabled) 1f else 0.35f)
+            .clip(RoundedCornerShape(9.dp))
+            .background(if (on) c.accentDim else Color.Transparent)
+            .tap { if (enabled) onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        GlyphView(glyph, tint)
+    }
+}
+
+@Composable
+private fun GlyphView(glyph: Glyph, tint: Color) {
+    val c = Ink.colors
+    when (glyph) {
+        is Glyph.Label -> Txt(glyph.text, tint, glyph.size, glyph.weight)
+        Glyph.Undo -> FaIcon(R.drawable.ic_fa_rotate_left, tint = tint, size = 14.dp)
+        Glyph.Redo -> FaIcon(
+            R.drawable.ic_fa_rotate_left,
+            tint = tint,
+            size = 14.dp,
+            modifier = Modifier.graphicsLayer(scaleX = -1f),
+        )
+        Glyph.Bold -> Txt("B", tint, 15, FontWeight.ExtraBold)
+        Glyph.Italic -> Txt("I", tint, 15, FontWeight.Normal, italic = true)
+        Glyph.Underline -> Txt("U", tint, 14, FontWeight.Bold, deco = TextDecoration.Underline)
+        Glyph.Strike -> Txt("S", tint, 14, FontWeight.Bold, deco = TextDecoration.LineThrough)
+        Glyph.Markdown -> Txt("M↓", tint, 12, FontWeight.ExtraBold)
+        Glyph.Checklist -> Canvas(Modifier.size(16.dp)) {
+            val w = size.width
+            val sw = 1.8.dp.toPx()
+            drawRoundRect(tint, topLeft = Offset(sw / 2, sw / 2), size = androidx.compose.ui.geometry.Size(w - sw, w - sw),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+            val tick = Path().apply {
+                moveTo(w * 0.26f, w * 0.52f); lineTo(w * 0.44f, w * 0.70f); lineTo(w * 0.76f, w * 0.32f)
+            }
+            drawPath(tick, tint, style = androidx.compose.ui.graphics.drawscope.Stroke(sw, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        }
+        Glyph.Quote -> Txt("“", tint, 22, FontWeight.Bold)
+        Glyph.Table -> FaIcon(R.drawable.ic_fa_table_cells_large, tint = tint, size = 14.dp)
+        Glyph.DateTime -> FaIcon(R.drawable.ic_fa_clock, tint = tint, size = 14.dp)
+        Glyph.InlineCode -> FaIcon(R.drawable.ic_fa_code, tint = tint, size = 14.dp)
+        Glyph.Link -> Canvas(Modifier.size(18.dp)) {
+            val w = size.width
+            val h = size.height
+            val sw = 1.8.dp.toPx()
+            val r = androidx.compose.ui.geometry.CornerRadius(h * 0.16f)
+            val sz = androidx.compose.ui.geometry.Size(w * 0.56f, h * 0.30f)
+            rotate(-45f, pivot = Offset(w / 2f, h / 2f)) {
+                drawRoundRect(tint, Offset(w * 0.0f, h * 0.35f), sz, r, style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+                drawRoundRect(tint, Offset(w * 0.44f, h * 0.35f), sz, r, style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+            }
+        }
+        Glyph.Photo -> FaIcon(R.drawable.ic_fa_image, tint = tint, size = 14.dp)
+        Glyph.Draw -> Canvas(Modifier.size(16.dp)) {
+            val w = size.width
+            val sw = 1.8.dp.toPx()
+            // pencil: body along the diagonal, tip at the bottom left
+            drawLine(tint, Offset(w * 0.78f, w * 0.12f), Offset(w * 0.2f, w * 0.7f), sw * 1.8f, StrokeCap.Round)
+            drawLine(tint, Offset(w * 0.2f, w * 0.7f), Offset(w * 0.1f, w * 0.9f), sw, StrokeCap.Round)
+            drawLine(tint, Offset(w * 0.1f, w * 0.9f), Offset(w * 0.3f, w * 0.8f), sw, StrokeCap.Round)
+            drawLine(tint.copy(alpha = 0.6f), Offset(w * 0.5f, w * 0.92f), Offset(w * 0.95f, w * 0.92f), sw, StrokeCap.Round)
+        }
+        Glyph.Hr -> Canvas(Modifier.size(16.dp)) {
+            val w = size.width
+            val h = size.height
+            val sw = 1.8.dp.toPx()
+            drawLine(tint, Offset(sw / 2, h * 0.5f), Offset(w - sw / 2, h * 0.5f), sw * 1.2f, StrokeCap.Round)
+            drawLine(tint.copy(alpha = 0.5f), Offset(w * 0.2f, h * 0.18f), Offset(w * 0.8f, h * 0.18f), sw, StrokeCap.Round)
+            drawLine(tint.copy(alpha = 0.5f), Offset(w * 0.2f, h * 0.82f), Offset(w * 0.8f, h * 0.82f), sw, StrokeCap.Round)
+        }
+        Glyph.CodeBlock -> Canvas(Modifier.size(17.dp)) {
+            val w = size.width
+            val h = size.height
+            val sw = 1.7.dp.toPx()
+            drawRoundRect(
+                tint, Offset(sw / 2, sw / 2), androidx.compose.ui.geometry.Size(w - sw, h - sw),
+                androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()), style = androidx.compose.ui.graphics.drawscope.Stroke(sw),
+            )
+            drawLine(tint, Offset(w * 0.28f, h * 0.34f), Offset(w * 0.44f, h * 0.5f), sw, StrokeCap.Round)
+            drawLine(tint, Offset(w * 0.44f, h * 0.5f), Offset(w * 0.28f, h * 0.66f), sw, StrokeCap.Round)
+            drawLine(tint, Offset(w * 0.54f, h * 0.68f), Offset(w * 0.74f, h * 0.68f), sw, StrokeCap.Round)
+        }
+        Glyph.Highlight -> Box(
+            Modifier.clip(RoundedCornerShape(3.dp)).background(Color(0xFFFFE49A).copy(alpha = 0.75f)).padding(horizontal = 4.dp),
+        ) { Txt("A", Color(0xFF3A2E10), 13, FontWeight.Bold) }
+        Glyph.Sup -> ScriptGlyph(tint, sup = true)
+        Glyph.Sub -> ScriptGlyph(tint, sup = false)
+        Glyph.Clear -> ClearGlyph(tint)
+        Glyph.Bullets -> Canvas(Modifier.size(16.dp)) {
+            val w = size.width
+            val sw = 1.8.dp.toPx()
+            for (k in 0..2) {
+                val y = size.height * (0.2f + 0.3f * k)
+                drawCircle(tint, radius = 1.4.dp.toPx(), center = Offset(w * 0.12f, y))
+                drawLine(tint, Offset(w * 0.36f, y), Offset(w * 0.96f, y), sw, StrokeCap.Round)
+            }
+        }
+        Glyph.Numbers -> Canvas(Modifier.size(16.dp)) {
+            val w = size.width
+            val sw = 1.8.dp.toPx()
+            for (k in 0..2) {
+                val y = size.height * (0.2f + 0.3f * k)
+                drawLine(tint, Offset(w * 0.04f, y), Offset(w * 0.22f, y), sw * 1.3f, StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.4f, y), Offset(w * 0.96f, y), sw, StrokeCap.Round)
+            }
+        }
+        is Glyph.AlignLines -> Canvas(Modifier.size(16.dp)) {
+            val w = size.width
+            val sw = 1.8.dp.toPx()
+            val lens = floatArrayOf(1f, 0.62f, 1f, 0.62f)
+            for (k in 0..3) {
+                val y = size.height * (0.14f + 0.24f * k)
+                val len = w * lens[k]
+                val x0 = when (glyph.align) {
+                    Align.Start -> 0f
+                    Align.Center -> (w - len) / 2f
+                    Align.End -> w - len
+                }
+                drawLine(tint, Offset(x0 + sw / 2, y), Offset(x0 + len - sw / 2, y), sw, StrokeCap.Round)
+            }
+        }
+        is Glyph.IndentArrow -> Canvas(Modifier.size(16.dp)) {
+            val w = size.width
+            val h = size.height
+            val sw = 1.8.dp.toPx()
+            drawLine(tint, Offset(sw / 2, h * 0.12f), Offset(w - sw / 2, h * 0.12f), sw, StrokeCap.Round)
+            drawLine(tint, Offset(sw / 2, h * 0.88f), Offset(w - sw / 2, h * 0.88f), sw, StrokeCap.Round)
+            drawLine(tint, Offset(w * 0.5f, h * 0.37f), Offset(w - sw / 2, h * 0.37f), sw, StrokeCap.Round)
+            drawLine(tint, Offset(w * 0.5f, h * 0.63f), Offset(w - sw / 2, h * 0.63f), sw, StrokeCap.Round)
+            val tri = Path().apply {
+                if (glyph.forward) {
+                    moveTo(w * 0.04f, h * 0.30f); lineTo(w * 0.36f, h * 0.5f); lineTo(w * 0.04f, h * 0.70f)
+                } else {
+                    moveTo(w * 0.36f, h * 0.30f); lineTo(w * 0.04f, h * 0.5f); lineTo(w * 0.36f, h * 0.70f)
+                }
+                close()
+            }
+            drawPath(tri, tint)
+        }
+    }
+}
+
+@Composable
+private fun Txt(
+    text: String,
+    color: Color,
+    size: Int,
+    weight: FontWeight,
+    italic: Boolean = false,
+    deco: TextDecoration? = null,
+) {
+    BasicText(
+        text,
+        style = TextStyle(
+            color = color,
+            fontSize = size.sp,
+            fontWeight = weight,
+            fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
+            textDecoration = deco,
+            fontFamily = if (italic || text == "“") Ink.serif else Ink.sans,
+        ),
+    )
+}
+
+@Composable
+private fun ScriptGlyph(tint: Color, sup: Boolean) {
+    BasicText(
+        buildAnnotatedString {
+            append("x")
+            withStyle(
+                SpanStyle(
+                    fontSize = 9.sp,
+                    baselineShift = if (sup) BaselineShift.Superscript else BaselineShift.Subscript,
+                ),
+            ) { append("2") }
+        },
+        style = TextStyle(color = tint, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+    )
+}
+
+@Composable
+private fun ClearGlyph(tint: Color) {
+    BasicText(
+        buildAnnotatedString {
+            append("T")
+            withStyle(SpanStyle(fontSize = 9.sp, baselineShift = BaselineShift.Subscript)) { append("x") }
+        },
+        style = TextStyle(color = tint, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+    )
+}

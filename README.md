@@ -1,56 +1,76 @@
-# Inkwell Native UI - Parts 1 to 4 (Soft Bento, Jetpack Compose)
+# Inkwell — native Android (Kotlin + Jetpack Compose)
 
-Package: `com.inkwell.notes` (copy the files under `app/src/main/java/com/inkwell/notes/` into your project).
+Ground-up native rebuild of the React/Capacitor Inkwell app. The UI is ported
+value-for-value from `styles.css`, screen by screen. The web app stays the visual
+reference until every screen is ported.
 
-## Part 4 (new): Login + Profile + Settings
-- Login: floating blobs, Canvas ink-drop logo, feature list, Google button (Canvas "G", spinner while signing in). App starts here, fades into the app after sign in
-- Profile: avatar + Google badge, count-up stats, writing streak, 14-week activity heat-map (Canvas, cells pop in), Settings / My notebooks, Sign out with confirm
-- Settings: Drive sync rows (Back up / Restore with spinners), Check for updates, Theme tiles (Light / Dark / GitHub, whole app fades to the new colours), font size with live preview, editor switches, Export / Import / Manage tags, storage usage, danger zone (Delete all notes / Reset all data), About
-- Home Settings icon now opens the real Settings screen
-- DEMO parts: sign-in, backup, restore, export, import, update check only show the UI + toasts. Real Google Sign-In, Drive appData sync and file export/import come in the data-layer part
+## Status
 
-## Part 3: Tags + Search
-- Tags: "All tags" cloud with counts, tap a tag to filter (accent chip + removable label), "All notes" by default, help card when there are no tags
-- Search: auto-focused search bar with clear button, modes (All / Title / Content / Tags), notebook filter chips, result count, matches highlighted in title/preview/tags, recent searches (last 8, tap to reuse, Clear all)
-- FAB now matches the web menu: Search notes / Create tag (name dialog) / New notebook / New note
-- `store.pendingNewTag` holds the tag from "Create tag" for the editor part to pick up
+| Screen            | Web source                    | Kotlin                              | State |
+|-------------------|-------------------------------|-------------------------------------|:-----:|
+| Login             | `pages/Login.jsx`             | `ui/screens/LoginScreen.kt`         | ✅    |
+| Theme (3 modes)   | `:root` / `data-theme` CSS    | `ui/theme/Theme.kt`                 | ✅    |
+| Google auth       | `auth/AuthContext.jsx`        | `auth/AuthViewModel.kt`             | ✅    |
+| Home — step 1     | `pages/Home.jsx`              | `ui/screens/HomeScreen.kt`          | ✅ UI + data API |
+| Home — step 2     | multi-select, long-press, bulk pin/delete, confirm modal, Undo toast | `HomeScreen.kt`, `NoteCard.kt`, `Toast.kt`, `DeleteConfirmModal.kt` | ✅ |
+| Home — step 3     | pinned drag-reorder (grip handle) | `HomeScreen.kt`, `NoteCard.kt`, `NotesStore.movePinned` | ✅ |
+| Home — step 4     | Create-New menu (FAB) + notebook/tag quick-create modal | `CreateMenu.kt`, `QuickCreateModal.kt`, `Fab.kt` | ✅ UI (navigation = TODO) |
+| Navigation        | `App.jsx` routes + back button | `ui/Navigator.kt`, `InkwellApp.kt` | ✅ simple back-stack (no library) |
+| Tags              | `pages/Tags.jsx`              | `ui/screens/TagsScreen.kt`, `InnerTopBar.kt` | ✅ (bottom-nav Tags tab works) |
+| Notebooks         | `pages/Notebooks.jsx`         | `ui/screens/NotebooksScreen.kt`, `NotebookModals.kt`, `NotebooksViewModel.kt` | ✅ grid, sort, create/edit/delete |
+| NotebookDetail    | `pages/NotebookDetail.jsx`    | `ui/screens/NotebookDetailScreen.kt` | ✅ (note tap / FAB → Editor) |
+| Search            | `pages/Search.jsx`            | `ui/screens/SearchScreen.kt`, `NotesStore.searchNotes` + recent searches (`iw_searches`) | ✅ modes, notebook filter, highlight, recents (note tap → Editor) |
+| Profile           | `pages/Profile.jsx`           | `ui/screens/ProfileScreen.kt`       | ✅ hero, stats, streak, activity grid, sign-out confirm |
+| Settings          | `pages/Settings.jsx`          | `ui/screens/SettingsScreen.kt`, `SettingsViewModel.kt` | ✅ theme (live), font size, editor toggles, local export/import, storage, danger zone, about |
+| Drive sync        | `auth/googleDrive.js`         | `drive/DriveApi.kt`, `auth/TokenProvider.kt` | ✅ backup / restore / last-backup (appDataFolder, 401 → token refresh + retry) |
+| Update checker    | `components/UpdateChecker.jsx` | `update/UpdateApi.kt`, `ApkInstaller.kt`, `UpdateViewModel.kt`, `ui/screens/UpdateHost.kt` | ✅ auto check on launch/resume (10 min throttle), manual check in Settings, in-app APK download → system installer. Repo = `VITE_GITHUB_REPO` → `GITHUB_REPOSITORY` → `tharindu899/Inkwell` |
+| Editor — part 1   | `pages/Editor.jsx` (shell, load/save) | `ui/screens/EditorScreen.kt`, `EditorController.kt` | ✅ top bar (back · reading mode · pin · delete · Save), title + body, tags/notebook rows (display), word/char count, 2 s auto-save, flush on pause/leave, delete confirm. Navigation wired from Home, All Notes, Notebook detail (+ FAB), Search, tag quick-create |
+| Editor — part 2   | formatting model + toolbar | `editor/RichDoc.kt` (text + marks + per-line blocks, undo-friendly), `editor/HtmlCodec.kt` (HTML ⇄ model, markdown), `editor/RichTransformation.kt`, `ui/screens/EditorToolbar.kt` | ✅ bold/italic/underline/strike, H1–H3/¶, bullets, numbers, quote, align, indent, highlight, sup/sub, clear, undo/redo, pending format at caret. Notes with tables/code/links/images/checklists stay read-only until their part |
+| Editor — part 3   | checklist, nested + collapsible lists, markdown shortcuts | `editor/RichDoc.kt` (TASK / CODE blocks, nesting via `Para.indent`, `checked`, `collapsed`, shortcut + Enter / Backspace rules), `editor/RichLayout.kt` (prefix / hidden-line geometry + offset mapping), `editor/HtmlCodec.kt` (web checklist markup, nested `<ul>/<ol>`, `data-collapsed`, `<pre><code>`), `EditorScreen.kt` (tap a checkbox / chevron, both drawn on a Canvas), `EditorToolbar.kt` (checklist + `M↓` toggle) | ✅ tap-to-check, nested items (Indent / Outdent move the whole sub-list), chevron collapse (saved as `data-collapsed`), `# ` `## ` `### ` `> ` `- ` `1. ` `[] ` ` ``` ` shortcuts + `/check` `/code` + Enter, list exit on Enter / Backspace, shortcuts on/off (`markdownMode` pref, same as Settings). Basic code blocks (monospace lines); copy / jump / delete buttons come with Part 5 |
+| Editor — part 4   | tags + notebook pickers | `ui/screens/EditorSheets.kt` | ✅ manage-tags modal, move-to-notebook sheet (+ create) |
+| Editor — part 5   | code, tables, inserts | `editor/TableData.kt`, `editor/MarkdownCodec.kt`, `editor/RichDoc.kt` (inline code / links in the mark Int, divider + table as one-char object paragraphs, paste fragments), `editor/HtmlCodec.kt` (`<code>`, `<a>`, `<hr>`, `<table>`), `ui/screens/EditorTables.kt`, `EditorSheets.kt` (link dialog, cell sheet), `EditorScreen.kt` (divider + code cards, table / code-button overlays, link tap in Reading mode) | ✅ inline code, code blocks (Copy / Bottom / Delete), tables (add / delete rows + columns, header toggle, sideways scroll), link insert / edit / remove, divider, date + time, paste detection (markdown / HTML source / code). Code lines wrap instead of scrolling per block; pasted images become alt text until Part 6 |
+| Editor — part 6   | images + drawing, starter notes | `editor/ImageData.kt` (IMAGE object paragraph, web `<figure class="editor-figure">` round trip), `util/ImageIo.kt` (photo → scaled data URL, EXIF rotation, decode cache), `ui/screens/EditorImages.kt` (image overlay: select, move, resize, delete), `EditorDraw.kt` (sketch dialog), `CreateMenu.kt` (Image / Voice / Checklist starters) | ✅ photo picker → inline figure, tap to select + drag handles (move / resize / delete, saved as `width` / `margin-left` / `margin-top`), sketch canvas (5 colours, brush 1–10, undo, clear, insert as PNG), starters on the Create-New dial, markdown image lines + http(s) images on paste, widths clamped to the page. Photos are scaled to 1600 px before saving |
+| Editor — part 7   | Markdown text mode, reading polish, Download note (pdf/md/html/txt/xls) | | ✅ |
+| Reminders         | alarm-style note reminders (bell) | `reminder/Reminders.kt`, `EditorSheets.kt` (ReminderModal) | ✅ AlarmManager alarm clock + alarm-sound notification, Snooze / Dismiss, reboot-safe |
+| Editor — part 8   | toolbar customiser, spellcheck, streak, selected words, haptics, back-button order | `editor/EditorStats.kt`, `docs/EDITOR.md` | ✅ |
 
-## Part 2: Notebooks + Notebook detail
-- Notebooks: total bar (count-up), sort chips (Name / Notes / Created), 2-column cards tinted with the notebook colour, reorder animation when sorting
-- Notebook card menu: Edit / View notes / Delete (bottom sheet that slides out properly)
-- Create / edit dialog: name, 8 colours, 18 icons (same colours and icon keys as the web app)
-- Delete confirm: "Notes in this notebook will not be deleted"
-- Notebook detail: hero (icon, name, count), sort chips, note list, FAB "new note in notebook", options sheet (All notebooks / Search in all notes / Delete)
-- Toast pill ("Notebook created / updated / deleted"), springy dialog pop-in
-- `InkStore` = in-memory data holder (notes, notebooks, sort, toast). Replaced by real storage + Drive sync in the data-layer part
-- Home FAB "New notebook" opens the Notebooks tab with the create dialog
+After sign-in the app shows Home. Tap the avatar for Profile (Sign out lives there).
 
-## What is in Part 1
-- Theme: Light / Dark / GitHub (same GitHub colors as the web app), colors animate when you switch
-- Components: pressScale, staggeredEntrance, InkChip, PastelCard, StatCard, floating sliding bottom bar, speed-dial FAB
-- Navigation: same routes as the web app, animated screen transitions, bottom bar only on Home / Tags / Notebook
-- Home screen: greeting top bar, count-up stats, sort chips, wide pinned card + staggered bento grid
-- Temporary: the Settings icon on Home cycles the theme so you can preview all three
+## Build the APK on GitHub
 
-## Dependencies (app/build.gradle.kts)
-```kotlin
-implementation(platform("androidx.compose:compose-bom:2024.10.01")) // or your latest BOM
-implementation("androidx.compose.ui:ui")
-implementation("androidx.compose.material3:material3")
-implementation("androidx.compose.material:material-icons-extended")
-implementation("androidx.compose.ui:ui-tooling-preview")
-implementation("androidx.activity:activity-compose:1.9.3")
-implementation("androidx.navigation:navigation-compose:2.8.3")
+Push to `main` (or run the workflow manually). `.github/workflows/build-apk.yml`
+builds a signed APK and attaches it to a GitHub Release.
+
+Uses the **same secrets as before** — nothing new to add:
+`KEYSTORE_BASE64`, `KEY_ALIAS`, `KEY_PASSWORD`, `STORE_PASSWORD`, `VITE_GOOGLE_CLIENT_ID`.
+
+* Package name is still `com.inkwell.notes` and the same keystore is used, so the
+  existing Google Cloud Android OAuth credential (package + SHA-1) keeps working.
+* `versionCode = 1000 + run number`, so the APK installs over the old Capacitor one.
+  (Notes saved by the old WebView app are **not** read by the native app yet.)
+
+## Local build
+
+```bash
+cp local.properties.example local.properties   # set VITE_GOOGLE_CLIENT_ID
+# open in Android Studio (Ladybug+) or: gradle assembleDebug
 ```
-Needs Kotlin 2.x with the Compose compiler plugin, `SortOrder.entries` needs Kotlin 1.9+.
-Manifest: set `android:name` of the activity to `.MainActivity` and use a NoActionBar theme.
 
-## Build on GitHub (no Android Studio needed)
-1. Put the contents of this folder at the **root** of a GitHub repo (the `.github`, `app`, `build.gradle.kts` ... all at top level).
-2. Push to `main`. `.github/workflows/build-apk.yml` builds the APK, uploads it as an artifact and makes a GitHub Release.
-3. Optional signed release APK: add the same 4 secrets as your web repo: `KEYSTORE_BASE64`, `KEY_ALIAS`, `KEY_PASSWORD`, `STORE_PASSWORD`.
-   Without them it builds a debug APK instead. Same keystore + same package = it updates your installed Inkwell.
-4. `VERSION_CODE_OFFSET` (top of the yml) keeps versionCode above your old Capacitor builds.
+## Layout
 
-## Next parts
-5 hook to the real data/editor.
+```
+app/src/main/java/com/inkwell/notes/
+├── MainActivity.kt
+├── auth/        AuthViewModel, AuthStore
+├── data/        AppPrefs, NotesStore, Seed, model/   (SharedPreferences; keys iw_theme, iw_gauth,
+│                                                     iw_notes, iw_notebooks, iw_sort, iw_seed_version, iw_searches,
+│                                                     iw_prefs, iw_fontSize, iw_profile)
+├── editor/      RichDoc, HtmlCodec, RichTransformation   (editor document model + codec)
+├── util/        Helpers             (formatDate, stripHtml, fmtNum, greeting …)
+└── ui/
+    ├── InkwellApp.kt                (root: login gate + current screen)
+    ├── Navigator.kt                 (Route + back-stack)
+    ├── theme/Theme.kt               (colours, fonts, radii)
+    ├── components/                  (InkText, NoteCard, Toast, DeleteConfirmModal …)
+    └── screens/                     (one file per page; CreateLayer = FAB/menu/toast shared by pages)
+```
