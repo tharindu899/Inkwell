@@ -1,17 +1,8 @@
-# Gradle / Android
+*.iml
 .gradle/
 build/
 local.properties
-captures/
-.externalNativeBuild/
-.cxx/
-
-# Keystore — NEVER commit this!
+.idea/
 *.jks
 *.keystore
-
-# IDE / OS
-.idea/
-*.iml
 .DS_Store
-Thumbs.db
