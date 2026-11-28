@@ -35,3 +35,8 @@ enum class NotebookSort(val label: String) { Name("Name"), Notes("Notes"), Creat
 
 /** Search filter modes, same as the web search page: all, title, content, tags. */
 enum class SearchMode(val label: String) { All("All"), Title("Title"), Content("Content"), Tags("Tags") }
+
+data class UserProfile(val name: String, val email: String, val picture: String? = null)
+
+/** Editor body text size, same 3 steps as the web app (13 / 15 / 17). */
+enum class FontSize(val label: String, val sp: Float) { Small("Small", 13f), Medium("Medium", 15f), Large("Large", 17f) }

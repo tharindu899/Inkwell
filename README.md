@@ -1,8 +1,15 @@
-# Inkwell Native UI - Parts 1 to 3 (Soft Bento, Jetpack Compose)
+# Inkwell Native UI - Parts 1 to 4 (Soft Bento, Jetpack Compose)
 
 Package: `com.inkwell.notes` (copy the files under `app/src/main/java/com/inkwell/notes/` into your project).
 
-## Part 3 (new): Tags + Search
+## Part 4 (new): Login + Profile + Settings
+- Login: floating blobs, Canvas ink-drop logo, feature list, Google button (Canvas "G", spinner while signing in). App starts here, fades into the app after sign in
+- Profile: avatar + Google badge, count-up stats, writing streak, 14-week activity heat-map (Canvas, cells pop in), Settings / My notebooks, Sign out with confirm
+- Settings: Drive sync rows (Back up / Restore with spinners), Check for updates, Theme tiles (Light / Dark / GitHub, whole app fades to the new colours), font size with live preview, editor switches, Export / Import / Manage tags, storage usage, danger zone (Delete all notes / Reset all data), About
+- Home Settings icon now opens the real Settings screen
+- DEMO parts: sign-in, backup, restore, export, import, update check only show the UI + toasts. Real Google Sign-In, Drive appData sync and file export/import come in the data-layer part
+
+## Part 3: Tags + Search
 - Tags: "All tags" cloud with counts, tap a tag to filter (accent chip + removable label), "All notes" by default, help card when there are no tags
 - Search: auto-focused search bar with clear button, modes (All / Title / Content / Tags), notebook filter chips, result count, matches highlighted in title/preview/tags, recent searches (last 8, tap to reuse, Clear all)
 - FAB now matches the web menu: Search notes / Create tag (name dialog) / New notebook / New note
@@ -46,4 +53,4 @@ Manifest: set `android:name` of the activity to `.MainActivity` and use a NoActi
 4. `VERSION_CODE_OFFSET` (top of the yml) keeps versionCode above your old Capacitor builds.
 
 ## Next parts
-4 Login + Profile + Settings, 5 hook to the real data/editor.
+5 hook to the real data/editor.

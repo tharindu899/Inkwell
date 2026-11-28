@@ -139,6 +139,7 @@ fun ConfirmDialog(
     confirmLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    danger: Boolean = true,
 ) {
     val c = Ink.colors
     InkDialog(onDismiss) {
@@ -148,7 +149,7 @@ fun ConfirmDialog(
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             InkButton("Cancel", onDismiss, Modifier.weight(1f), InkButtonStyle.Ghost)
-            InkButton(confirmLabel, onConfirm, Modifier.weight(1f), InkButtonStyle.Danger)
+            InkButton(confirmLabel, onConfirm, Modifier.weight(1f), if (danger) InkButtonStyle.Danger else InkButtonStyle.Primary)
         }
     }
 }

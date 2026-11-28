@@ -35,13 +35,15 @@ private fun InkPalette.animated(): InkPalette = InkPalette(
     pastels = pastels.map { Pastel(anim(it.container), anim(it.title), anim(it.body)) },
 )
 
+fun paletteFor(mode: ThemeMode): InkPalette = when (mode) {
+    ThemeMode.Light -> LightPalette
+    ThemeMode.Dark -> DarkPalette
+    ThemeMode.GitHub -> GitHubPalette
+}
+
 @Composable
 fun InkwellTheme(mode: ThemeMode, content: @Composable () -> Unit) {
-    val target = when (mode) {
-        ThemeMode.Light -> LightPalette
-        ThemeMode.Dark -> DarkPalette
-        ThemeMode.GitHub -> GitHubPalette
-    }
+    val target = paletteFor(mode)
     val p = target.animated()
     val scheme = if (p.isDark) {
         darkColorScheme(primary = p.accent, onPrimary = p.onAccent, background = p.bg, onBackground = p.text, surface = p.surface, onSurface = p.text)

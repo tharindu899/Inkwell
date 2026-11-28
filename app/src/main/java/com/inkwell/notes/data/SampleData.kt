@@ -14,7 +14,22 @@ object SampleData {
         Notebook("nb3", "Study", "#9b7de8", "graduation-cap", now - 200 * H),
     )
 
-    fun notes(): List<Note> = listOf(
+    fun notes(): List<Note> = recentNotes() + olderNotes()
+
+    private fun old(id: String, title: String, days: Int, nb: String? = null) = Note(
+        id, title, "<p>$title</p>", emptyList(), nb, wordCount = 60 + days,
+        createdAt = now - days * 24 * H, updatedAt = now - days * 24 * H,
+    )
+
+    /** Spread over the last weeks so the Profile activity grid has something to show. */
+    private fun olderNotes(): List<Note> = listOf(
+        old("o1", "Weekly review", 9, "nb1"), old("o2", "Trip ideas", 11), old("o3", "Meeting notes", 12, "nb1"),
+        old("o4", "Book summary", 16, "nb3"), old("o5", "Budget draft", 19), old("o6", "Gym log", 23, "nb2"),
+        old("o7", "Course outline", 29, "nb3"), old("o8", "Recipe tests", 34, "nb2"), old("o9", "Project kickoff", 41, "nb1"),
+        old("o10", "Reading notes", 47, "nb3"), old("o11", "Year goals", 58),
+    )
+
+    private fun recentNotes(): List<Note> = listOf(
         Note("n1", "App launch plan",
             "<p>Finalize onboarding, record the demo and ship the beta build to the testers this Friday.</p>",
             listOf("work"), "nb1", pinned = true, pinOrder = 0, wordCount = 420, createdAt = now - 48 * H, updatedAt = now - 2 * H),

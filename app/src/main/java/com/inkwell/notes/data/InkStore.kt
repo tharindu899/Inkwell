@@ -4,12 +4,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.inkwell.notes.model.FontSize
 import com.inkwell.notes.model.Note
 import com.inkwell.notes.model.Notebook
 import com.inkwell.notes.model.NotebookSort
 import com.inkwell.notes.model.SearchMode
 import com.inkwell.notes.model.SortOrder
+import com.inkwell.notes.model.ThemeMode
+import com.inkwell.notes.model.UserProfile
 import com.inkwell.notes.util.stripHtml
+import kotlinx.coroutines.delay
 import kotlin.random.Random
 
 class ToastState {
@@ -34,6 +38,85 @@ class InkStore {
     var notebookSort by mutableStateOf(NotebookSort.Name)
     var newNotebookRequested by mutableStateOf(false)
     val toast = ToastState()
+
+    // ── Account / settings (UI-only for now) ──
+    var themeMode by mutableStateOf(ThemeMode.Dark)
+    var fontSize by mutableStateOf(FontSize.Medium)
+    var spellcheck by mutableStateOf(true)
+    var autosave by mutableStateOf(true)
+    var markdownMode by mutableStateOf(true)
+    var serifBody by mutableStateOf(false)
+    var user by mutableStateOf<UserProfile?>(null)
+    var signingIn by mutableStateOf(false)
+    var signInError by mutableStateOf<String?>(null)
+    var lastBackup by mutableStateOf<Long?>(null)
+    var backupBusy by mutableStateOf(false)
+    var restoreBusy by mutableStateOf(false)
+
+    val totalWords: Int get() = notes.sumOf { it.wordCount }
+    fun storageKb(): Int =
+        maxOf(1, (notes.sumOf { it.title.length + it.content.length } + notebooks.sumOf { it.name.length }) / 1024)
+
+    fun setPref(key: String, value: Boolean) {
+        when (key) {
+            "spellcheck" -> spellcheck = value
+            "autosave" -> autosave = value
+            "markdownMode" -> markdownMode = value
+            "serifBody" -> serifBody = value
+        }
+    }
+
+    // DEMO actions. The data-layer part replaces these with real Google Sign-In and Drive appData sync.
+    suspend fun signInDemo() {
+        if (signingIn) return
+        signInError = null
+        signingIn = true
+        delay(1100)
+        user = UserProfile("Rema", "you@gmail.com")
+        signingIn = false
+    }
+
+    fun signOut() { user = null }
+
+    suspend fun backupDemo() {
+        if (backupBusy || restoreBusy) return
+        backupBusy = true
+        delay(1400)
+        lastBackup = System.currentTimeMillis()
+        backupBusy = false
+        toast.show("Backed up to Google Drive")
+    }
+
+    suspend fun restoreDemo() {
+        if (backupBusy || restoreBusy) return
+        if (lastBackup == null) {
+            toast.show("No backup found on Drive")
+            return
+        }
+        restoreBusy = true
+        delay(1400)
+        restoreBusy = false
+        toast.show("Restored ${notes.size} notes")
+    }
+
+    fun deleteAllNotes() {
+        notes.clear()
+        toast.show("All notes deleted")
+    }
+
+    /** Wipes notes, notebooks, settings and the profile (same as the web "Reset all data"). */
+    fun resetAll() {
+        notes.clear()
+        notebooks.clear()
+        recentSearches.clear()
+        sort = SortOrder.Modified
+        notebookSort = NotebookSort.Name
+        themeMode = ThemeMode.Dark
+        fontSize = FontSize.Medium
+        spellcheck = true; autosave = true; markdownMode = true; serifBody = false
+        lastBackup = null
+        user = null
+    }
     val recentSearches = mutableStateListOf("launch plan", "groceries")
     /** Set by the FAB "Create tag" dialog. The editor part will open a new note with this tag. */
     var pendingNewTag by mutableStateOf<String?>(null)

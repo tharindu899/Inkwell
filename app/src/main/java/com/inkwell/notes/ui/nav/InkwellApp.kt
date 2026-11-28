@@ -1,6 +1,7 @@
 package com.inkwell.notes.ui.nav
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -26,10 +27,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -40,11 +42,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.inkwell.notes.data.InkStore
-import com.inkwell.notes.model.ThemeMode
 import com.inkwell.notes.ui.components.InkBottomBar
 import com.inkwell.notes.ui.components.InkToastHost
 import com.inkwell.notes.ui.components.NavTab
 import com.inkwell.notes.ui.screens.HomeScreen
+import com.inkwell.notes.ui.screens.LoginScreen
+import com.inkwell.notes.ui.screens.ProfileScreen
+import com.inkwell.notes.ui.screens.SettingsScreen
 import com.inkwell.notes.ui.screens.NotebookDetailScreen
 import com.inkwell.notes.ui.screens.NotebooksScreen
 import com.inkwell.notes.ui.screens.PlaceholderScreen
@@ -52,6 +56,7 @@ import com.inkwell.notes.ui.screens.SearchScreen
 import com.inkwell.notes.ui.screens.TagsScreen
 import com.inkwell.notes.ui.theme.Ink
 import com.inkwell.notes.ui.theme.InkwellTheme
+import kotlinx.coroutines.launch
 
 /** Same routes as the web app's React Router. */
 object Routes {
@@ -76,12 +81,33 @@ private fun NavHostController.goTab(route: String) {
 
 @Composable
 fun InkwellApp() {
-    var theme by rememberSaveable { mutableStateOf(ThemeMode.Dark) }
-    InkwellTheme(theme) {
+    val store = remember { InkStore() }
+    InkwellTheme(store.themeMode) {
+        val scope = rememberCoroutineScope()
+        Box(Modifier.fillMaxSize().background(Ink.colors.bg)) {
+            // Signed out -> Login, signed in -> the main app. Fades between the two.
+            Crossfade(targetState = store.user != null, animationSpec = tween(400), label = "auth") { signedIn ->
+                if (signedIn) {
+                    MainShell(store)
+                } else {
+                    // DEMO sign-in (the data-layer part swaps this for real Google Sign-In).
+                    LoginScreen(store.signingIn, store.signInError) { scope.launch { store.signInDemo() } }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MainShell(store: InkStore) {
+    run {
         val nav = rememberNavController()
         val entry by nav.currentBackStackEntryAsState()
         val route = entry?.destination?.route
-        val store = remember { InkStore() }
+        val ctx = LocalContext.current
+        val appVersion = remember {
+            try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "1.0.0" } catch (e: Exception) { "1.0.0" }
+        }
 
         // Same 3 tabs as the web BottomNav (Search lives in the top bar).
         val tabs = listOf(
@@ -104,7 +130,7 @@ fun InkwellApp() {
             ) {
                 composable(Routes.Home) {
                     HomeScreen(
-                        userName = "Rema",
+                        userName = store.user?.name ?: "",
                         notes = store.sortedNotes(),
                         notebookCount = store.notebooks.size,
                         sort = store.sort,
@@ -112,8 +138,7 @@ fun InkwellApp() {
                         onOpenNote = { nav.navigate("${Routes.Editor}/$it") },
                         onProfile = { nav.navigate(Routes.Profile) },
                         onSearch = { nav.navigate(Routes.Search) },
-                        // Temporary: cycles Light -> Dark -> GitHub so you can preview the theme animation.
-                        onSettings = { theme = ThemeMode.entries[(theme.ordinal + 1) % ThemeMode.entries.size] },
+                        onSettings = { nav.navigate(Routes.Settings) },
                         onNewNote = { nav.navigate(Routes.Editor) },
                         onNewNotebook = {
                             store.newNotebookRequested = true
@@ -198,8 +223,24 @@ fun InkwellApp() {
                         onBack = { nav.popBackStack() },
                     )
                 }
-                composable(Routes.Settings) { PlaceholderScreen("Settings") }
-                composable(Routes.Profile) { PlaceholderScreen("Profile") }
+                composable(Routes.Settings) {
+                    SettingsScreen(
+                        store = store,
+                        appVersion = appVersion,
+                        onBack = { nav.popBackStack() },
+                        onManageTags = { nav.goTab(Routes.Tags) },
+                        onProfile = { nav.navigate(Routes.Profile) },
+                    )
+                }
+                composable(Routes.Profile) {
+                    ProfileScreen(
+                        store = store,
+                        onBack = { nav.popBackStack() },
+                        onSettings = { nav.navigate(Routes.Settings) },
+                        onNotebooks = { nav.goTab(Routes.Notebooks) },
+                        onSignOut = { store.signOut() },
+                    )
+                }
                 composable(Routes.Editor) { PlaceholderScreen("Editor") }
                 composable("${Routes.Editor}/{id}") { PlaceholderScreen("Editor") }
             }
